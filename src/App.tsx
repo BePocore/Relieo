@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Camera,
   Compass,
   List,
   LocateFixed,
   LoaderCircle,
   Mountain,
   TriangleAlert,
+  Video,
   X,
 } from 'lucide-react'
 import './App.css'
@@ -16,7 +18,7 @@ import { StatsBar } from './components/StatsBar'
 import { TrailMap } from './components/TrailMap'
 import { computeTrailStats } from './lib/geo'
 import { parseGpx } from './lib/gpx'
-import { createImportedMedia } from './lib/media'
+import { createImportedMedia, resolvePointMedia } from './lib/media'
 import { cesiumIonToken, terrainStatusLabel } from './lib/terrain'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import type { ImportedMedia, PointType, TrailPoint, TrackPoint } from './types'
@@ -206,6 +208,17 @@ function App() {
   }, [])
 
   const stats = useMemo(() => computeTrailStats(track), [track])
+  const mediaPoints = useMemo(
+    () =>
+      points.filter(
+        (point) =>
+          point.type === 'photo' ||
+          point.type === 'video' ||
+          point.type === '360' ||
+          Boolean(point.image || point.video || point.skypixelUrl),
+      ),
+    [points],
+  )
 
   const handleSelectPoint = useCallback((point: TrailPoint) => {
     setSelectedPoint(point)
@@ -441,6 +454,47 @@ function App() {
             <List aria-hidden="true" size={16} />
             <span>{isStudioMode ? 'Studio' : 'Points'}</span>
           </button>
+          {mediaPoints.length > 0 ? (
+            <div
+              aria-label="Photos et videos du parcours"
+              className="mobile-media-strip"
+            >
+              {mediaPoints.map((point) => {
+                const media = resolvePointMedia(point, mediaLibrary)
+                const isSelected =
+                  selectedPoint?.id === point.id ||
+                  (!selectedPoint?.id && selectedPoint?.title === point.title)
+
+                return (
+                  <button
+                    className={
+                      isSelected
+                        ? 'mobile-media-item active'
+                        : 'mobile-media-item'
+                    }
+                    key={point.id ?? point.title}
+                    type="button"
+                    onClick={() => handleSelectPoint(point)}
+                  >
+                    {media?.kind === 'image' ? (
+                      <img src={media.src} alt="" />
+                    ) : (
+                      <span className={`mobile-media-fallback type-${point.type}`}>
+                        {point.type === 'video' ? (
+                          <Video aria-hidden="true" size={18} />
+                        ) : point.type === '360' ? (
+                          '360'
+                        ) : (
+                          <Camera aria-hidden="true" size={18} />
+                        )}
+                      </span>
+                    )}
+                    <span className="mobile-media-label">{point.title}</span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
 
           {isLoading ? (
             <div className="loading-state">
