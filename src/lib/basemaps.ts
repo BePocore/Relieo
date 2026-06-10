@@ -1,4 +1,4 @@
-export type BasemapId = 'relief' | 'satellite' | 'topo' | 'streets'
+export type BasemapId = 'satellite' | 'topo' | 'streets'
 
 export type BasemapOption = {
   id: BasemapId
@@ -7,11 +7,6 @@ export type BasemapOption = {
 }
 
 export const basemapOptions: BasemapOption[] = [
-  {
-    id: 'relief',
-    label: 'Ombrage',
-    description: 'Ombrage de terrain clair, sans routes dominantes.',
-  },
   {
     id: 'satellite',
     label: 'Satellite',

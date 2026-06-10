@@ -7,7 +7,6 @@ type BasemapControlProps = {
 }
 
 const iconForBasemap = (basemap: BasemapId) => {
-  if (basemap === 'relief') return <Mountain aria-hidden="true" size={15} />
   if (basemap === 'satellite') return <Satellite aria-hidden="true" size={15} />
   if (basemap === 'topo') return <Mountain aria-hidden="true" size={15} />
   return <Map aria-hidden="true" size={15} />

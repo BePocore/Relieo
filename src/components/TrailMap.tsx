@@ -120,15 +120,6 @@ const flyToTrail = (
 }
 
 const createBaseLayer = (basemap: BasemapId): ImageryLayer => {
-  if (basemap === 'relief') {
-    return ImageryLayer.fromProviderAsync(
-      ArcGisMapServerImageryProvider.fromUrl(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer',
-        { enablePickFeatures: false },
-      ),
-    )
-  }
-
   if (basemap === 'satellite') {
     return ImageryLayer.fromProviderAsync(
       ArcGisMapServerImageryProvider.fromUrl(
@@ -204,10 +195,7 @@ export function TrailMap({
     }
 
     const baseLayer = createBaseLayer(basemap)
-    baseLayer.brightness =
-      basemap === 'satellite' ? 1.25 : basemap === 'relief' ? 1.15 : 1
-    baseLayer.contrast = basemap === 'relief' ? 1.08 : 1
-    baseLayer.gamma = basemap === 'relief' ? 0.95 : 1
+    baseLayer.brightness = basemap === 'satellite' ? 1.25 : 1
     viewer.imageryLayers.removeAll()
     viewer.imageryLayers.add(baseLayer)
 
