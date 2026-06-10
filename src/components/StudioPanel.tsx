@@ -7,6 +7,7 @@ import {
   FileUp,
   Image,
   List,
+  LockKeyhole,
   Mountain,
   Plus,
   Save,
@@ -43,7 +44,11 @@ type StudioPanelProps = {
   onUpdatePoint: (point: TrailPoint) => void
   onDeletePoint: (pointId: string) => void
   onExportPoints: () => void
-  onSaveProject: () => void
+  onSaveProject: () => Promise<void>
+  adminPassword: string
+  isSaving: boolean
+  isUploading: boolean
+  onAdminPasswordChange: (password: string) => void
   saveStatus: string | null
 }
 
@@ -313,6 +318,10 @@ export function StudioPanel({
   onDeletePoint,
   onExportPoints,
   onSaveProject,
+  adminPassword,
+  isSaving,
+  isUploading,
+  onAdminPasswordChange,
   saveStatus,
 }: StudioPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>('points')
@@ -406,13 +415,27 @@ export function StudioPanel({
       <ElevationProfile track={track} stats={stats} />
 
       <div className="studio-actions">
+        <label className="studio-password">
+          <span>
+            <LockKeyhole aria-hidden="true" size={15} />
+            Mot de passe Studio
+          </span>
+          <input
+            autoComplete="current-password"
+            type="password"
+            value={adminPassword}
+            onChange={(event) => onAdminPasswordChange(event.target.value)}
+            placeholder="Mot de passe Vercel"
+          />
+        </label>
         <button
           className="secondary-action"
+          disabled={!adminPassword || isSaving || isUploading}
           type="button"
-          onClick={onSaveProject}
+          onClick={() => void onSaveProject()}
         >
           <Save aria-hidden="true" size={17} />
-          Sauvegarder la carte
+          {isSaving ? 'Publication...' : 'Publier en ligne'}
         </button>
         {saveStatus ? <p className="save-status">{saveStatus}</p> : null}
       </div>
@@ -509,11 +532,18 @@ export function StudioPanel({
             <Image aria-hidden="true" size={22} />
             <span>
               <strong>Photos / vidéos</strong>
-              <small>{mediaLibrary.length} média(s)</small>
+              <small>
+                {isUploading
+                  ? 'Envoi vers Vercel...'
+                  : adminPassword
+                    ? `${mediaLibrary.length} média(s)`
+                    : 'Mot de passe Studio requis'}
+              </small>
             </span>
             <input
               type="file"
               accept="image/*,video/*,.heic,.heif,.mp4,.mov,.m4v,image/heic,image/heif,video/mp4,video/quicktime"
+              disabled={!adminPassword || isUploading}
               multiple
               onChange={(event) => {
                 void onImportMedia(Array.from(event.target.files ?? []))

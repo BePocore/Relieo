@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { upload } from '@vercel/blob/client'
 import {
   Camera,
   Compass,
@@ -21,18 +22,16 @@ import { parseGpx } from './lib/gpx'
 import { createImportedMedia, resolvePointMedia } from './lib/media'
 import { cesiumIonToken, terrainStatusLabel } from './lib/terrain'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
-import type { ImportedMedia, PointType, TrailPoint, TrackPoint } from './types'
+import type {
+  ImportedMedia,
+  PointType,
+  TrailPoint,
+  TrailProject,
+  TrackPoint,
+} from './types'
 
 const pointTypes: PointType[] = ['photo', 'video', '360', 'poi']
-const projectStorageKey = 'trail-map-project-v1'
-
-type StoredProject = {
-  points: TrailPoint[]
-  pointsSourceName: string
-  savedAt: string
-  track: TrackPoint[]
-  trackSourceName: string
-}
+const adminPasswordStorageKey = 'rando3d-admin-password'
 
 const isStudioUrl = (): boolean => {
   const params = new URLSearchParams(window.location.search)
@@ -59,28 +58,6 @@ const storedBasemap = (): BasemapId => {
   }
 
   return defaultBasemap
-}
-
-const readStoredProject = (): StoredProject | null => {
-  try {
-    const rawProject = window.localStorage.getItem(projectStorageKey)
-    if (!rawProject) return null
-
-    const project = JSON.parse(rawProject) as Partial<StoredProject>
-    if (!Array.isArray(project.track) || !Array.isArray(project.points)) {
-      return null
-    }
-
-    return {
-      track: project.track,
-      points: project.points,
-      trackSourceName: project.trackSourceName ?? 'sauvegarde locale',
-      pointsSourceName: project.pointsSourceName ?? 'sauvegarde locale',
-      savedAt: project.savedAt ?? new Date().toISOString(),
-    }
-  } catch {
-    return null
-  }
 }
 
 const normalizePoint = (point: TrailPoint, index: number): TrailPoint | null => {
@@ -112,19 +89,27 @@ const exportablePoints = (points: TrailPoint[]): TrailPoint[] => {
       ...(point.altitude !== undefined ? { altitude: point.altitude } : {}),
     }
 
-    if (point.mediaName) {
-      if (point.mediaKind === 'video' || point.video) {
-        cleanPoint.video = `/videos/${point.mediaName}`
-      } else {
-        cleanPoint.image = `/photos/${point.mediaName}`
-      }
-    } else {
-      if (point.image) cleanPoint.image = point.image
-      if (point.video) cleanPoint.video = point.video
+    if (point.video) {
+      cleanPoint.video = point.video.startsWith('blob:') && point.mediaName
+        ? `/videos/${point.mediaName}`
+        : point.video
+    } else if (point.image) {
+      cleanPoint.image = point.image.startsWith('blob:') && point.mediaName
+        ? `/photos/${point.mediaName}`
+        : point.image
     }
 
     return cleanPoint
   })
+}
+
+const safeMediaPath = (fileName: string): string => {
+  const cleanName = fileName
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return `rando3d/media/${Date.now()}-${cleanName || 'media'}`
 }
 
 function App() {
@@ -137,11 +122,15 @@ function App() {
   const [selectedPoint, setSelectedPoint] = useState<TrailPoint | null>(null)
   const [recenterRequest, setRecenterRequest] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
+  const [adminPassword, setAdminPassword] = useState(() =>
+    window.sessionStorage.getItem(adminPasswordStorageKey) ?? '',
+  )
   const [trackSourceName, setTrackSourceName] = useState('/data/trace.gpx')
   const [pointsSourceName, setPointsSourceName] = useState('/data/points.json')
-  const mediaUrlsRef = useRef<string[]>([])
 
   useEffect(() => {
     const loadTrail = async () => {
@@ -149,9 +138,10 @@ function App() {
         setIsLoading(true)
         setError(null)
 
-        const [gpxResponse, pointsResponse] = await Promise.all([
+        const [gpxResponse, pointsResponse, projectResponse] = await Promise.all([
           fetch('/data/trace.gpx'),
           fetch('/data/points.json'),
+          fetch('/api/project', { cache: 'no-store' }).catch(() => null),
         ])
 
         if (!gpxResponse.ok) {
@@ -167,17 +157,40 @@ function App() {
           pointsResponse.json() as Promise<TrailPoint[]>,
         ])
 
-        const savedProject = readStoredProject()
+        let onlineProject: TrailProject | null = null
+        const projectContentType = projectResponse?.headers.get('content-type')
 
-        if (savedProject) {
-          setTrack(savedProject.track)
+        if (
+          projectResponse?.ok &&
+          projectContentType?.includes('application/json')
+        ) {
+          const candidate = (await projectResponse.json()) as Partial<TrailProject>
+          if (Array.isArray(candidate.track) && Array.isArray(candidate.points)) {
+            onlineProject = {
+              track: candidate.track,
+              points: candidate.points,
+              mediaLibrary: Array.isArray(candidate.mediaLibrary)
+                ? candidate.mediaLibrary
+                : [],
+              trackSourceName:
+                candidate.trackSourceName ?? 'carte publiee en ligne',
+              pointsSourceName:
+                candidate.pointsSourceName ?? 'carte publiee en ligne',
+              savedAt: candidate.savedAt ?? new Date().toISOString(),
+            }
+          }
+        }
+
+        if (onlineProject) {
+          setTrack(onlineProject.track)
           setPoints(
-            savedProject.points
+            onlineProject.points
               .map((point, index) => normalizePoint(point, index))
               .filter((point): point is TrailPoint => point !== null),
           )
-          setTrackSourceName(savedProject.trackSourceName)
-          setPointsSourceName(savedProject.pointsSourceName)
+          setMediaLibrary(onlineProject.mediaLibrary ?? [])
+          setTrackSourceName(onlineProject.trackSourceName)
+          setPointsSourceName(onlineProject.pointsSourceName)
         } else {
           setTrack(parseGpx(gpxText))
           setPoints(
@@ -200,13 +213,6 @@ function App() {
     void loadTrail()
   }, [])
 
-  useEffect(() => {
-    const mediaUrls = mediaUrlsRef.current
-    return () => {
-      mediaUrls.forEach((url) => URL.revokeObjectURL(url))
-    }
-  }, [])
-
   const stats = useMemo(() => computeTrailStats(track), [track])
   const mediaPoints = useMemo(
     () =>
@@ -227,6 +233,16 @@ function App() {
 
   const handleClosePoint = useCallback(() => {
     setSelectedPoint(null)
+  }, [])
+
+  const handleAdminPasswordChange = useCallback((password: string) => {
+    setAdminPassword(password)
+    if (password) {
+      window.sessionStorage.setItem(adminPasswordStorageKey, password)
+    } else {
+      window.sessionStorage.removeItem(adminPasswordStorageKey)
+    }
+    setSaveStatus(null)
   }, [])
 
   const handleBasemapChange = useCallback((nextBasemap: BasemapId) => {
@@ -283,14 +299,53 @@ function App() {
   }, [])
 
   const handleImportMedia = useCallback(async (files: File[]) => {
-    const importedMedia = (
-      await Promise.all(files.map((file) => createImportedMedia(file)))
-    )
-      .filter((media): media is ImportedMedia => media !== null)
+    if (!adminPassword) {
+      setSaveStatus('Saisis le mot de passe Studio avant un import media.')
+      return
+    }
+
+    setIsUploading(true)
+    setSaveStatus('Envoi des medias vers Vercel...')
+
+    const importedMedia: ImportedMedia[] = []
+
+    try {
+      for (const file of files) {
+        const media = await createImportedMedia(file)
+        if (!media) continue
+
+        try {
+          const blob = await upload(safeMediaPath(file.name), file, {
+            access: 'public',
+            handleUploadUrl: '/api/upload',
+            headers: {
+              'x-admin-password': adminPassword,
+            },
+            contentType: file.type || 'application/octet-stream',
+            multipart: file.size > 10 * 1024 * 1024,
+          })
+
+          importedMedia.push({
+            ...media,
+            url: blob.url,
+          })
+        } finally {
+          URL.revokeObjectURL(media.url)
+        }
+      }
+    } catch (uploadError) {
+      setSaveStatus(
+        uploadError instanceof Error
+          ? uploadError.message
+          : 'Envoi des medias impossible.',
+      )
+      return
+    } finally {
+      setIsUploading(false)
+    }
 
     if (importedMedia.length === 0) return
 
-    mediaUrlsRef.current.push(...importedMedia.map((media) => media.url))
     const positionedMedia = importedMedia.filter(
       (media) => media.lat !== undefined && media.lng !== undefined,
     )
@@ -332,7 +387,8 @@ function App() {
     }
 
     setError(null)
-  }, [points])
+    setSaveStatus('Medias envoyes. Publie la carte pour partager les points.')
+  }, [adminPassword, points])
 
   const handleAddPoint = useCallback((point: TrailPoint) => {
     setPoints((current) => [...current, point])
@@ -365,24 +421,63 @@ function App() {
     URL.revokeObjectURL(url)
   }, [points])
 
-  const handleSaveProject = useCallback(() => {
+  const handleSaveProject = useCallback(async () => {
+    if (!adminPassword) {
+      setSaveStatus('Saisis le mot de passe Studio.')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveStatus('Publication en ligne...')
+
     try {
-      const project: StoredProject = {
+      const project: TrailProject = {
         track,
         points: exportablePoints(points),
+        mediaLibrary: mediaLibrary.filter(
+          (media) => !media.url.startsWith('blob:'),
+        ),
         trackSourceName,
         pointsSourceName,
         savedAt: new Date().toISOString(),
       }
 
-      window.localStorage.setItem(projectStorageKey, JSON.stringify(project))
-      setSaveStatus('Carte sauvegardee dans ce navigateur.')
+      const response = await fetch('/api/project', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword,
+        },
+        body: JSON.stringify(project),
+      })
+
+      const result = (await response.json().catch(() => null)) as {
+        message?: string
+      } | null
+
+      if (!response.ok) {
+        throw new Error(result?.message ?? 'Publication en ligne impossible.')
+      }
+
+      setSaveStatus('Carte publiee en ligne pour tous les appareils.')
       setError(null)
-    } catch {
-      setSaveStatus(null)
-      setError('Sauvegarde impossible dans ce navigateur.')
+    } catch (saveError) {
+      setSaveStatus(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Publication en ligne impossible.',
+      )
+    } finally {
+      setIsSaving(false)
     }
-  }, [points, pointsSourceName, track, trackSourceName])
+  }, [
+    adminPassword,
+    mediaLibrary,
+    points,
+    pointsSourceName,
+    track,
+    trackSourceName,
+  ])
 
   return (
     <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
@@ -549,6 +644,10 @@ function App() {
               onDeletePoint={handleDeletePoint}
               onExportPoints={handleExportPoints}
               onSaveProject={handleSaveProject}
+              adminPassword={adminPassword}
+              isSaving={isSaving}
+              isUploading={isUploading}
+              onAdminPasswordChange={handleAdminPasswordChange}
               saveStatus={saveStatus}
             />
           ) : (

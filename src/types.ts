@@ -40,6 +40,15 @@ export type ImportedMedia = {
   locationSource?: 'exif' | 'video-metadata'
 }
 
+export type TrailProject = {
+  points: TrailPoint[]
+  pointsSourceName: string
+  savedAt: string
+  track: TrackPoint[]
+  trackSourceName: string
+  mediaLibrary?: ImportedMedia[]
+}
+
 export type TrailStats = {
   distanceMeters: number
   elevationGainMeters: number

@@ -12,6 +12,25 @@ Partage le lien public sans `?mode=studio` aux visiteurs. Le studio contient les
 imports GPX, JSON, photos, videos, l'ajout manuel de points et l'export
 `points.json`.
 
+## Sauvegarde en ligne
+
+La carte publiee est stockee dans Vercel Blob. Les points, la trace et la
+bibliotheque media sont donc communs au telephone, a l'iPad et a l'ordinateur.
+Le mot de passe Studio est demande uniquement pour importer des medias et
+publier des modifications.
+
+Dans le projet Vercel :
+
+1. Ouvre `Storage`, cree un Blob Store public et connecte-le au projet. Vercel
+   ajoute automatiquement `BLOB_READ_WRITE_TOKEN`.
+2. Dans `Settings > Environment Variables`, ajoute
+   `RANDO3D_ADMIN_PASSWORD` avec le mot de passe de ton choix.
+3. Redeploie le projet.
+
+Le Studio est disponible avec `/?mode=studio`. Le bouton `Publier en ligne`
+remplace la sauvegarde locale du navigateur. Les photos et videos importees
+sont envoyees directement du navigateur vers Vercel Blob.
+
 ## Donnees
 
 Tu peux travailler de deux facons :
@@ -82,8 +101,9 @@ Pour publier, place ensuite les photos dans `public/photos` et les videos dans
 
 ## Deploiement
 
-Le site est statique apres `npm run build`. Le dossier `dist` peut etre publie
-sur Vercel, Netlify, GitHub Pages ou tout hebergement de fichiers statiques.
+Le frontend Vite est genere dans `dist`. Les fichiers `api/project.ts` et
+`api/upload.ts` deviennent des Vercel Functions pour la sauvegarde partagee et
+l'import des medias.
 
 ## Terrain 3D Cesium
 
