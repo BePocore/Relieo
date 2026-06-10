@@ -1,5 +1,5 @@
 import { get, put } from '@vercel/blob'
-import { hasAdminPassword, isAdminRequest } from '../server/auth'
+import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
 
 const projectPath = 'rando3d/project.json'
 

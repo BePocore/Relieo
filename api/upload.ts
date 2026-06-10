@@ -1,5 +1,5 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
-import { hasAdminPassword, isAdminRequest } from '../server/auth'
+import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
 
 const allowedContentTypes = [
   'application/octet-stream',
