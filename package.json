@@ -12,6 +12,7 @@
   "dependencies": {
     "@vercel/blob": "^2.4.0",
     "cesium": "^1.142.0",
+    "cesium-navigation-es6": "^3.0.9",
     "exifr": "^7.1.3",
     "lucide-react": "^1.17.0",
     "react": "^19.2.6",

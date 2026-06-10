@@ -152,6 +152,28 @@
   user-select: none;
 }
 
+.cesium-widget-cesiumNavigationContainer .compass {
+  top: 14px;
+  right: 14px;
+  z-index: 4;
+  filter: drop-shadow(0 7px 16px rgba(15, 23, 42, 0.2));
+  touch-action: none;
+}
+
+.cesium-widget-cesiumNavigationContainer .compass-outer-ring {
+  fill: rgba(255, 255, 255, 0.8);
+}
+
+.cesium-widget-cesiumNavigationContainer .compass-outer-ring-background,
+.cesium-widget-cesiumNavigationContainer .compass-gyro-background {
+  background-color: rgba(20, 41, 35, 0.88);
+}
+
+.cesium-widget-cesiumNavigationContainer .compass-gyro,
+.cesium-widget-cesiumNavigationContainer .compass-rotation-marker {
+  fill: #d8fff4;
+}
+
 .terrain-badge {
   position: absolute;
   top: 14px;
@@ -949,6 +971,14 @@
     min-height: 0;
   }
 
+  .cesium-widget-cesiumNavigationContainer .compass {
+    top: 78px;
+    right: 10px;
+    display: block;
+    transform: scale(0.92);
+    transform-origin: top right;
+  }
+
   .terrain-badge {
     display: none;
   }
@@ -1109,6 +1139,12 @@
     left: 10px;
     right: auto;
     max-width: calc(100% - 20px);
+  }
+
+  .cesium-widget-cesiumNavigationContainer .compass {
+    top: 108px;
+    right: 8px;
+    transform: scale(0.82);
   }
 
   .basemap-buttons {

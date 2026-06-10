@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import CesiumNavigation from 'cesium-navigation-es6'
 import {
   ArcGisMapServerImageryProvider,
   ArcGISTiledElevationTerrainProvider,
@@ -45,6 +46,10 @@ type TrailMapProps = {
   recenterRequest: number
   selectedPoint: TrailPoint | null
   onSelectPoint: (point: TrailPoint) => void
+}
+
+type CesiumNavigationInstance = {
+  destroy: () => void
 }
 
 const routeOutlineColor = Color.fromCssColorString('#020617')
@@ -222,20 +227,46 @@ export function TrailMap({
     cameraController.enableCollisionDetection = true
     cameraController.minimumZoomDistance = 60
     cameraController.maximumZoomDistance = 60_000
-    cameraController.zoomFactor = hasCoarsePointer ? 1.35 : 1.15
-    cameraController.inertiaZoom = hasCoarsePointer ? 0.42 : 0.6
+    cameraController.zoomFactor = hasCoarsePointer ? 1.22 : 1.15
+    cameraController.inertiaZoom = hasCoarsePointer ? 0.34 : 0.6
     cameraController.inertiaSpin = hasCoarsePointer ? 0.62 : 0.8
-    cameraController.maximumMovementRatio = hasCoarsePointer ? 0.065 : 0.08
+    cameraController.maximumMovementRatio = hasCoarsePointer ? 0.055 : 0.08
     cameraController.zoomEventTypes = [
       CameraEventType.WHEEL,
       CameraEventType.PINCH,
     ]
     cameraController.rotateEventTypes = CameraEventType.LEFT_DRAG
     cameraController.tiltEventTypes = [
-      CameraEventType.PINCH,
       CameraEventType.RIGHT_DRAG,
       CameraEventType.MIDDLE_DRAG,
     ]
+    const navigationOptions = {
+      defaultResetView: computeBounds(track, points),
+      duration: 0.75,
+      enableCompass: true,
+      enableCompassOuterRing: true,
+      enableDistanceLegend: false,
+      enableZoomControls: false,
+      orientation: {
+        heading: CesiumMath.toRadians(28),
+        pitch: CesiumMath.toRadians(-60),
+        roll: 0,
+      },
+      resetTooltip: 'Recentrer la vue',
+      zoomInTooltip: 'Zoomer',
+      zoomOutTooltip: 'Dezoomer',
+    }
+    const navigation = new CesiumNavigation(
+      viewer,
+      navigationOptions,
+    ) as unknown as CesiumNavigationInstance
+    const compass = container.querySelector('.compass')
+    compass?.setAttribute('aria-label', 'Boussole de navigation 3D')
+    compass?.setAttribute('role', 'application')
+    compass?.setAttribute(
+      'title',
+      "Tourner avec l'anneau, incliner avec le centre",
+    )
     viewerRef.current = viewer
     pointsByEntityId.current.clear()
 
@@ -333,6 +364,7 @@ export function TrailMap({
 
     return () => {
       clickHandler.destroy()
+      navigation.destroy()
       viewer.destroy()
       container.replaceChildren()
       viewerRef.current = null
