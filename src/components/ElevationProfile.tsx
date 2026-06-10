@@ -50,9 +50,11 @@ export function ElevationProfile({ track, stats }: ElevationProfileProps) {
   }
 
   const width = 320
-  const height = 116
+  const height = 136
   const paddingX = 10
-  const paddingY = 12
+  const graphTop = 12
+  const graphBottom = 104
+  const axisLabelY = 126
   const minElevation = stats.minElevationMeters ?? stats.maxElevationMeters
   const maxElevation = stats.maxElevationMeters
   const elevationRange = Math.max(maxElevation - minElevation, 1)
@@ -63,18 +65,31 @@ export function ElevationProfile({ track, stats }: ElevationProfileProps) {
       paddingX +
       (point.distance / distanceRange) * (width - paddingX * 2)
     const y =
-      height -
-      paddingY -
+      graphBottom -
       ((point.elevation - minElevation) / elevationRange) *
-        (height - paddingY * 2)
+        (graphBottom - graphTop)
     return `${x.toFixed(1)},${y.toFixed(1)}`
   })
 
   const areaPoints = [
-    `${paddingX},${height - paddingY}`,
+    `${paddingX},${graphBottom}`,
     ...linePoints,
-    `${width - paddingX},${height - paddingY}`,
+    `${width - paddingX},${graphBottom}`,
   ].join(' ')
+  const distanceTicks = Array.from({ length: 5 }, (_, index) => {
+    const ratio = index / 4
+    const distanceKm = (stats.distanceMeters * ratio) / 1000
+    const anchor: 'start' | 'middle' | 'end' =
+      index === 0 ? 'start' : index === 4 ? 'end' : 'middle'
+
+    return {
+      x: paddingX + ratio * (width - paddingX * 2),
+      label: `${distanceKm.toLocaleString('fr-FR', {
+        maximumFractionDigits: 1,
+      })} km`,
+      anchor,
+    }
+  })
 
   return (
     <section className="elevation-card" aria-label="Profil d'altitude">
@@ -108,6 +123,32 @@ export function ElevationProfile({ track, stats }: ElevationProfileProps) {
           strokeLinejoin="round"
           strokeWidth="4"
         />
+        <line
+          className="elevation-axis-line"
+          x1={paddingX}
+          x2={width - paddingX}
+          y1={graphBottom}
+          y2={graphBottom}
+        />
+        {distanceTicks.map((tick) => (
+          <g key={`${tick.x}-${tick.label}`}>
+            <line
+              className="elevation-axis-tick"
+              x1={tick.x}
+              x2={tick.x}
+              y1={graphBottom}
+              y2={graphBottom + 5}
+            />
+            <text
+              className="elevation-axis-label"
+              textAnchor={tick.anchor}
+              x={tick.x}
+              y={axisLabelY}
+            >
+              {tick.label}
+            </text>
+          </g>
+        ))}
       </svg>
 
       <div className="elevation-summary">

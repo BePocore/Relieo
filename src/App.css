@@ -762,6 +762,18 @@
   background-size: 100% 28px, 52px 100%, 100% 100%;
 }
 
+.elevation-axis-line,
+.elevation-axis-tick {
+  stroke: rgba(23, 51, 45, 0.42);
+  stroke-width: 1;
+}
+
+.elevation-axis-label {
+  fill: #596a63;
+  font-size: 9px;
+  font-weight: 700;
+}
+
 .elevation-summary {
   margin-top: 10px;
   display: grid;
