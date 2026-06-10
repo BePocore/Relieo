@@ -8,6 +8,7 @@ import {
   Cartesian2,
   Cartesian3,
   Color,
+  CornerType,
   EllipsoidTerrainProvider,
   HeadingPitchRange,
   HeightReference,
@@ -52,8 +53,8 @@ type CesiumNavigationInstance = {
   destroy: () => void
 }
 
-const routeOutlineColor = Color.fromCssColorString('#020617')
-const routeColor = Color.fromCssColorString('#0f172a')
+const routeOutlineColor = Color.fromCssColorString('#ffffff').withAlpha(0.78)
+const routeColor = Color.fromCssColorString('#145c52')
 const arcGisTerrainUrl =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
 
@@ -278,10 +279,10 @@ export function TrailMap({
       viewer.entities.add({
         id: 'trail-route',
         name: 'Parcours GPX',
-        polyline: {
+        corridor: {
           positions: routePositions,
-          width: 9,
-          clampToGround: useWorldTerrain,
+          width: 15,
+          cornerType: CornerType.ROUNDED,
           material: routeOutlineColor,
           zIndex: 20,
         },
@@ -290,10 +291,10 @@ export function TrailMap({
       viewer.entities.add({
         id: 'trail-route-core',
         name: 'Trace',
-        polyline: {
+        corridor: {
           positions: routePositions,
-          width: 6,
-          clampToGround: useWorldTerrain,
+          width: 11,
+          cornerType: CornerType.ROUNDED,
           material: routeColor,
           zIndex: 21,
         },
