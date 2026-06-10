@@ -1,5 +1,13 @@
 import { useEffect, useRef } from 'react'
 import {
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
+import {
   ArcGisMapServerImageryProvider,
   ArcGISTiledElevationTerrainProvider,
   BoundingSphere,
@@ -46,6 +54,14 @@ type TrailMapProps = {
   selectedPoint: TrailPoint | null
   onSelectPoint: (point: TrailPoint) => void
 }
+
+type CameraAction =
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'rotate-left'
+  | 'rotate-right'
+  | 'tilt-up'
+  | 'tilt-down'
 
 const routeOutlineColor = Color.fromCssColorString('#020617')
 const routeColor = Color.fromCssColorString('#0f172a')
@@ -218,12 +234,14 @@ export function TrailMap({
       viewer.scene.moon.show = false
     }
     const cameraController = viewer.scene.screenSpaceCameraController
+    const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches
     cameraController.enableCollisionDetection = true
     cameraController.minimumZoomDistance = 60
     cameraController.maximumZoomDistance = 60_000
-    cameraController.zoomFactor = 1.15
-    cameraController.inertiaZoom = 0.6
-    cameraController.maximumMovementRatio = 0.08
+    cameraController.zoomFactor = hasCoarsePointer ? 2.2 : 1.15
+    cameraController.inertiaZoom = hasCoarsePointer ? 0.28 : 0.6
+    cameraController.inertiaSpin = 0.7
+    cameraController.maximumMovementRatio = hasCoarsePointer ? 0.12 : 0.08
     cameraController.zoomEventTypes = [
       CameraEventType.WHEEL,
       CameraEventType.PINCH,
@@ -361,5 +379,99 @@ export function TrailMap({
     })
   }, [selectedPoint, track])
 
-  return <div ref={containerRef} className="trail-map" />
+  const controlCamera = (action: CameraAction) => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+
+    const camera = viewer.camera
+    const height = camera.positionCartographic.height
+
+    if (action === 'zoom-in' || action === 'zoom-out') {
+      const distance = Math.max(height * 0.18, 90)
+      if (action === 'zoom-in') camera.zoomIn(distance)
+      else camera.zoomOut(distance)
+      viewer.scene.requestRender()
+      return
+    }
+
+    const headingStep = CesiumMath.toRadians(12)
+    const pitchStep = CesiumMath.toRadians(8)
+    let heading = camera.heading
+    let pitch = camera.pitch
+
+    if (action === 'rotate-left') heading -= headingStep
+    if (action === 'rotate-right') heading += headingStep
+    if (action === 'tilt-up') pitch += pitchStep
+    if (action === 'tilt-down') pitch -= pitchStep
+
+    camera.setView({
+      destination: Cartesian3.clone(camera.position),
+      orientation: {
+        heading,
+        pitch: CesiumMath.clamp(
+          pitch,
+          CesiumMath.toRadians(-89),
+          CesiumMath.toRadians(-18),
+        ),
+        roll: 0,
+      },
+    })
+    viewer.scene.requestRender()
+  }
+
+  return (
+    <div className="trail-map">
+      <div ref={containerRef} className="trail-map-canvas" />
+      <div className="camera-controls" aria-label="Commandes de la vue 3D">
+        <button
+          aria-label="Zoomer"
+          title="Zoomer"
+          type="button"
+          onClick={() => controlCamera('zoom-in')}
+        >
+          <ZoomIn aria-hidden="true" size={20} />
+        </button>
+        <button
+          aria-label="Dezoomer"
+          title="Dezoomer"
+          type="button"
+          onClick={() => controlCamera('zoom-out')}
+        >
+          <ZoomOut aria-hidden="true" size={20} />
+        </button>
+        <button
+          aria-label="Tourner la vue vers la gauche"
+          title="Tourner a gauche"
+          type="button"
+          onClick={() => controlCamera('rotate-left')}
+        >
+          <RotateCcw aria-hidden="true" size={20} />
+        </button>
+        <button
+          aria-label="Tourner la vue vers la droite"
+          title="Tourner a droite"
+          type="button"
+          onClick={() => controlCamera('rotate-right')}
+        >
+          <RotateCw aria-hidden="true" size={20} />
+        </button>
+        <button
+          aria-label="Incliner la vue vers le haut"
+          title="Incliner vers le haut"
+          type="button"
+          onClick={() => controlCamera('tilt-up')}
+        >
+          <ChevronUp aria-hidden="true" size={22} />
+        </button>
+        <button
+          aria-label="Incliner la vue vers le bas"
+          title="Incliner vers le bas"
+          type="button"
+          onClick={() => controlCamera('tilt-down')}
+        >
+          <ChevronDown aria-hidden="true" size={22} />
+        </button>
+      </div>
+    </div>
+  )
 }

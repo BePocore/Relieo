@@ -140,6 +140,7 @@
 }
 
 .trail-map,
+.trail-map-canvas,
 .cesium-widget,
 .cesium-widget canvas {
   position: absolute;
@@ -149,6 +150,42 @@
   touch-action: none;
   overscroll-behavior: contain;
   user-select: none;
+}
+
+.camera-controls {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  z-index: 3;
+  display: none;
+  grid-template-columns: repeat(2, 44px);
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(10px);
+  transform: translateY(-50%);
+  touch-action: manipulation;
+}
+
+.camera-controls button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: #17332c;
+  background: #f7faf9;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.camera-controls button:active {
+  color: #ffffff;
+  background: #0f766e;
 }
 
 .terrain-badge {
@@ -934,6 +971,10 @@
   .map-stage {
     height: 100%;
     min-height: 0;
+  }
+
+  .camera-controls {
+    display: grid;
   }
 
   .terrain-badge {
