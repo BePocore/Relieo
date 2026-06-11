@@ -1,25 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { upload } from '@vercel/blob/client'
 import {
-  Camera,
   Compass,
   List,
   LocateFixed,
   LoaderCircle,
+  Minus,
   Mountain,
+  Plus,
+  RotateCcw,
+  RotateCw,
   TriangleAlert,
-  Video,
   X,
 } from 'lucide-react'
 import './App.css'
 import { BasemapControl } from './components/BasemapControl'
+import { MediaRail } from './components/MediaRail'
 import { PublicPanel } from './components/PublicPanel'
 import { StudioPanel } from './components/StudioPanel'
 import { StatsBar } from './components/StatsBar'
 import { TrailMap } from './components/TrailMap'
+import type { CameraCommand } from './components/TrailMap'
 import { computeTrailStats } from './lib/geo'
 import { parseGpx } from './lib/gpx'
-import { createImportedMedia, resolvePointMedia } from './lib/media'
+import { createImportedMedia } from './lib/media'
 import { cesiumIonToken, terrainStatusLabel } from './lib/terrain'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import type {
@@ -121,6 +125,7 @@ function App() {
   const [basemap, setBasemap] = useState<BasemapId>(() => storedBasemap())
   const [selectedPoint, setSelectedPoint] = useState<TrailPoint | null>(null)
   const [recenterRequest, setRecenterRequest] = useState(0)
+  const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -252,6 +257,10 @@ function App() {
 
   const handleRecenter = useCallback(() => {
     setRecenterRequest((current) => current + 1)
+  }, [])
+
+  const sendCameraCommand = useCallback((type: CameraCommand['type']) => {
+    setCameraCommand({ id: Date.now(), type })
   }, [])
 
   const handleImportGpx = useCallback(async (file: File) => {
@@ -404,6 +413,21 @@ function App() {
     setIsPanelOpen(true)
   }, [])
 
+  const handleMovePoint = useCallback(
+    (pointId: string, lat: number, lng: number) => {
+      setPoints((current) =>
+        current.map((point) =>
+          point.id === pointId ? { ...point, lat, lng } : point,
+        ),
+      )
+      setSelectedPoint((current) =>
+        current?.id === pointId ? { ...current, lat, lng } : current,
+      )
+      setSaveStatus('Position ajustée. Publie la carte pour la partager.')
+    },
+    [],
+  )
+
   const handleDeletePoint = useCallback((pointId: string) => {
     setPoints((current) => current.filter((point) => point.id !== pointId))
     setSelectedPoint(null)
@@ -484,10 +508,10 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <span className="brand-icon">
-            <Compass aria-hidden="true" size={24} />
+            <Compass aria-hidden="true" size={22} />
           </span>
           <div>
-            <p className="eyebrow">Carte interactive</p>
+            <p className="eyebrow">Carnet de randonnée</p>
             <h1>Randonnée 3D</h1>
           </div>
         </div>
@@ -501,19 +525,15 @@ function App() {
         </div>
       </header>
 
-      {error ? (
-        <div className="status-banner" role="alert">
-          <TriangleAlert aria-hidden="true" size={18} />
-          <span>{error}</span>
-        </div>
-      ) : null}
-
-      <main
-        className={
-          isPanelOpen ? 'map-layout mobile-panel-open' : 'map-layout'
-        }
-      >
+      <main className={isPanelOpen ? 'map-layout panel-open' : 'map-layout'}>
         <section className="map-stage" aria-label="Carte 3D interactive">
+          {error ? (
+            <div className="status-banner" role="alert">
+              <TriangleAlert aria-hidden="true" size={18} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+
           <div className="terrain-badge">
             <Mountain aria-hidden="true" size={16} />
             <span>{terrainStatusLabel}</span>
@@ -521,147 +541,159 @@ function App() {
               <small>Token Cesium conseillé</small>
             ) : null}
           </div>
-          <BasemapControl
-            basemap={basemap}
-            onChange={handleBasemapChange}
-          />
-          <button
-            aria-label="Recentrer la vue sur la trace"
-            className="map-reset-button"
-            title="Recentrer la vue"
-            type="button"
-            onClick={handleRecenter}
-          >
-            <LocateFixed aria-hidden="true" size={16} />
-            <span>Recentrer</span>
-          </button>
-          <button
-            aria-label={
-              isStudioMode
-                ? 'Ouvrir le studio'
-                : 'Ouvrir les points de passage'
-            }
-            className="map-panel-button"
-            title={isStudioMode ? 'Studio' : 'Points'}
-            type="button"
-            onClick={() => setIsPanelOpen(true)}
-          >
-            <List aria-hidden="true" size={16} />
-            <span>{isStudioMode ? 'Studio' : 'Points'}</span>
-          </button>
-          {mediaPoints.length > 0 ? (
-            <div
-              aria-label="Photos et videos du parcours"
-              className="mobile-media-strip"
-            >
-              {mediaPoints.map((point) => {
-                const media = resolvePointMedia(point, mediaLibrary)
-                const isSelected =
-                  selectedPoint?.id === point.id ||
-                  (!selectedPoint?.id && selectedPoint?.title === point.title)
 
-                return (
-                  <button
-                    className={
-                      isSelected
-                        ? 'mobile-media-item active'
-                        : 'mobile-media-item'
-                    }
-                    key={point.id ?? point.title}
-                    type="button"
-                    onClick={() => handleSelectPoint(point)}
-                  >
-                    {media?.kind === 'image' ? (
-                      <img src={media.src} alt="" />
-                    ) : (
-                      <span className={`mobile-media-fallback type-${point.type}`}>
-                        {point.type === 'video' ? (
-                          <Video aria-hidden="true" size={18} />
-                        ) : point.type === '360' ? (
-                          '360'
-                        ) : (
-                          <Camera aria-hidden="true" size={18} />
-                        )}
-                      </span>
-                    )}
-                    <span className="mobile-media-label">{point.title}</span>
-                  </button>
-                )
-              })}
-            </div>
-          ) : null}
+          <BasemapControl basemap={basemap} onChange={handleBasemapChange} />
+
+          <div className="map-action-stack">
+            <button
+              aria-label="Recentrer la vue sur la trace"
+              className="map-tool-button"
+              title="Recentrer la vue"
+              type="button"
+              onClick={handleRecenter}
+            >
+              <LocateFixed aria-hidden="true" size={18} />
+              <span>Recentrer</span>
+            </button>
+            <button
+              aria-label={isStudioMode ? 'Ouvrir le studio' : 'Voir le parcours'}
+              className="map-tool-button"
+              title={isStudioMode ? 'Studio' : 'Parcours'}
+              type="button"
+              onClick={() => setIsPanelOpen(true)}
+            >
+              <List aria-hidden="true" size={18} />
+              <span>{isStudioMode ? 'Studio' : 'Parcours'}</span>
+            </button>
+          </div>
+
+          <div className="map-view-controls" aria-label="Commandes de la vue 3D">
+            <button
+              aria-label="Tourner à gauche"
+              title="Tourner à gauche"
+              type="button"
+              onClick={() => sendCameraCommand('turn-left')}
+            >
+              <RotateCcw aria-hidden="true" size={18} />
+            </button>
+            <button
+              aria-label="Tourner à droite"
+              title="Tourner à droite"
+              type="button"
+              onClick={() => sendCameraCommand('turn-right')}
+            >
+              <RotateCw aria-hidden="true" size={18} />
+            </button>
+            <button
+              aria-label="Zoomer"
+              title="Zoomer"
+              type="button"
+              onClick={() => sendCameraCommand('zoom-in')}
+            >
+              <Plus aria-hidden="true" size={19} />
+            </button>
+            <button
+              aria-label="Dézoomer"
+              title="Dézoomer"
+              type="button"
+              onClick={() => sendCameraCommand('zoom-out')}
+            >
+              <Minus aria-hidden="true" size={19} />
+            </button>
+          </div>
 
           {isLoading ? (
             <div className="loading-state">
               <LoaderCircle aria-hidden="true" size={26} />
               <span>Chargement</span>
             </div>
-          ) : null}
-
-           {!isLoading ? (
-             <TrailMap
-               key={basemap}
-               track={track}
-               points={points}
-               mediaLibrary={mediaLibrary}
-               basemap={basemap}
-               recenterRequest={recenterRequest}
-               selectedPoint={selectedPoint}
-              onSelectPoint={handleSelectPoint}
-            />
-          ) : null}
-        </section>
-
-        <aside
-          className="detail-panel"
-          aria-label={isStudioMode ? 'Studio de création' : 'Détails'}
-        >
-          <button
-            aria-label="Masquer le panneau"
-            className="mobile-panel-close"
-            title="Masquer le panneau"
-            type="button"
-            onClick={() => setIsPanelOpen(false)}
-          >
-            <X aria-hidden="true" size={18} />
-          </button>
-          {isStudioMode ? (
-            <StudioPanel
-              selectedPoint={selectedPoint}
-              points={points}
-              track={track}
-              stats={stats}
-              mediaLibrary={mediaLibrary}
-              trackSourceName={trackSourceName}
-              pointsSourceName={pointsSourceName}
-              onSelectPoint={handleSelectPoint}
-              onClose={handleClosePoint}
-              onImportGpx={handleImportGpx}
-              onImportPoints={handleImportPoints}
-              onImportMedia={handleImportMedia}
-              onAddPoint={handleAddPoint}
-              onUpdatePoint={handleUpdatePoint}
-              onDeletePoint={handleDeletePoint}
-              onExportPoints={handleExportPoints}
-              onSaveProject={handleSaveProject}
-              adminPassword={adminPassword}
-              isSaving={isSaving}
-              isUploading={isUploading}
-              onAdminPasswordChange={handleAdminPasswordChange}
-              saveStatus={saveStatus}
-            />
           ) : (
-            <PublicPanel
-              selectedPoint={selectedPoint}
-              points={points}
+            <TrailMap
               track={track}
-              stats={stats}
+              points={points}
               mediaLibrary={mediaLibrary}
+              basemap={basemap}
+              recenterRequest={recenterRequest}
+              selectedPoint={selectedPoint}
+              cameraCommand={cameraCommand}
+              editable={isStudioMode}
+              onMovePoint={handleMovePoint}
               onSelectPoint={handleSelectPoint}
-              onClose={handleClosePoint}
             />
           )}
-        </aside>
+
+          <MediaRail
+            points={mediaPoints}
+            mediaLibrary={mediaLibrary}
+            selectedPoint={selectedPoint}
+            onSelectPoint={handleSelectPoint}
+          />
+        </section>
+
+        {isPanelOpen ? (
+          <>
+            <button
+              aria-label="Fermer le panneau"
+              className="panel-scrim"
+              type="button"
+              onClick={() => setIsPanelOpen(false)}
+            />
+            <aside
+              className={
+                isStudioMode
+                  ? 'detail-panel studio-panel-shell'
+                  : 'detail-panel'
+              }
+              aria-label={isStudioMode ? 'Studio de création' : 'Détails'}
+            >
+              <button
+                aria-label="Masquer le panneau"
+                className="panel-close"
+                title="Masquer le panneau"
+                type="button"
+                onClick={() => setIsPanelOpen(false)}
+              >
+                <X aria-hidden="true" size={19} />
+              </button>
+              {isStudioMode ? (
+                <StudioPanel
+                  selectedPoint={selectedPoint}
+                  points={points}
+                  track={track}
+                  stats={stats}
+                  mediaLibrary={mediaLibrary}
+                  trackSourceName={trackSourceName}
+                  pointsSourceName={pointsSourceName}
+                  onSelectPoint={handleSelectPoint}
+                  onClose={handleClosePoint}
+                  onImportGpx={handleImportGpx}
+                  onImportPoints={handleImportPoints}
+                  onImportMedia={handleImportMedia}
+                  onAddPoint={handleAddPoint}
+                  onUpdatePoint={handleUpdatePoint}
+                  onDeletePoint={handleDeletePoint}
+                  onExportPoints={handleExportPoints}
+                  onSaveProject={handleSaveProject}
+                  adminPassword={adminPassword}
+                  isSaving={isSaving}
+                  isUploading={isUploading}
+                  onAdminPasswordChange={handleAdminPasswordChange}
+                  saveStatus={saveStatus}
+                />
+              ) : (
+                <PublicPanel
+                  selectedPoint={selectedPoint}
+                  points={points}
+                  track={track}
+                  stats={stats}
+                  mediaLibrary={mediaLibrary}
+                  onSelectPoint={handleSelectPoint}
+                  onClose={handleClosePoint}
+                />
+              )}
+            </aside>
+          </>
+        ) : null}
       </main>
     </div>
   )

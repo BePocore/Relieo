@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, Image, MapPin, X } from 'lucide-react'
+import { ExternalLink, Image, MapPin, Maximize2, X } from 'lucide-react'
 import type { ImportedMedia, TrailPoint } from '../types'
 import { formatMediaQuality, resolvePointMedia } from '../lib/media'
 import { pointTypeLabels } from '../lib/pointMeta'
@@ -77,6 +77,7 @@ const MediaPreview = ({
         className="panel-image"
         src={media.src}
         alt={point.title}
+        decoding="async"
         onLoad={(event) => {
           setMeasuredMedia({
             src: media.src,
@@ -97,6 +98,8 @@ export function PointDetail({
   mediaLibrary,
   onClose,
 }: PointDetailProps) {
+  const media = resolvePointMedia(point, mediaLibrary)
+
   return (
     <div className="panel-content">
       <div className="panel-heading">
@@ -127,6 +130,18 @@ export function PointDetail({
           {point.lat.toFixed(5)}, {point.lng.toFixed(5)}
         </span>
       </div>
+
+      {media ? (
+        <a
+          className="secondary-action media-source-action"
+          href={media.src}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Maximize2 aria-hidden="true" size={17} />
+          Voir le fichier original
+        </a>
+      ) : null}
 
       {point.skypixelUrl ? (
         <a

@@ -3,6 +3,7 @@ import { ElevationProfile } from './ElevationProfile'
 import { PointDetail } from './PointDetail'
 import { PointTypeIcon } from './PointTypeIcon'
 import { pointTypeLabels } from '../lib/pointMeta'
+import { resolvePointMedia } from '../lib/media'
 import type { ImportedMedia, TrackPoint, TrailPoint, TrailStats } from '../types'
 
 type PublicPanelProps = {
@@ -51,22 +52,38 @@ export function PublicPanel({
           <div className="empty-state">Aucun point pour le moment.</div>
         ) : null}
 
-        {points.map((point) => (
-          <button
-            className="point-row"
-            key={point.id ?? point.title}
-            type="button"
-            onClick={() => onSelectPoint(point)}
-          >
-            <span className={`type-dot type-${point.type}`}>
-              <PointTypeIcon type={point.type} />
-            </span>
-            <span>
-              <strong>{point.title}</strong>
-              <small>{pointTypeLabels[point.type]}</small>
-            </span>
-          </button>
-        ))}
+        {points.map((point) => {
+          const media = resolvePointMedia(point, mediaLibrary)
+
+          return (
+            <button
+              className="point-row"
+              key={point.id ?? point.title}
+              type="button"
+              onClick={() => onSelectPoint(point)}
+            >
+              <span className="point-row-visual">
+                {media?.kind === 'image' ? (
+                  <img
+                    src={media.src}
+                    alt=""
+                    decoding="async"
+                    loading="lazy"
+                    fetchPriority="low"
+                  />
+                ) : (
+                  <span className={`type-dot type-${point.type}`}>
+                    <PointTypeIcon type={point.type} />
+                  </span>
+                )}
+              </span>
+              <span className="point-row-copy">
+                <strong>{point.title}</strong>
+                <small>{pointTypeLabels[point.type]}</small>
+              </span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )

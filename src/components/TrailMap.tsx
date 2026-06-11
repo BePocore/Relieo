@@ -1,14 +1,13 @@
 import { useEffect, useRef } from 'react'
-import CesiumNavigation from 'cesium-navigation-es6'
 import {
   ArcGisMapServerImageryProvider,
   ArcGISTiledElevationTerrainProvider,
   BoundingSphere,
-  CameraEventType,
   Cartesian2,
   Cartesian3,
+  Cartographic,
   Color,
-  CornerType,
+  ConstantPositionProperty,
   EllipsoidTerrainProvider,
   HeadingPitchRange,
   HeightReference,
@@ -19,7 +18,6 @@ import {
   NearFarScalar,
   OpenStreetMapImageryProvider,
   Rectangle,
-  ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   UrlTemplateImageryProvider,
   VerticalOrigin,
@@ -29,15 +27,13 @@ import {
 } from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import type { ImportedMedia, TrailPoint, TrackPoint } from '../types'
-import { nearestElevation, simplifyTrack } from '../lib/geo'
+import { simplifyTrack } from '../lib/geo'
 import { markerDataUri } from '../lib/markers'
 import { resolvePointMedia } from '../lib/media'
 import { cesiumIonToken, useWorldTerrain } from '../lib/terrain'
 import type { BasemapId } from '../lib/basemaps'
 
-if (cesiumIonToken) {
-  Ion.defaultAccessToken = cesiumIonToken
-}
+if (cesiumIonToken) Ion.defaultAccessToken = cesiumIonToken
 
 type TrailMapProps = {
   track: TrackPoint[]
@@ -46,22 +42,26 @@ type TrailMapProps = {
   basemap: BasemapId
   recenterRequest: number
   selectedPoint: TrailPoint | null
+  cameraCommand: CameraCommand | null
+  editable?: boolean
+  onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onSelectPoint: (point: TrailPoint) => void
 }
 
-type CesiumNavigationInstance = {
-  destroy: () => void
+export type CameraCommand = {
+  id: number
+  type: 'turn-left' | 'turn-right' | 'zoom-in' | 'zoom-out'
 }
 
-const routeOutlineColor = Color.fromCssColorString('#dff7f0')
-const routeColor = Color.fromCssColorString('#145c52')
+const routeOuterColor = Color.fromCssColorString('#ffffff')
+const routeInnerColor = Color.fromCssColorString('#f4512c')
 const arcGisTerrainUrl =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
 
 const computeBounds = (track: TrackPoint[], points: TrailPoint[]): Rectangle => {
   const coordinates = [
-    ...track.map((point) => ({ lat: point.lat, lng: point.lng })),
-    ...points.map((point) => ({ lat: point.lat, lng: point.lng })),
+    ...track.map(({ lat, lng }) => ({ lat, lng })),
+    ...points.map(({ lat, lng }) => ({ lat, lng })),
   ]
 
   if (coordinates.length === 0) {
@@ -74,8 +74,8 @@ const computeBounds = (track: TrackPoint[], points: TrailPoint[]): Rectangle => 
   const maxLat = Math.max(...lats)
   const minLng = Math.min(...lngs)
   const maxLng = Math.max(...lngs)
-  const latPadding = Math.max((maxLat - minLat) * 0.2, 0.01)
-  const lngPadding = Math.max((maxLng - minLng) * 0.2, 0.01)
+  const latPadding = Math.max((maxLat - minLat) * 0.24, 0.008)
+  const lngPadding = Math.max((maxLng - minLng) * 0.24, 0.008)
 
   return Rectangle.fromDegrees(
     minLng - lngPadding,
@@ -85,18 +85,8 @@ const computeBounds = (track: TrackPoint[], points: TrailPoint[]): Rectangle => 
   )
 }
 
-const pointEntityId = (point: TrailPoint, index: number): string => {
-  return `trail-point-${point.id ?? index}`
-}
-
-const cameraPositionsForTrail = (
-  track: TrackPoint[],
-  points: TrailPoint[],
-): Cartesian3[] => {
-  return track.length > 0
-    ? track.map((point) => Cartesian3.fromDegrees(point.lng, point.lat, 0))
-    : points.map((point) => Cartesian3.fromDegrees(point.lng, point.lat, 0))
-}
+const pointEntityId = (point: TrailPoint, index: number): string =>
+  `trail-point-${point.id ?? index}`
 
 const flyToTrail = (
   viewer: Viewer,
@@ -104,25 +94,26 @@ const flyToTrail = (
   points: TrailPoint[],
   duration: number,
 ) => {
-  const cameraPositions = cameraPositionsForTrail(track, points)
+  const positions = (track.length > 0 ? track : points).map((point) =>
+    Cartesian3.fromDegrees(point.lng, point.lat, 0),
+  )
 
-  if (cameraPositions.length > 0) {
-    const boundingSphere = BoundingSphere.fromPoints(cameraPositions)
-    viewer.camera.flyToBoundingSphere(boundingSphere, {
-      duration,
-      offset: new HeadingPitchRange(
-        CesiumMath.toRadians(28),
-        CesiumMath.toRadians(-60),
-        Math.max(boundingSphere.radius * 5.2, 3_200),
-      ),
-    })
+  if (positions.length === 0) {
+    viewer.camera.flyTo({ destination: computeBounds(track, points), duration })
+    viewer.scene.requestRender()
     return
   }
 
-  viewer.camera.flyTo({
-    destination: computeBounds(track, points),
+  const sphere = BoundingSphere.fromPoints(positions)
+  viewer.camera.flyToBoundingSphere(sphere, {
     duration,
+    offset: new HeadingPitchRange(
+      CesiumMath.toRadians(24),
+      CesiumMath.toRadians(-52),
+      Math.max(sphere.radius * 4.8, 2_500),
+    ),
   })
+  viewer.scene.requestRender()
 }
 
 const createBaseLayer = (basemap: BasemapId): ImageryLayer => {
@@ -158,25 +149,41 @@ export function TrailMap({
   basemap,
   recenterRequest,
   selectedPoint,
+  cameraCommand,
+  editable = false,
+  onMovePoint,
   onSelectPoint,
 }: TrailMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<Viewer | null>(null)
   const pointsByEntityId = useRef(new Map<string, TrailPoint>())
+  const onSelectPointRef = useRef(onSelectPoint)
+  const onMovePointRef = useRef(onMovePoint)
+  const editableRef = useRef(editable)
+  const selectedKeyRef = useRef<string | null>(null)
+  const didInitialFitRef = useRef(false)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    onSelectPointRef.current = onSelectPoint
+    onMovePointRef.current = onMovePoint
+    editableRef.current = editable
+  }, [editable, onMovePoint, onSelectPoint])
 
+  useEffect(() => {
     const container = containerRef.current
+    if (!container) return
+
     container.replaceChildren()
-    const hasCoarsePointer =
+    didInitialFitRef.current = false
+    const coarsePointer =
       window.matchMedia('(pointer: coarse)').matches ||
-      navigator.maxTouchPoints > 0 ||
-      window.innerWidth <= 1_180
-    const isCompactViewport = window.innerWidth <= 1_180
+      navigator.maxTouchPoints > 0
+    const devicePixelRatio = Math.max(window.devicePixelRatio || 1, 1)
+    const targetPixelRatio = Math.min(devicePixelRatio, coarsePointer ? 2 : 2.25)
 
     const viewer = new Viewer(container, {
       animation: false,
+      baseLayer: false,
       baseLayerPicker: false,
       fullscreenButton: false,
       geocoder: false,
@@ -186,40 +193,49 @@ export function TrailMap({
       sceneModePicker: false,
       selectionIndicator: false,
       timeline: false,
-      baseLayer: false,
       terrainProvider: new EllipsoidTerrainProvider(),
       shouldAnimate: false,
       requestRenderMode: true,
       maximumRenderTimeChange: Number.POSITIVE_INFINITY,
-      msaaSamples: hasCoarsePointer ? 1 : 2,
-      useBrowserRecommendedResolution: true,
-      orderIndependentTranslucency: false,
+      msaaSamples: coarsePointer ? 2 : 4,
+      useBrowserRecommendedResolution: false,
       contextOptions: {
         webgl: {
-          antialias: false,
+          antialias: true,
           powerPreference: 'high-performance',
         },
       },
     })
 
-    const idleResolutionScale = hasCoarsePointer
-      ? isCompactViewport
-        ? 0.9
-        : 0.95
-      : 1
-    const movingResolutionScale = hasCoarsePointer ? 0.68 : 0.84
-    const idleTerrainError = hasCoarsePointer ? 2.5 : 1.8
-    const movingTerrainError = hasCoarsePointer ? 5.5 : 3.2
-    viewer.resolutionScale = idleResolutionScale
-    container.dataset.renderProfile = hasCoarsePointer ? 'adaptive' : 'quality'
-    container.dataset.renderScale = String(idleResolutionScale)
-    viewer.scene.postProcessStages.fxaa.enabled = !hasCoarsePointer
-    viewer.scene.globe.maximumScreenSpaceError = idleTerrainError
-    viewer.scene.globe.tileCacheSize = hasCoarsePointer ? 180 : 260
+    viewer.resolutionScale = targetPixelRatio / devicePixelRatio
+    container.dataset.renderDpr = targetPixelRatio.toFixed(2)
+    viewer.scene.postProcessStages.fxaa.enabled = true
+    viewer.scene.globe.maximumScreenSpaceError = coarsePointer ? 2 : 1.5
+    viewer.scene.globe.tileCacheSize = coarsePointer ? 260 : 420
     viewer.scene.globe.preloadAncestors = true
-    viewer.scene.globe.preloadSiblings = false
-    viewer.scene.globe.loadingDescendantLimit = hasCoarsePointer ? 12 : 20
+    viewer.scene.globe.preloadSiblings = true
+    viewer.scene.globe.depthTestAgainstTerrain = false
+    viewer.scene.globe.baseColor = Color.fromCssColorString('#c7d1cc')
+    viewer.scene.backgroundColor = Color.fromCssColorString('#b9c8c1')
+    viewer.scene.verticalExaggeration = useWorldTerrain ? 1.25 : 1
+    viewer.scene.globe.enableLighting = false
+    viewer.scene.fog.enabled = false
 
+    if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false
+    if (viewer.scene.skyBox) viewer.scene.skyBox.show = false
+    if (viewer.scene.sun) viewer.scene.sun.show = false
+    if (viewer.scene.moon) viewer.scene.moon.show = false
+
+    const controller = viewer.scene.screenSpaceCameraController
+    controller.enableInputs = false
+    controller.enableCollisionDetection = true
+    controller.minimumZoomDistance = 35
+    controller.maximumZoomDistance = 100_000
+    controller.zoomFactor = 1.5
+    controller.inertiaZoom = 0.72
+    controller.inertiaSpin = 0.82
+    controller.inertiaTranslate = 0.76
+    controller.maximumMovementRatio = 0.08
     if (useWorldTerrain) {
       void ArcGISTiledElevationTerrainProvider.fromUrl(arcGisTerrainUrl)
         .then((terrainProvider) => {
@@ -228,114 +244,235 @@ export function TrailMap({
             viewer.scene.requestRender()
           }
         })
-        .catch(() => {
-          if (!viewer.isDestroyed()) {
-            viewer.terrainProvider = new EllipsoidTerrainProvider()
+        .catch(() => undefined)
+    }
+
+    const canvas = viewer.scene.canvas
+    const pointers = new Map<number, { x: number; y: number }>()
+    let previousPinchDistance: number | null = null
+    let previousPinchCenter: { x: number; y: number } | null = null
+    let suppressClick = false
+    let draggedPoint:
+      | { pointerId: number; point: TrailPoint; entity: Entity; position: Cartesian3 | null }
+      | null = null
+
+    const pointerValues = () => Array.from(pointers.values())
+    const pointerDistance = (values: { x: number; y: number }[]) =>
+      Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y)
+    const pointerCenter = (values: { x: number; y: number }[]) => ({
+      x: (values[0].x + values[1].x) / 2,
+      y: (values[0].y + values[1].y) / 2,
+    })
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return
+      if (editableRef.current) {
+        const rect = canvas.getBoundingClientRect()
+        const screenPosition = new Cartesian2(
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+        )
+        const picked = viewer.scene.pick(screenPosition)
+        const entity = picked?.id as Entity | undefined
+        const point = defined(entity?.id)
+          ? pointsByEntityId.current.get(entity.id)
+          : undefined
+
+        if (point?.id && entity) {
+          draggedPoint = {
+            pointerId: event.pointerId,
+            point,
+            entity,
+            position: null,
           }
+          suppressClick = true
+          canvas.setPointerCapture?.(event.pointerId)
+          canvas.style.cursor = 'grabbing'
+          return
+        }
+      }
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      canvas.setPointerCapture?.(event.pointerId)
+      if (pointers.size === 2) {
+        const values = pointerValues()
+        previousPinchDistance = pointerDistance(values)
+        previousPinchCenter = pointerCenter(values)
+      }
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (draggedPoint?.pointerId === event.pointerId) {
+        const rect = canvas.getBoundingClientRect()
+        const screenPosition = new Cartesian2(
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+        )
+        const ray = viewer.camera.getPickRay(screenPosition)
+        const position = ray
+          ? viewer.scene.globe.pick(ray, viewer.scene)
+          : undefined
+        if (!position) return
+
+        draggedPoint.position = position
+        if (draggedPoint.entity.position instanceof ConstantPositionProperty) {
+          draggedPoint.entity.position.setValue(position)
+        }
+        viewer.scene.requestRender()
+        return
+      }
+
+      const previous = pointers.get(event.pointerId)
+      if (!previous) return
+
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      const values = pointerValues()
+      const dx = event.clientX - previous.x
+      const dy = event.clientY - previous.y
+
+      if (values.length === 1) {
+        if (Math.abs(dx) + Math.abs(dy) < 0.5) return
+        suppressClick = true
+        viewer.camera.setView({
+          orientation: {
+            heading: viewer.camera.heading - dx * 0.004,
+            pitch: CesiumMath.clamp(
+              viewer.camera.pitch + dy * 0.003,
+              CesiumMath.toRadians(-86),
+              CesiumMath.toRadians(-8),
+            ),
+            roll: 0,
+          },
         })
+      } else if (values.length >= 2) {
+        suppressClick = true
+        const distance = pointerDistance(values)
+        const center = pointerCenter(values)
+        const height = Math.max(viewer.camera.positionCartographic.height, 100)
+
+        if (previousPinchDistance !== null) {
+          const zoomAmount = (distance - previousPinchDistance) * height * 0.0024
+          if (zoomAmount > 0) viewer.camera.zoomIn(zoomAmount)
+          else viewer.camera.zoomOut(Math.abs(zoomAmount))
+        }
+        if (previousPinchCenter) {
+          const panFactor = height * 0.00045
+          viewer.camera.moveLeft((center.x - previousPinchCenter.x) * panFactor)
+          viewer.camera.moveUp((previousPinchCenter.y - center.y) * panFactor)
+        }
+        previousPinchDistance = distance
+        previousPinchCenter = center
+      }
+      viewer.scene.requestRender()
     }
 
-    const baseLayer = createBaseLayer(basemap)
-    baseLayer.brightness = basemap === 'satellite' ? 1.25 : 1
-    viewer.imageryLayers.removeAll()
-    viewer.imageryLayers.add(baseLayer)
+    const handlePointerUp = (event: PointerEvent) => {
+      if (draggedPoint?.pointerId === event.pointerId) {
+        const { point, position } = draggedPoint
+        draggedPoint = null
+        canvas.style.cursor = ''
+        if (position && point.id) {
+          const cartographic = Cartographic.fromCartesian(position)
+          onMovePointRef.current?.(
+            point.id,
+            CesiumMath.toDegrees(cartographic.latitude),
+            CesiumMath.toDegrees(cartographic.longitude),
+          )
+        }
+      }
+      pointers.delete(event.pointerId)
+      if (canvas.hasPointerCapture?.(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId)
+      }
+      if (pointers.size < 2) {
+        previousPinchDistance = null
+        previousPinchCenter = null
+      }
+    }
 
-    viewer.scene.backgroundColor = Color.fromCssColorString('#d8e1dd')
-    viewer.scene.globe.depthTestAgainstTerrain = false
-    viewer.scene.globe.baseColor = Color.fromCssColorString('#d8cbbb')
-    viewer.scene.globe.enableLighting = false
-    viewer.scene.verticalExaggeration = useWorldTerrain ? 1.8 : 1
-    viewer.scene.verticalExaggerationRelativeHeight = 0
-    if (viewer.scene.skyAtmosphere) {
-      viewer.scene.skyAtmosphere.show = false
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const height = Math.max(viewer.camera.positionCartographic.height, 100)
+      const amount = Math.min(Math.abs(event.deltaY) * height * 0.00045, height * 0.16)
+      if (event.deltaY < 0) viewer.camera.zoomIn(amount)
+      else viewer.camera.zoomOut(amount)
+      viewer.scene.requestRender()
     }
-    if (viewer.scene.skyBox) {
-      viewer.scene.skyBox.show = false
-    }
-    if (viewer.scene.sun) {
-      viewer.scene.sun.show = false
-    }
-    if (viewer.scene.moon) {
-      viewer.scene.moon.show = false
-    }
-    viewer.scene.fog.enabled = false
-    const cameraController = viewer.scene.screenSpaceCameraController
-    cameraController.enableCollisionDetection = true
-    cameraController.minimumZoomDistance = 60
-    cameraController.maximumZoomDistance = 60_000
-    cameraController.zoomFactor = hasCoarsePointer ? 1.22 : 1.15
-    cameraController.inertiaZoom = hasCoarsePointer ? 0.34 : 0.6
-    cameraController.inertiaSpin = hasCoarsePointer ? 0.62 : 0.8
-    cameraController.maximumMovementRatio = hasCoarsePointer ? 0.055 : 0.08
-    cameraController.zoomEventTypes = [
-      CameraEventType.WHEEL,
-      CameraEventType.PINCH,
-    ]
-    cameraController.rotateEventTypes = CameraEventType.LEFT_DRAG
-    cameraController.tiltEventTypes = [
-      CameraEventType.RIGHT_DRAG,
-      CameraEventType.MIDDLE_DRAG,
-    ]
-    const navigationOptions = {
-      defaultResetView: computeBounds(track, points),
-      duration: 0.75,
-      enableCompass: true,
-      enableCompassOuterRing: true,
-      enableDistanceLegend: false,
-      enableZoomControls: false,
-      orientation: {
-        heading: CesiumMath.toRadians(28),
-        pitch: CesiumMath.toRadians(-60),
-        roll: 0,
-      },
-      resetTooltip: 'Recentrer la vue',
-      zoomInTooltip: 'Zoomer',
-      zoomOutTooltip: 'Dezoomer',
-    }
-    const navigation = new CesiumNavigation(
-      viewer,
-      navigationOptions,
-    ) as unknown as CesiumNavigationInstance
-    const compass = container.querySelector('.compass')
-    compass?.setAttribute('aria-label', 'Boussole de navigation 3D')
-    compass?.setAttribute('role', 'application')
-    compass?.setAttribute(
-      'title',
-      "Tourner avec l'anneau, incliner avec le centre",
-    )
+
+    canvas.addEventListener('pointerdown', handlePointerDown)
+    canvas.addEventListener('pointermove', handlePointerMove)
+    canvas.addEventListener('pointerup', handlePointerUp)
+    canvas.addEventListener('pointercancel', handlePointerUp)
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+
+    viewer.screenSpaceEventHandler.setInputAction((movement: { position: Cartesian2 }) => {
+      if (suppressClick) {
+        suppressClick = false
+        return
+      }
+      const picked = viewer.scene.pick(movement.position)
+      const entity = picked?.id as Entity | undefined
+      if (!defined(entity?.id)) return
+      const point = pointsByEntityId.current.get(entity.id)
+      if (point) onSelectPointRef.current(point)
+    }, ScreenSpaceEventType.LEFT_CLICK)
+
     viewerRef.current = viewer
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown)
+      canvas.removeEventListener('pointermove', handlePointerMove)
+      canvas.removeEventListener('pointerup', handlePointerUp)
+      canvas.removeEventListener('pointercancel', handlePointerUp)
+      canvas.removeEventListener('wheel', handleWheel)
+      viewer.screenSpaceEventHandler.removeInputAction(ScreenSpaceEventType.LEFT_CLICK)
+      viewer.destroy()
+      container.replaceChildren()
+      viewerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+
+    const layer = createBaseLayer(basemap)
+    layer.brightness = basemap === 'satellite' ? 1.08 : 1
+    layer.contrast = basemap === 'satellite' ? 1.04 : 1
+    viewer.imageryLayers.removeAll()
+    viewer.imageryLayers.add(layer)
+    viewer.scene.requestRender()
+  }, [basemap])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+
+    viewer.entities.removeAll()
     pointsByEntityId.current.clear()
 
-    const renderedTrack = simplifyTrack(
-      track,
-      hasCoarsePointer ? 4 : 2,
-      hasCoarsePointer ? 2_000 : 4_000,
-    )
+    const renderedTrack = simplifyTrack(track, 1.5, 6_000)
     const routePositions = renderedTrack.map((point) =>
       Cartesian3.fromDegrees(point.lng, point.lat, 0),
     )
 
     if (routePositions.length > 1) {
       viewer.entities.add({
-        id: 'trail-route',
-        name: 'Parcours GPX',
-        corridor: {
+        id: 'trail-route-outline',
+        polyline: {
           positions: routePositions,
-          width: 15,
-          cornerType: CornerType.ROUNDED,
-          material: routeOutlineColor,
+          width: 10,
+          clampToGround: true,
+          material: routeOuterColor,
           zIndex: 20,
         },
       })
-
       viewer.entities.add({
-        id: 'trail-route-core',
-        name: 'Trace',
-        corridor: {
+        id: 'trail-route',
+        polyline: {
           positions: routePositions,
-          width: 11,
-          cornerType: CornerType.ROUNDED,
-          material: routeColor,
+          width: 5,
+          clampToGround: true,
+          material: routeInnerColor,
           zIndex: 21,
         },
       })
@@ -350,151 +487,90 @@ export function TrailMap({
       viewer.entities.add({
         id,
         name: point.title,
-        position: Cartesian3.fromDegrees(
-          point.lng,
-          point.lat,
-          0,
-        ),
+        position: Cartesian3.fromDegrees(point.lng, point.lat, 0),
         billboard: {
           image: showThumbnail ? media.src : markerDataUri(point.type),
-          width: showThumbnail ? 64 : 38,
-          height: showThumbnail ? 48 : 46,
+          width: showThumbnail ? 76 : 42,
+          height: showThumbnail ? 56 : 50,
           verticalOrigin: VerticalOrigin.BOTTOM,
           heightReference: useWorldTerrain
             ? HeightReference.CLAMP_TO_GROUND
             : HeightReference.NONE,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          scaleByDistance: new NearFarScalar(1_000, 1, 250_000, 0.58),
+          scaleByDistance: new NearFarScalar(1_000, 1, 160_000, 0.6),
         },
         label: {
           text: point.title,
-          font: '600 13px Segoe UI, system-ui, sans-serif',
+          font: '700 13px Inter, system-ui, sans-serif',
           fillColor: Color.WHITE,
-          outlineColor: Color.fromCssColorString('#0f172a'),
-          outlineWidth: 2,
+          outlineColor: Color.fromCssColorString('#111827'),
+          outlineWidth: 3,
           style: LabelStyle.FILL_AND_OUTLINE,
           showBackground: true,
-          backgroundColor: Color.fromCssColorString('rgba(15, 23, 42, 0.72)'),
+          backgroundColor: Color.fromCssColorString('rgba(17, 24, 39, 0.82)'),
           backgroundPadding: new Cartesian2(8, 5),
-          pixelOffset: new Cartesian2(0, showThumbnail ? -74 : -52),
+          pixelOffset: new Cartesian2(0, showThumbnail ? -80 : -57),
           verticalOrigin: VerticalOrigin.BOTTOM,
           heightReference: useWorldTerrain
             ? HeightReference.CLAMP_TO_GROUND
             : HeightReference.NONE,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          scaleByDistance: new NearFarScalar(1_000, 1, 220_000, 0.45),
+          scaleByDistance: new NearFarScalar(1_000, 1, 150_000, 0.52),
         },
       })
     })
 
-    let restoreQualityTimer: number | undefined
-    let lowQualityMode = false
-    const applyMovingQuality = () => {
-      if (restoreQualityTimer !== undefined) {
-        window.clearTimeout(restoreQualityTimer)
-        restoreQualityTimer = undefined
-      }
-      if (lowQualityMode) return
-
-      lowQualityMode = true
-      viewer.resolutionScale = movingResolutionScale
-      container.dataset.renderScale = String(movingResolutionScale)
-      viewer.scene.globe.maximumScreenSpaceError = movingTerrainError
-      viewer.scene.postProcessStages.fxaa.enabled = false
-      viewer.scene.requestRender()
+    viewer.scene.requestRender()
+    if (!didInitialFitRef.current) {
+      didInitialFitRef.current = true
+      flyToTrail(viewer, track, points, 0)
     }
-    const scheduleIdleQuality = () => {
-      if (restoreQualityTimer !== undefined) {
-        window.clearTimeout(restoreQualityTimer)
-      }
-      restoreQualityTimer = window.setTimeout(() => {
-        if (viewer.isDestroyed()) return
-
-        lowQualityMode = false
-        viewer.resolutionScale = idleResolutionScale
-        container.dataset.renderScale = String(idleResolutionScale)
-        viewer.scene.globe.maximumScreenSpaceError = idleTerrainError
-        viewer.scene.postProcessStages.fxaa.enabled = !hasCoarsePointer
-        viewer.scene.requestRender()
-      }, 420)
-    }
-    const handleInteractionStart = () => applyMovingQuality()
-    const handleInteractionEnd = () => scheduleIdleQuality()
-    const handleWheel = () => {
-      applyMovingQuality()
-      scheduleIdleQuality()
-    }
-    container.addEventListener('pointerdown', handleInteractionStart, {
-      passive: true,
-    })
-    window.addEventListener('pointerup', handleInteractionEnd, {
-      passive: true,
-    })
-    window.addEventListener('pointercancel', handleInteractionEnd, {
-      passive: true,
-    })
-    container.addEventListener('wheel', handleWheel, { passive: true })
-
-    const clickHandler = new ScreenSpaceEventHandler(viewer.scene.canvas)
-    clickHandler.setInputAction(
-      (movement: { position: Cartesian2 }) => {
-        const picked = viewer.scene.pick(movement.position)
-        const entity = picked?.id as Entity | undefined
-
-        if (!defined(entity?.id)) return
-
-        const point = pointsByEntityId.current.get(entity.id)
-        if (point) onSelectPoint(point)
-      },
-      ScreenSpaceEventType.LEFT_CLICK,
-    )
-
-    flyToTrail(viewer, track, points, 0.9)
-
-    return () => {
-      if (restoreQualityTimer !== undefined) {
-        window.clearTimeout(restoreQualityTimer)
-      }
-      container.removeEventListener('pointerdown', handleInteractionStart)
-      window.removeEventListener('pointerup', handleInteractionEnd)
-      window.removeEventListener('pointercancel', handleInteractionEnd)
-      container.removeEventListener('wheel', handleWheel)
-      clickHandler.destroy()
-      navigation.destroy()
-      viewer.destroy()
-      container.replaceChildren()
-      viewerRef.current = null
-    }
-  }, [track, points, mediaLibrary, basemap, onSelectPoint])
+  }, [mediaLibrary, points, track])
 
   useEffect(() => {
-    if (!viewerRef.current || recenterRequest === 0) return
-
-    flyToTrail(viewerRef.current, track, points, 0.65)
-  }, [recenterRequest, track, points])
+    const viewer = viewerRef.current
+    if (!viewer || recenterRequest === 0) return
+    flyToTrail(viewer, track, points, 0)
+  }, [points, recenterRequest, track])
 
   useEffect(() => {
-    if (!selectedPoint || !viewerRef.current) return
+    const viewer = viewerRef.current
+    if (!viewer || !cameraCommand) return
 
-    const altitude =
-      useWorldTerrain
-        ? 0
-        : selectedPoint.altitude ?? nearestElevation(selectedPoint, track) ?? 0
+    const height = Math.max(viewer.camera.positionCartographic.height, 100)
+    if (cameraCommand.type === 'turn-left') {
+      viewer.camera.lookLeft(CesiumMath.toRadians(14))
+    } else if (cameraCommand.type === 'turn-right') {
+      viewer.camera.lookRight(CesiumMath.toRadians(14))
+    } else if (cameraCommand.type === 'zoom-in') {
+      viewer.camera.zoomIn(height * 0.16)
+    } else {
+      viewer.camera.zoomOut(height * 0.16)
+    }
+    viewer.scene.requestRender()
+  }, [cameraCommand])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!selectedPoint || !viewer) return
+    const key = selectedPoint.id ?? selectedPoint.title
+    if (selectedKeyRef.current === key) return
+    selectedKeyRef.current = key
 
     const target = new BoundingSphere(
-      Cartesian3.fromDegrees(selectedPoint.lng, selectedPoint.lat, altitude),
-      40,
+      Cartesian3.fromDegrees(selectedPoint.lng, selectedPoint.lat, 0),
+      35,
     )
-
-    viewerRef.current.camera.flyToBoundingSphere(target, {
-      duration: 0.65,
+    viewer.camera.flyToBoundingSphere(target, {
+      duration: 0,
       offset: new HeadingPitchRange(
-        CesiumMath.toRadians(28),
-        CesiumMath.toRadians(-50),
-        1_150,
+        viewer.camera.heading,
+        CesiumMath.toRadians(-45),
+        900,
       ),
     })
-  }, [selectedPoint, track])
+    viewer.scene.requestRender()
+  }, [selectedPoint])
 
   return (
     <div className="trail-map">

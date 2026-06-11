@@ -12,6 +12,20 @@ Partage le lien public sans `?mode=studio` aux visiteurs. Le studio contient les
 imports GPX, JSON, photos, videos, l'ajout manuel de points et l'export
 `points.json`.
 
+La consultation est centree sur la carte : elle occupe tout l'ecran, les
+medias sont accessibles dans un ruban horizontal et les details s'ouvrent dans
+un panneau flottant sur ordinateur ou une feuille basse sur mobile et iPad.
+
+## Navigation 3D
+
+- glisser avec un doigt ou la souris pour tourner et incliner la vue ;
+- pincer avec deux doigts pour zoomer et deplacer la vue ;
+- molette et boutons `+` / `-` pour le zoom ;
+- boutons de rotation et de recentrage disponibles sur tous les ecrans.
+
+Dans le Studio, un marqueur peut etre saisi et deplace directement sur le
+terrain pour corriger une position GPS avant publication.
+
 ## Sauvegarde en ligne
 
 La carte publiee est stockee dans Vercel Blob. Les points, la trace et la
@@ -30,6 +44,8 @@ Dans le projet Vercel :
 Le Studio est disponible avec `/?mode=studio`. Le bouton `Publier en ligne`
 remplace la sauvegarde locale du navigateur. Les photos et videos importees
 sont envoyees directement du navigateur vers Vercel Blob.
+Les fichiers originaux sont conserves sans compression : la fiche ouvre le
+media source dans sa qualite d'import.
 
 ## Donnees
 
