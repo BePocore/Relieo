@@ -71,12 +71,15 @@ const thumbnailFrameWidth = 84
 const thumbnailFrameHeight = 64
 const thumbnailScaleByDistance = new NearFarScalar(1_000, 1, 160_000, 0.6)
 
-// Cadre blanc arrondi placé derrière la vignette photo sur la carte.
+// Cadre photo : bordure blanche au centre transparent, pour que la vignette
+// reste visible quel que soit l'ordre de rendu des billboards Cesium.
 const thumbnailFrameUri = (() => {
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="84" height="64" viewBox="0 0 84 64">' +
-    '<rect x="1" y="1" width="82" height="62" rx="11" fill="#ffffff" ' +
-    'stroke="rgba(8,14,11,0.28)" stroke-width="1"/></svg>'
+    '<rect x="4" y="4" width="76" height="56" rx="9" fill="none" ' +
+    'stroke="#ffffff" stroke-width="6"/>' +
+    '<rect x="1.5" y="1.5" width="81" height="61" rx="11" fill="none" ' +
+    'stroke="rgba(8,14,11,0.32)" stroke-width="1.5"/></svg>'
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 })()
 const arcGisTerrainUrl =
