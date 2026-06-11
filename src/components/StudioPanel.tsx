@@ -26,6 +26,7 @@ import type {
   TrailStats,
   UploadProgress,
 } from '../types'
+import type { LightboxMedia } from '../App'
 import { formatFileSize, formatMediaQuality } from '../lib/media'
 import { pointTypeLabels } from '../lib/pointMeta'
 import { ElevationProfile } from './ElevationProfile'
@@ -50,6 +51,7 @@ type StudioPanelProps = {
   onDeletePoint: (pointId: string) => void
   onExportPoints: () => void
   onSaveProject: () => Promise<void>
+  onShowMedia: (media: LightboxMedia) => void
   adminPassword: string
   isSaving: boolean
   isUploading: boolean
@@ -202,6 +204,7 @@ type SelectedPointEditorProps = {
   selectedPoint: TrailPoint
   mediaLibrary: ImportedMedia[]
   onClose: () => void
+  onShowMedia: (media: LightboxMedia) => void
   onUpdatePoint: (point: TrailPoint) => void
   onDeletePoint: (pointId: string) => void
 }
@@ -210,6 +213,7 @@ function SelectedPointEditor({
   selectedPoint,
   mediaLibrary,
   onClose,
+  onShowMedia,
   onUpdatePoint,
   onDeletePoint,
 }: SelectedPointEditorProps) {
@@ -287,6 +291,9 @@ function SelectedPointEditor({
       <PointDetail
         point={selectedPoint}
         mediaLibrary={mediaLibrary}
+        onShowMedia={onShowMedia}
+        editable
+        onDelete={onDeletePoint}
         onClose={onClose}
       />
 
@@ -296,15 +303,6 @@ function SelectedPointEditor({
       >
         <div className="form-heading">
           <strong>Ajuster le point</strong>
-          <button
-            className="danger-action"
-            type="button"
-            onClick={() => {
-              if (selectedPoint.id) onDeletePoint(selectedPoint.id)
-            }}
-          >
-            Supprimer
-          </button>
         </div>
 
         <label>
@@ -415,6 +413,7 @@ export function StudioPanel({
   onDeletePoint,
   onExportPoints,
   onSaveProject,
+  onShowMedia,
   adminPassword,
   isSaving,
   isUploading,
@@ -496,6 +495,7 @@ export function StudioPanel({
         selectedPoint={selectedPoint}
         mediaLibrary={mediaLibrary}
         onClose={onClose}
+        onShowMedia={onShowMedia}
         onUpdatePoint={onUpdatePoint}
         onDeletePoint={onDeletePoint}
       />

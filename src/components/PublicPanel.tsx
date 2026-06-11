@@ -5,6 +5,7 @@ import { PointTypeIcon } from './PointTypeIcon'
 import { pointTypeLabels } from '../lib/pointMeta'
 import { resolvePointMedia } from '../lib/media'
 import type { ImportedMedia, TrackPoint, TrailPoint, TrailStats } from '../types'
+import type { LightboxMedia } from '../App'
 
 type PublicPanelProps = {
   selectedPoint: TrailPoint | null
@@ -13,6 +14,7 @@ type PublicPanelProps = {
   stats: TrailStats
   mediaLibrary: ImportedMedia[]
   onSelectPoint: (point: TrailPoint) => void
+  onShowMedia: (media: LightboxMedia) => void
   onClose: () => void
 }
 
@@ -23,6 +25,7 @@ export function PublicPanel({
   stats,
   mediaLibrary,
   onSelectPoint,
+  onShowMedia,
   onClose,
 }: PublicPanelProps) {
   if (selectedPoint) {
@@ -30,6 +33,7 @@ export function PublicPanel({
       <PointDetail
         point={selectedPoint}
         mediaLibrary={mediaLibrary}
+        onShowMedia={onShowMedia}
         onClose={onClose}
       />
     )

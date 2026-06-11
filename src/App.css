@@ -728,6 +728,173 @@
   background: rgba(255, 122, 138, 0.18);
 }
 
+.point-delete-action {
+  margin-top: 12px;
+  width: 100%;
+}
+
+/* ── Image cliquable de la fiche ────────────────────────────── */
+
+.panel-image-button {
+  position: relative;
+  display: block;
+  width: calc(100% + 40px);
+  margin: 18px -20px 0;
+  padding: 0;
+  border: 0;
+  background: #060d0a;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+.panel-image-button .panel-image {
+  width: 100%;
+  margin: 0;
+}
+
+.panel-image-zoom {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(8, 14, 11, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0.85;
+  transition: opacity 140ms ease, background 140ms ease;
+}
+
+.panel-image-button:hover .panel-image-zoom {
+  opacity: 1;
+  background: rgba(8, 14, 11, 0.8);
+}
+
+/* ── Lightbox plein écran ───────────────────────────────────── */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 4vw, 48px);
+  background: rgba(4, 9, 7, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: fadeIn 180ms ease both;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 12px;
+  color: #fff;
+  background: rgba(8, 14, 11, 0.55);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.lightbox-close:hover {
+  border-color: var(--accent-border);
+  background: rgba(8, 14, 11, 0.8);
+}
+
+.lightbox-stage {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.lightbox-media {
+  display: block;
+  max-width: min(1400px, 100%);
+  max-height: 86vh;
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.lightbox-caption {
+  margin: 0;
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* ── Pop-up de confirmation ─────────────────────────────────── */
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(4, 9, 7, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fadeIn 150ms ease both;
+}
+
+.confirm-card {
+  display: grid;
+  gap: 6px;
+  width: min(320px, 100%);
+  padding: 18px;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 14px;
+  background: var(--glass-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.confirm-card strong {
+  font-size: 0.98rem;
+  font-weight: 850;
+}
+
+.confirm-card p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.confirm-actions {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.confirm-actions .secondary-action,
+.confirm-actions .danger-action {
+  width: 100%;
+  justify-content: center;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* ── Listes de points ───────────────────────────────────────── */
 
 .point-list {

@@ -27,18 +27,30 @@ import { TrailMap } from './components/TrailMap'
 import type { CameraCommand } from './components/TrailMap'
 import { computeTrailStats, distanceBetween } from './lib/geo'
 import { parseGpx } from './lib/gpx'
-import { createImportedMedia, mediaKindFromFile } from './lib/media'
+import {
+  createImportedMedia,
+  mediaKindFromFile,
+  resolvePointMedia,
+} from './lib/media'
 import { cesiumIonToken, terrainStatusLabel } from './lib/terrain'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import type {
   ImportedMedia,
   ImportReport,
+  MediaKind,
   PointType,
   TrailPoint,
   TrailProject,
   TrackPoint,
   UploadProgress,
 } from './types'
+import { MediaLightbox } from './components/MediaLightbox'
+
+export type LightboxMedia = {
+  src: string
+  kind: MediaKind
+  title?: string
+}
 
 const pointTypes: PointType[] = ['photo', 'video', '360', 'poi']
 const adminPasswordStorageKey = 'rando3d-admin-password'
@@ -184,6 +196,7 @@ function App() {
     null,
   )
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
+  const [lightboxMedia, setLightboxMedia] = useState<LightboxMedia | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [adminPassword, setAdminPassword] = useState(() =>
@@ -296,6 +309,31 @@ function App() {
   const handleClosePoint = useCallback(() => {
     setSelectedPoint(null)
   }, [])
+
+  const handleOpenLightbox = useCallback((media: LightboxMedia) => {
+    setLightboxMedia(media)
+  }, [])
+
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxMedia(null)
+  }, [])
+
+  // Clic sur un marqueur : photo/vidéo en grand, sinon ouverture de la fiche.
+  const handleMarkerClick = useCallback(
+    (point: TrailPoint) => {
+      const media = resolvePointMedia(point, mediaLibrary)
+      if (media && (media.kind === 'image' || media.kind === 'video')) {
+        setLightboxMedia({
+          src: media.src,
+          kind: media.kind,
+          title: point.title,
+        })
+        return
+      }
+      handleSelectPoint(point)
+    },
+    [handleSelectPoint, mediaLibrary],
+  )
 
   const handleAdminPasswordChange = useCallback((password: string) => {
     setAdminPassword(password)
@@ -526,16 +564,15 @@ function App() {
           mediaName: media.name,
           mediaKind: media.kind,
           ...(media.kind === 'video' ? { video: media.url } : { image: media.url }),
-          description:
-            'Position recuperee automatiquement depuis les metadonnees du fichier.',
         }))
 
       if (autoPoints.length > 0) {
         setPoints((current) => [...current, ...autoPoints])
-        setSelectedPoint(autoPoints[0])
-        setIsPanelOpen(true)
       }
     }
+
+    // Import direct, sans validation point par point : le rapport résume tout.
+    setSelectedPoint(null)
 
     setImportReport({
       total: mediaFiles.length,
@@ -562,6 +599,20 @@ function App() {
     setSelectedPoint(point)
     setIsPanelOpen(true)
   }, [])
+
+  // Appui long sur la carte (Studio) : crée un point à éditer.
+  const handleCreatePoint = useCallback(
+    (lat: number, lng: number) => {
+      handleAddPoint({
+        id: `point-${Date.now()}`,
+        lat,
+        lng,
+        title: 'Nouveau point',
+        type: 'poi',
+      })
+    },
+    [handleAddPoint],
+  )
 
   const handleUpdatePoint = useCallback((point: TrailPoint) => {
     setPoints((current) =>
@@ -807,7 +858,8 @@ function App() {
               cameraCommand={cameraCommand}
               editable={isStudioMode}
               onMovePoint={handleMovePoint}
-              onSelectPoint={handleSelectPoint}
+              onCreatePoint={handleCreatePoint}
+              onMarkerClick={handleMarkerClick}
             />
           )}
 
@@ -863,6 +915,7 @@ function App() {
                   onDeletePoint={handleDeletePoint}
                   onExportPoints={handleExportPoints}
                   onSaveProject={handleSaveProject}
+                  onShowMedia={handleOpenLightbox}
                   adminPassword={adminPassword}
                   isSaving={isSaving}
                   isUploading={isUploading}
@@ -880,6 +933,7 @@ function App() {
                   stats={stats}
                   mediaLibrary={mediaLibrary}
                   onSelectPoint={handleSelectPoint}
+                  onShowMedia={handleOpenLightbox}
                   onClose={handleClosePoint}
                 />
               )}
@@ -887,6 +941,10 @@ function App() {
           </>
         ) : null}
       </main>
+
+      {lightboxMedia ? (
+        <MediaLightbox media={lightboxMedia} onClose={handleCloseLightbox} />
+      ) : null}
     </div>
   )
 }

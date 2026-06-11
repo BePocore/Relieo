@@ -1,6 +1,14 @@
 import { useState } from 'react'
-import { ExternalLink, Image, MapPin, Maximize2, X } from 'lucide-react'
+import {
+  ExternalLink,
+  Image,
+  MapPin,
+  Maximize2,
+  Trash2,
+  X,
+} from 'lucide-react'
 import type { ImportedMedia, TrailPoint } from '../types'
+import type { LightboxMedia } from '../App'
 import { formatMediaQuality, resolvePointMedia } from '../lib/media'
 import { pointTypeLabels } from '../lib/pointMeta'
 
@@ -8,14 +16,19 @@ type PointDetailProps = {
   point: TrailPoint
   mediaLibrary: ImportedMedia[]
   onClose: () => void
+  onShowMedia?: (media: LightboxMedia) => void
+  editable?: boolean
+  onDelete?: (pointId: string) => void
 }
 
 const MediaPreview = ({
   point,
   mediaLibrary,
+  onShowMedia,
 }: {
   point: TrailPoint
   mediaLibrary: ImportedMedia[]
+  onShowMedia?: (media: LightboxMedia) => void
 }) => {
   const media = resolvePointMedia(point, mediaLibrary)
   const [measuredMedia, setMeasuredMedia] = useState<
@@ -73,19 +86,31 @@ const MediaPreview = ({
 
   return (
     <>
-      <img
-        className="panel-image"
-        src={media.src}
-        alt={point.title}
-        decoding="async"
-        onLoad={(event) => {
-          setMeasuredMedia({
-            src: media.src,
-            width: event.currentTarget.naturalWidth || media.width,
-            height: event.currentTarget.naturalHeight || media.height,
-          })
-        }}
-      />
+      <button
+        className="panel-image-button"
+        type="button"
+        aria-label="Voir la photo en grand"
+        onClick={() =>
+          onShowMedia?.({ src: media.src, kind: 'image', title: point.title })
+        }
+      >
+        <img
+          className="panel-image"
+          src={media.src}
+          alt={point.title}
+          decoding="async"
+          onLoad={(event) => {
+            setMeasuredMedia({
+              src: media.src,
+              width: event.currentTarget.naturalWidth || media.width,
+              height: event.currentTarget.naturalHeight || media.height,
+            })
+          }}
+        />
+        <span className="panel-image-zoom" aria-hidden="true">
+          <Maximize2 size={16} />
+        </span>
+      </button>
       <p className="media-quality">
         Qualite source · {formatMediaQuality(qualityMedia)}
       </p>
@@ -97,8 +122,13 @@ export function PointDetail({
   point,
   mediaLibrary,
   onClose,
+  onShowMedia,
+  editable = false,
+  onDelete,
 }: PointDetailProps) {
   const media = resolvePointMedia(point, mediaLibrary)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const canDelete = editable && Boolean(onDelete) && Boolean(point.id)
 
   return (
     <div className="panel-content">
@@ -118,7 +148,11 @@ export function PointDetail({
         </button>
       </div>
 
-      <MediaPreview point={point} mediaLibrary={mediaLibrary} />
+      <MediaPreview
+        point={point}
+        mediaLibrary={mediaLibrary}
+        onShowMedia={onShowMedia}
+      />
 
       {point.description ? (
         <p className="panel-description">{point.description}</p>
@@ -132,15 +166,20 @@ export function PointDetail({
       </div>
 
       {media ? (
-        <a
+        <button
           className="secondary-action media-source-action"
-          href={media.src}
-          target="_blank"
-          rel="noreferrer"
+          type="button"
+          onClick={() =>
+            onShowMedia?.({
+              src: media.src,
+              kind: media.kind,
+              title: point.title,
+            })
+          }
         >
           <Maximize2 aria-hidden="true" size={17} />
           Voir le fichier original
-        </a>
+        </button>
       ) : null}
 
       {point.skypixelUrl ? (
@@ -153,6 +192,46 @@ export function PointDetail({
           <ExternalLink aria-hidden="true" size={17} />
           Ouvrir SkyPixel
         </a>
+      ) : null}
+
+      {canDelete ? (
+        <button
+          className="danger-action point-delete-action"
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          Supprimer ce point
+        </button>
+      ) : null}
+
+      {confirmingDelete ? (
+        <div className="confirm-overlay" role="dialog" aria-modal="true">
+          <div className="confirm-card">
+            <strong>Supprimer ce point ?</strong>
+            <p>Cette action est définitive.</p>
+            <div className="confirm-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="danger-action"
+                type="button"
+                onClick={() => {
+                  setConfirmingDelete(false)
+                  if (point.id) onDelete?.(point.id)
+                }}
+              >
+                <Trash2 aria-hidden="true" size={16} />
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   )

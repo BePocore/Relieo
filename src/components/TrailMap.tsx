@@ -47,7 +47,8 @@ type TrailMapProps = {
   cameraCommand: CameraCommand | null
   editable?: boolean
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
-  onSelectPoint: (point: TrailPoint) => void
+  onCreatePoint?: (lat: number, lng: number) => void
+  onMarkerClick: (point: TrailPoint) => void
 }
 
 export type CameraCommand = {
@@ -63,6 +64,21 @@ export type CameraCommand = {
 
 const routeOuterColor = Color.fromCssColorString('#ffffff')
 const routeInnerColor = Color.fromCssColorString('#f4512c')
+
+const thumbnailWidth = 76
+const thumbnailHeight = 56
+const thumbnailFrameWidth = 84
+const thumbnailFrameHeight = 64
+const thumbnailScaleByDistance = new NearFarScalar(1_000, 1, 160_000, 0.6)
+
+// Cadre blanc arrondi placé derrière la vignette photo sur la carte.
+const thumbnailFrameUri = (() => {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="84" height="64" viewBox="0 0 84 64">' +
+    '<rect x="1" y="1" width="82" height="62" rx="11" fill="#ffffff" ' +
+    'stroke="rgba(8,14,11,0.28)" stroke-width="1"/></svg>'
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+})()
 const arcGisTerrainUrl =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
 
@@ -160,22 +176,25 @@ export function TrailMap({
   cameraCommand,
   editable = false,
   onMovePoint,
-  onSelectPoint,
+  onCreatePoint,
+  onMarkerClick,
 }: TrailMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<Viewer | null>(null)
   const pointsByEntityId = useRef(new Map<string, TrailPoint>())
-  const onSelectPointRef = useRef(onSelectPoint)
+  const onMarkerClickRef = useRef(onMarkerClick)
   const onMovePointRef = useRef(onMovePoint)
+  const onCreatePointRef = useRef(onCreatePoint)
   const editableRef = useRef(editable)
   const selectedKeyRef = useRef<string | null>(null)
   const didInitialFitRef = useRef(false)
 
   useEffect(() => {
-    onSelectPointRef.current = onSelectPoint
+    onMarkerClickRef.current = onMarkerClick
     onMovePointRef.current = onMovePoint
+    onCreatePointRef.current = onCreatePoint
     editableRef.current = editable
-  }, [editable, onMovePoint, onSelectPoint])
+  }, [editable, onMovePoint, onCreatePoint, onMarkerClick])
 
   useEffect(() => {
     const container = containerRef.current
@@ -274,6 +293,43 @@ export function TrailMap({
       | { pointerId: number; point: TrailPoint; entity: Entity; position: Cartesian3 | null }
       | null = null
 
+    // Appui long en mode Studio sur la carte vide : créer un point.
+    let longPressTimer: number | null = null
+    let longPressOrigin: { x: number; y: number } | null = null
+    let longPressScreen: Cartesian2 | null = null
+
+    const cancelLongPress = () => {
+      if (longPressTimer !== null) {
+        window.clearTimeout(longPressTimer)
+        longPressTimer = null
+      }
+      longPressOrigin = null
+      longPressScreen = null
+    }
+
+    const armLongPress = (event: PointerEvent, screen: Cartesian2) => {
+      cancelLongPress()
+      longPressOrigin = { x: event.clientX, y: event.clientY }
+      longPressScreen = screen
+      longPressTimer = window.setTimeout(() => {
+        longPressTimer = null
+        const screenPosition = longPressScreen
+        cancelLongPress()
+        if (!screenPosition || viewer.isDestroyed()) return
+        const ray = viewer.camera.getPickRay(screenPosition)
+        const position = ray
+          ? viewer.scene.globe.pick(ray, viewer.scene)
+          : undefined
+        if (!position) return
+        const cartographic = Cartographic.fromCartesian(position)
+        suppressClick = true
+        onCreatePointRef.current?.(
+          CesiumMath.toDegrees(cartographic.latitude),
+          CesiumMath.toDegrees(cartographic.longitude),
+        )
+      }, 550)
+    }
+
     // Glisser-déposer des points en mode Studio : la caméra est gelée
     // pendant le drag pour que la carte ne bouge pas sous le point.
     const handlePointerDown = (event: PointerEvent) => {
@@ -290,20 +346,34 @@ export function TrailMap({
       const point = defined(entity?.id)
         ? pointsByEntityId.current.get(entity.id)
         : undefined
-      if (!point?.id || !entity) return
 
-      draggedPoint = {
-        pointerId: event.pointerId,
-        point,
-        entity,
-        position: null,
+      if (point?.id && entity) {
+        cancelLongPress()
+        draggedPoint = {
+          pointerId: event.pointerId,
+          point,
+          entity,
+          position: null,
+        }
+        controller.enableInputs = false
+        canvas.setPointerCapture?.(event.pointerId)
+        canvas.style.cursor = 'grabbing'
+        return
       }
-      controller.enableInputs = false
-      canvas.setPointerCapture?.(event.pointerId)
-      canvas.style.cursor = 'grabbing'
+
+      // Carte vide : on arme l'appui long pour déposer un nouveau point.
+      armLongPress(event, screenPosition)
     }
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (longPressOrigin) {
+        const movement = Math.hypot(
+          event.clientX - longPressOrigin.x,
+          event.clientY - longPressOrigin.y,
+        )
+        if (movement > 10) cancelLongPress()
+      }
+
       if (draggedPoint?.pointerId !== event.pointerId) return
 
       const rect = canvas.getBoundingClientRect()
@@ -325,6 +395,7 @@ export function TrailMap({
     }
 
     const handlePointerUp = (event: PointerEvent) => {
+      cancelLongPress()
       if (draggedPoint?.pointerId !== event.pointerId) return
 
       const { point, position } = draggedPoint
@@ -359,12 +430,13 @@ export function TrailMap({
       const entity = picked?.id as Entity | undefined
       if (!defined(entity?.id)) return
       const point = pointsByEntityId.current.get(entity.id)
-      if (point) onSelectPointRef.current(point)
+      if (point) onMarkerClickRef.current(point)
     }, ScreenSpaceEventType.LEFT_CLICK)
 
     viewerRef.current = viewer
 
     return () => {
+      cancelLongPress()
       canvas.removeEventListener('pointerdown', handlePointerDown)
       canvas.removeEventListener('pointermove', handlePointerMove)
       canvas.removeEventListener('pointerup', handlePointerUp)
@@ -423,45 +495,72 @@ export function TrailMap({
       })
     }
 
+    const heightReference = useWorldTerrain
+      ? HeightReference.CLAMP_TO_GROUND
+      : HeightReference.NONE
+
     points.forEach((point, index) => {
       const id = pointEntityId(point, index)
       pointsByEntityId.current.set(id, point)
       const media = resolvePointMedia(point, mediaLibrary)
       const showThumbnail = media?.kind === 'image'
+      const position = Cartesian3.fromDegrees(point.lng, point.lat, 0)
+
+      // Cadre blanc derrière la vignette (un seul clic possible : même point).
+      if (showThumbnail) {
+        const frameId = `${id}-frame`
+        pointsByEntityId.current.set(frameId, point)
+        viewer.entities.add({
+          id: frameId,
+          position,
+          billboard: {
+            image: thumbnailFrameUri,
+            width: thumbnailFrameWidth,
+            height: thumbnailFrameHeight,
+            verticalOrigin: VerticalOrigin.BOTTOM,
+            pixelOffset: new Cartesian2(0, 4),
+            eyeOffset: new Cartesian3(0, 0, -1),
+            heightReference,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            scaleByDistance: thumbnailScaleByDistance,
+          },
+        })
+      }
 
       viewer.entities.add({
         id,
         name: point.title,
-        position: Cartesian3.fromDegrees(point.lng, point.lat, 0),
+        position,
         billboard: {
           image: showThumbnail ? media.src : markerDataUri(point.type),
-          width: showThumbnail ? 76 : 42,
-          height: showThumbnail ? 56 : 50,
+          width: showThumbnail ? thumbnailWidth : 42,
+          height: showThumbnail ? thumbnailHeight : 50,
           verticalOrigin: VerticalOrigin.BOTTOM,
-          heightReference: useWorldTerrain
-            ? HeightReference.CLAMP_TO_GROUND
-            : HeightReference.NONE,
+          heightReference,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          scaleByDistance: new NearFarScalar(1_000, 1, 160_000, 0.6),
+          scaleByDistance: thumbnailScaleByDistance,
         },
-        label: {
-          text: point.title,
-          font: '700 13px Inter, system-ui, sans-serif',
-          fillColor: Color.WHITE,
-          outlineColor: Color.fromCssColorString('#111827'),
-          outlineWidth: 3,
-          style: LabelStyle.FILL_AND_OUTLINE,
-          showBackground: true,
-          backgroundColor: Color.fromCssColorString('rgba(17, 24, 39, 0.82)'),
-          backgroundPadding: new Cartesian2(8, 5),
-          pixelOffset: new Cartesian2(0, showThumbnail ? -80 : -57),
-          verticalOrigin: VerticalOrigin.BOTTOM,
-          heightReference: useWorldTerrain
-            ? HeightReference.CLAMP_TO_GROUND
-            : HeightReference.NONE,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          scaleByDistance: new NearFarScalar(1_000, 1, 150_000, 0.52),
-        },
+        // Les vignettes photo n'affichent plus leur nom sur la carte.
+        ...(showThumbnail
+          ? {}
+          : {
+              label: {
+                text: point.title,
+                font: '700 13px Inter, system-ui, sans-serif',
+                fillColor: Color.WHITE,
+                outlineColor: Color.fromCssColorString('#111827'),
+                outlineWidth: 3,
+                style: LabelStyle.FILL_AND_OUTLINE,
+                showBackground: true,
+                backgroundColor: Color.fromCssColorString('rgba(17, 24, 39, 0.82)'),
+                backgroundPadding: new Cartesian2(8, 5),
+                pixelOffset: new Cartesian2(0, -57),
+                verticalOrigin: VerticalOrigin.BOTTOM,
+                heightReference,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                scaleByDistance: new NearFarScalar(1_000, 1, 150_000, 0.52),
+              },
+            }),
       })
     })
 
