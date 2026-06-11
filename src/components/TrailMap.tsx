@@ -3,6 +3,7 @@ import {
   ArcGisMapServerImageryProvider,
   ArcGISTiledElevationTerrainProvider,
   BoundingSphere,
+  CameraEventType,
   Cartesian2,
   Cartesian3,
   Cartographic,
@@ -13,6 +14,7 @@ import {
   HeightReference,
   ImageryLayer,
   Ion,
+  KeyboardEventModifier,
   LabelStyle,
   Math as CesiumMath,
   NearFarScalar,
@@ -44,15 +46,19 @@ type TrailMapProps = {
   selectedPoint: TrailPoint | null
   cameraCommand: CameraCommand | null
   editable?: boolean
-  isTourActive?: boolean
-  onTourStop?: () => void
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onSelectPoint: (point: TrailPoint) => void
 }
 
 export type CameraCommand = {
   id: number
-  type: 'turn-left' | 'turn-right' | 'zoom-in' | 'zoom-out'
+  type:
+    | 'turn-left'
+    | 'turn-right'
+    | 'zoom-in'
+    | 'zoom-out'
+    | 'tilt-up'
+    | 'tilt-down'
 }
 
 const routeOuterColor = Color.fromCssColorString('#ffffff')
@@ -153,8 +159,6 @@ export function TrailMap({
   selectedPoint,
   cameraCommand,
   editable = false,
-  isTourActive = false,
-  onTourStop,
   onMovePoint,
   onSelectPoint,
 }: TrailMapProps) {
@@ -163,7 +167,6 @@ export function TrailMap({
   const pointsByEntityId = useRef(new Map<string, TrailPoint>())
   const onSelectPointRef = useRef(onSelectPoint)
   const onMovePointRef = useRef(onMovePoint)
-  const onTourStopRef = useRef(onTourStop)
   const editableRef = useRef(editable)
   const selectedKeyRef = useRef<string | null>(null)
   const didInitialFitRef = useRef(false)
@@ -171,9 +174,8 @@ export function TrailMap({
   useEffect(() => {
     onSelectPointRef.current = onSelectPoint
     onMovePointRef.current = onMovePoint
-    onTourStopRef.current = onTourStop
     editableRef.current = editable
-  }, [editable, onMovePoint, onSelectPoint, onTourStop])
+  }, [editable, onMovePoint, onSelectPoint])
 
   useEffect(() => {
     const container = containerRef.current
@@ -233,15 +235,28 @@ export function TrailMap({
     if (viewer.scene.moon) viewer.scene.moon.show = false
 
     const controller = viewer.scene.screenSpaceCameraController
-    controller.enableInputs = false
     controller.enableCollisionDetection = true
     controller.minimumZoomDistance = 35
     controller.maximumZoomDistance = 100_000
-    controller.zoomFactor = 1.5
+    controller.zoomFactor = 3
     controller.inertiaZoom = 0.72
     controller.inertiaSpin = 0.82
-    controller.inertiaTranslate = 0.76
-    controller.maximumMovementRatio = 0.08
+    controller.inertiaTranslate = 0.82
+    // 1 doigt / clic gauche : déplacement classique de la carte.
+    controller.translateEventTypes = CameraEventType.LEFT_DRAG
+    controller.rotateEventTypes = CameraEventType.LEFT_DRAG
+    // Zoom : molette ou pincement à deux doigts.
+    controller.zoomEventTypes = [CameraEventType.WHEEL, CameraEventType.PINCH]
+    // Vue 3D (haut/bas/côté) : 2 doigts, clic droit, molette cliquée ou Ctrl+glisser.
+    controller.tiltEventTypes = [
+      CameraEventType.PINCH,
+      CameraEventType.RIGHT_DRAG,
+      CameraEventType.MIDDLE_DRAG,
+      {
+        eventType: CameraEventType.LEFT_DRAG,
+        modifier: KeyboardEventModifier.CTRL,
+      },
+    ]
     if (useWorldTerrain) {
       void ArcGISTiledElevationTerrainProvider.fromUrl(arcGisTerrainUrl)
         .then((terrainProvider) => {
@@ -254,161 +269,86 @@ export function TrailMap({
     }
 
     const canvas = viewer.scene.canvas
-    const pointers = new Map<number, { x: number; y: number }>()
-    let previousPinchDistance: number | null = null
-    let previousPinchCenter: { x: number; y: number } | null = null
     let suppressClick = false
     let draggedPoint:
       | { pointerId: number; point: TrailPoint; entity: Entity; position: Cartesian3 | null }
       | null = null
 
-    const pointerValues = () => Array.from(pointers.values())
-    const pointerDistance = (values: { x: number; y: number }[]) =>
-      Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y)
-    const pointerCenter = (values: { x: number; y: number }[]) => ({
-      x: (values[0].x + values[1].x) / 2,
-      y: (values[0].y + values[1].y) / 2,
-    })
-
+    // Glisser-déposer des points en mode Studio : la caméra est gelée
+    // pendant le drag pour que la carte ne bouge pas sous le point.
     const handlePointerDown = (event: PointerEvent) => {
+      if (!editableRef.current) return
       if (event.pointerType === 'mouse' && event.button !== 0) return
-      if (editableRef.current) {
-        const rect = canvas.getBoundingClientRect()
-        const screenPosition = new Cartesian2(
-          event.clientX - rect.left,
-          event.clientY - rect.top,
-        )
-        const picked = viewer.scene.pick(screenPosition)
-        const entity = picked?.id as Entity | undefined
-        const point = defined(entity?.id)
-          ? pointsByEntityId.current.get(entity.id)
-          : undefined
 
-        if (point?.id && entity) {
-          draggedPoint = {
-            pointerId: event.pointerId,
-            point,
-            entity,
-            position: null,
-          }
-          suppressClick = true
-          canvas.setPointerCapture?.(event.pointerId)
-          canvas.style.cursor = 'grabbing'
-          return
-        }
+      const rect = canvas.getBoundingClientRect()
+      const screenPosition = new Cartesian2(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+      )
+      const picked = viewer.scene.pick(screenPosition)
+      const entity = picked?.id as Entity | undefined
+      const point = defined(entity?.id)
+        ? pointsByEntityId.current.get(entity.id)
+        : undefined
+      if (!point?.id || !entity) return
+
+      draggedPoint = {
+        pointerId: event.pointerId,
+        point,
+        entity,
+        position: null,
       }
-      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+      controller.enableInputs = false
       canvas.setPointerCapture?.(event.pointerId)
-      if (pointers.size === 2) {
-        const values = pointerValues()
-        previousPinchDistance = pointerDistance(values)
-        previousPinchCenter = pointerCenter(values)
-      }
+      canvas.style.cursor = 'grabbing'
     }
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (draggedPoint?.pointerId === event.pointerId) {
-        const rect = canvas.getBoundingClientRect()
-        const screenPosition = new Cartesian2(
-          event.clientX - rect.left,
-          event.clientY - rect.top,
-        )
-        const ray = viewer.camera.getPickRay(screenPosition)
-        const position = ray
-          ? viewer.scene.globe.pick(ray, viewer.scene)
-          : undefined
-        if (!position) return
+      if (draggedPoint?.pointerId !== event.pointerId) return
 
-        draggedPoint.position = position
-        if (draggedPoint.entity.position instanceof ConstantPositionProperty) {
-          draggedPoint.entity.position.setValue(position)
-        }
-        viewer.scene.requestRender()
-        return
-      }
+      const rect = canvas.getBoundingClientRect()
+      const screenPosition = new Cartesian2(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+      )
+      const ray = viewer.camera.getPickRay(screenPosition)
+      const position = ray
+        ? viewer.scene.globe.pick(ray, viewer.scene)
+        : undefined
+      if (!position) return
 
-      const previous = pointers.get(event.pointerId)
-      if (!previous) return
-
-      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
-      const values = pointerValues()
-      const dx = event.clientX - previous.x
-      const dy = event.clientY - previous.y
-
-      if (values.length === 1) {
-        if (Math.abs(dx) + Math.abs(dy) < 0.5) return
-        suppressClick = true
-        viewer.camera.setView({
-          orientation: {
-            heading: viewer.camera.heading - dx * 0.004,
-            pitch: CesiumMath.clamp(
-              viewer.camera.pitch + dy * 0.003,
-              CesiumMath.toRadians(-86),
-              CesiumMath.toRadians(-8),
-            ),
-            roll: 0,
-          },
-        })
-      } else if (values.length >= 2) {
-        suppressClick = true
-        const distance = pointerDistance(values)
-        const center = pointerCenter(values)
-        const height = Math.max(viewer.camera.positionCartographic.height, 100)
-
-        if (previousPinchDistance !== null) {
-          const zoomAmount = (distance - previousPinchDistance) * height * 0.0024
-          if (zoomAmount > 0) viewer.camera.zoomIn(zoomAmount)
-          else viewer.camera.zoomOut(Math.abs(zoomAmount))
-        }
-        if (previousPinchCenter) {
-          const panFactor = height * 0.00045
-          viewer.camera.moveLeft((center.x - previousPinchCenter.x) * panFactor)
-          viewer.camera.moveUp((previousPinchCenter.y - center.y) * panFactor)
-        }
-        previousPinchDistance = distance
-        previousPinchCenter = center
+      draggedPoint.position = position
+      if (draggedPoint.entity.position instanceof ConstantPositionProperty) {
+        draggedPoint.entity.position.setValue(position)
       }
       viewer.scene.requestRender()
     }
 
     const handlePointerUp = (event: PointerEvent) => {
-      if (draggedPoint?.pointerId === event.pointerId) {
-        const { point, position } = draggedPoint
-        draggedPoint = null
-        canvas.style.cursor = ''
-        if (position && point.id) {
-          const cartographic = Cartographic.fromCartesian(position)
-          onMovePointRef.current?.(
-            point.id,
-            CesiumMath.toDegrees(cartographic.latitude),
-            CesiumMath.toDegrees(cartographic.longitude),
-          )
-        }
-      }
-      pointers.delete(event.pointerId)
+      if (draggedPoint?.pointerId !== event.pointerId) return
+
+      const { point, position } = draggedPoint
+      draggedPoint = null
+      controller.enableInputs = true
+      canvas.style.cursor = ''
       if (canvas.hasPointerCapture?.(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId)
       }
-      if (pointers.size < 2) {
-        previousPinchDistance = null
-        previousPinchCenter = null
+      suppressClick = position !== null
+      if (position && point.id) {
+        const cartographic = Cartographic.fromCartesian(position)
+        onMovePointRef.current?.(
+          point.id,
+          CesiumMath.toDegrees(cartographic.latitude),
+          CesiumMath.toDegrees(cartographic.longitude),
+        )
       }
-    }
-
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault()
-      const height = Math.max(viewer.camera.positionCartographic.height, 100)
-      const amount = Math.min(Math.abs(event.deltaY) * height * 0.00045, height * 0.16)
-      if (event.deltaY < 0) viewer.camera.zoomIn(amount)
-      else viewer.camera.zoomOut(amount)
-      viewer.scene.requestRender()
     }
 
     canvas.addEventListener('pointerdown', handlePointerDown)
     canvas.addEventListener('pointermove', handlePointerMove)
     canvas.addEventListener('pointerup', handlePointerUp)
     canvas.addEventListener('pointercancel', handlePointerUp)
-    canvas.addEventListener('wheel', handleWheel, { passive: false })
 
     viewer.screenSpaceEventHandler.setInputAction((movement: { position: Cartesian2 }) => {
       if (suppressClick) {
@@ -429,7 +369,6 @@ export function TrailMap({
       canvas.removeEventListener('pointermove', handlePointerMove)
       canvas.removeEventListener('pointerup', handlePointerUp)
       canvas.removeEventListener('pointercancel', handlePointerUp)
-      canvas.removeEventListener('wheel', handleWheel)
       viewer.screenSpaceEventHandler.removeInputAction(ScreenSpaceEventType.LEFT_CLICK)
       viewer.destroy()
       container.replaceChildren()
@@ -550,31 +489,24 @@ export function TrailMap({
       viewer.camera.lookRight(CesiumMath.toRadians(14))
     } else if (cameraCommand.type === 'zoom-in') {
       viewer.camera.zoomIn(height * 0.16)
-    } else {
+    } else if (cameraCommand.type === 'zoom-out') {
       viewer.camera.zoomOut(height * 0.16)
+    } else {
+      const delta = cameraCommand.type === 'tilt-up' ? 8 : -8
+      viewer.camera.setView({
+        orientation: {
+          heading: viewer.camera.heading,
+          pitch: CesiumMath.clamp(
+            viewer.camera.pitch + CesiumMath.toRadians(delta),
+            CesiumMath.toRadians(-88),
+            CesiumMath.toRadians(-6),
+          ),
+          roll: 0,
+        },
+      })
     }
     viewer.scene.requestRender()
   }, [cameraCommand])
-
-  useEffect(() => {
-    const viewer = viewerRef.current
-    if (!viewer || viewer.isDestroyed() || !isTourActive) return
-
-    const interval = window.setInterval(() => {
-      if (viewer.isDestroyed()) return
-      viewer.camera.lookRight(0.003)
-      viewer.scene.requestRender()
-    }, 50)
-
-    const canvas = viewer.scene.canvas
-    const stopTour = () => onTourStopRef.current?.()
-    canvas.addEventListener('pointerdown', stopTour)
-
-    return () => {
-      window.clearInterval(interval)
-      canvas.removeEventListener('pointerdown', stopTour)
-    }
-  }, [isTourActive])
 
   useEffect(() => {
     const viewer = viewerRef.current

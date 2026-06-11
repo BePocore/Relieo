@@ -20,6 +20,7 @@ import type {
   TrackPoint,
   TrailPoint,
   TrailStats,
+  UploadProgress,
 } from '../types'
 import { formatFileSize, formatMediaQuality } from '../lib/media'
 import { pointTypeLabels } from '../lib/pointMeta'
@@ -48,6 +49,7 @@ type StudioPanelProps = {
   adminPassword: string
   isSaving: boolean
   isUploading: boolean
+  uploadProgress: UploadProgress | null
   onAdminPasswordChange: (password: string) => void
   saveStatus: string | null
 }
@@ -321,6 +323,7 @@ export function StudioPanel({
   adminPassword,
   isSaving,
   isUploading,
+  uploadProgress,
   onAdminPasswordChange,
   saveStatus,
 }: StudioPanelProps) {
@@ -437,6 +440,29 @@ export function StudioPanel({
           <Cloud aria-hidden="true" size={17} />
           {isSaving ? 'Publication...' : 'Publier en ligne'}
         </button>
+        {uploadProgress ? (
+          <div className="upload-progress" role="status">
+            <div className="upload-progress-info">
+              <span>
+                Envoi {uploadProgress.fileIndex}/{uploadProgress.fileCount} ·{' '}
+                {uploadProgress.fileName}
+              </span>
+              <strong>{uploadProgress.percentage}%</strong>
+            </div>
+            <div
+              className="upload-progress-track"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={uploadProgress.percentage}
+              role="progressbar"
+            >
+              <div
+                className="upload-progress-fill"
+                style={{ width: `${uploadProgress.percentage}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
         {saveStatus ? <p className="save-status">{saveStatus}</p> : null}
       </div>
 

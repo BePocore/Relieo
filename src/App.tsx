@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { upload } from '@vercel/blob/client'
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Compass,
   Copy,
   List,
@@ -9,11 +11,9 @@ import {
   LoaderCircle,
   Minus,
   Mountain,
-  Play,
   Plus,
   RotateCcw,
   RotateCw,
-  Square,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -36,6 +36,7 @@ import type {
   TrailPoint,
   TrailProject,
   TrackPoint,
+  UploadProgress,
 } from './types'
 
 const pointTypes: PointType[] = ['photo', 'video', '360', 'poi']
@@ -133,6 +134,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
+    null,
+  )
   const [error, setError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [adminPassword, setAdminPassword] = useState(() =>
@@ -140,7 +144,6 @@ function App() {
   )
   const [trackSourceName, setTrackSourceName] = useState('/data/trace.gpx')
   const [pointsSourceName, setPointsSourceName] = useState('/data/points.json')
-  const [isTourActive, setIsTourActive] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -226,25 +229,6 @@ function App() {
 
   const stats = useMemo(() => computeTrailStats(track), [track])
 
-  // Durée estimée selon la formule de Naismith.
-  const hikingTime = useMemo(() => {
-    const distanceKm = stats.distanceMeters / 1000
-    if (!Number.isFinite(distanceKm) || distanceKm <= 0) return null
-
-    const gain = Number.isFinite(stats.elevationGainMeters)
-      ? Math.max(stats.elevationGainMeters, 0)
-      : 0
-    const totalMinutes = Math.round((distanceKm / 5) * 60 + (gain / 300) * 30)
-
-    if (totalMinutes < 60) return `${totalMinutes} min`
-
-    const hours = Math.floor(totalMinutes / 60)
-    const minutes = totalMinutes % 60
-    return minutes > 0
-      ? `${hours} h ${String(minutes).padStart(2, '0')}`
-      : `${hours} h`
-  }, [stats])
-
   const mediaPoints = useMemo(
     () =>
       points.filter(
@@ -295,14 +279,6 @@ function App() {
     } catch {
       setError('Copie du lien impossible.')
     }
-  }, [])
-
-  const handleToggleTour = useCallback(() => {
-    setIsTourActive((current) => !current)
-  }, [])
-
-  const handleTourStop = useCallback(() => {
-    setIsTourActive(false)
   }, [])
 
   const sendCameraCommand = useCallback((type: CameraCommand['type']) => {
@@ -363,11 +339,27 @@ function App() {
     setSaveStatus('Envoi des medias vers Vercel...')
 
     const importedMedia: ImportedMedia[] = []
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
+    let sentBytes = 0
 
     try {
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
         const media = await createImportedMedia(file)
-        if (!media) continue
+        if (!media) {
+          sentBytes += file.size
+          continue
+        }
+
+        const progressBase: Omit<UploadProgress, 'percentage'> = {
+          fileIndex: index + 1,
+          fileCount: files.length,
+          fileName: file.name,
+        }
+        setUploadProgress({
+          ...progressBase,
+          percentage:
+            totalBytes > 0 ? Math.round((sentBytes / totalBytes) * 100) : 0,
+        })
 
         try {
           const blob = await upload(safeMediaPath(file.name), file, {
@@ -378,12 +370,25 @@ function App() {
             },
             contentType: file.type || 'application/octet-stream',
             multipart: file.size > 10 * 1024 * 1024,
+            onUploadProgress: ({ loaded }) => {
+              setUploadProgress({
+                ...progressBase,
+                percentage:
+                  totalBytes > 0
+                    ? Math.min(
+                        Math.round(((sentBytes + loaded) / totalBytes) * 100),
+                        100,
+                      )
+                    : 0,
+              })
+            },
           })
 
           importedMedia.push({
             ...media,
             url: blob.url,
           })
+          sentBytes += file.size
         } finally {
           URL.revokeObjectURL(media.url)
         }
@@ -397,6 +402,7 @@ function App() {
       return
     } finally {
       setIsUploading(false)
+      setUploadProgress(null)
     }
 
     if (importedMedia.length === 0) return
@@ -582,11 +588,7 @@ function App() {
               <span>{copied ? 'Copié !' : 'Lien'}</span>
             </button>
           )}
-          <StatsBar
-            stats={stats}
-            pointCount={points.length}
-            hikingTime={hikingTime}
-          />
+          <StatsBar stats={stats} pointCount={points.length} />
         </div>
       </header>
 
@@ -596,13 +598,6 @@ function App() {
             <div className="status-banner" role="alert">
               <TriangleAlert aria-hidden="true" size={18} />
               <span>{error}</span>
-            </div>
-          ) : null}
-
-          {isTourActive ? (
-            <div className="tour-indicator" role="status">
-              <span className="tour-dot" aria-hidden="true" />
-              <span>Tour automatique en cours</span>
             </div>
           ) : null}
 
@@ -626,29 +621,6 @@ function App() {
             >
               <LocateFixed aria-hidden="true" size={18} />
               <span>Recentrer</span>
-            </button>
-            <button
-              aria-label={
-                isTourActive
-                  ? 'Arrêter le tour automatique'
-                  : 'Lancer le tour automatique'
-              }
-              aria-pressed={isTourActive}
-              className={
-                isTourActive
-                  ? 'map-tool-button tour-active'
-                  : 'map-tool-button'
-              }
-              title={isTourActive ? 'Arrêter le tour' : 'Tour automatique'}
-              type="button"
-              onClick={handleToggleTour}
-            >
-              {isTourActive ? (
-                <Square aria-hidden="true" size={16} fill="currentColor" />
-              ) : (
-                <Play aria-hidden="true" size={18} fill="currentColor" />
-              )}
-              <span>{isTourActive ? 'Stop' : 'Tour'}</span>
             </button>
             <button
               aria-label={isStudioMode ? 'Ouvrir le studio' : 'Voir le parcours'}
@@ -678,6 +650,22 @@ function App() {
               onClick={() => sendCameraCommand('turn-right')}
             >
               <RotateCw aria-hidden="true" size={18} />
+            </button>
+            <button
+              aria-label="Relever la vue"
+              title="Relever la vue"
+              type="button"
+              onClick={() => sendCameraCommand('tilt-up')}
+            >
+              <ChevronUp aria-hidden="true" size={19} />
+            </button>
+            <button
+              aria-label="Vue plongeante"
+              title="Vue plongeante"
+              type="button"
+              onClick={() => sendCameraCommand('tilt-down')}
+            >
+              <ChevronDown aria-hidden="true" size={19} />
             </button>
             <button
               aria-label="Zoomer"
@@ -712,8 +700,6 @@ function App() {
               selectedPoint={selectedPoint}
               cameraCommand={cameraCommand}
               editable={isStudioMode}
-              isTourActive={isTourActive}
-              onTourStop={handleTourStop}
               onMovePoint={handleMovePoint}
               onSelectPoint={handleSelectPoint}
             />
@@ -774,6 +760,7 @@ function App() {
                   adminPassword={adminPassword}
                   isSaving={isSaving}
                   isUploading={isUploading}
+                  uploadProgress={uploadProgress}
                   onAdminPasswordChange={handleAdminPasswordChange}
                   saveStatus={saveStatus}
                 />
@@ -784,7 +771,6 @@ function App() {
                   track={track}
                   stats={stats}
                   mediaLibrary={mediaLibrary}
-                  hikingTime={hikingTime}
                   onSelectPoint={handleSelectPoint}
                   onClose={handleClosePoint}
                 />

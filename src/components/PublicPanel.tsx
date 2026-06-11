@@ -1,4 +1,4 @@
-import { Mountain, Timer } from 'lucide-react'
+import { Mountain } from 'lucide-react'
 import { ElevationProfile } from './ElevationProfile'
 import { PointDetail } from './PointDetail'
 import { PointTypeIcon } from './PointTypeIcon'
@@ -12,7 +12,6 @@ type PublicPanelProps = {
   track: TrackPoint[]
   stats: TrailStats
   mediaLibrary: ImportedMedia[]
-  hikingTime: string | null
   onSelectPoint: (point: TrailPoint) => void
   onClose: () => void
 }
@@ -23,7 +22,6 @@ export function PublicPanel({
   track,
   stats,
   mediaLibrary,
-  hikingTime,
   onSelectPoint,
   onClose,
 }: PublicPanelProps) {
@@ -46,13 +44,6 @@ export function PublicPanel({
         </div>
         <Mountain aria-hidden="true" size={22} />
       </div>
-
-      {hikingTime ? (
-        <p className="duration-chip">
-          <Timer aria-hidden="true" size={15} />
-          <span>Durée estimée · {hikingTime}</span>
-        </p>
-      ) : null}
 
       <ElevationProfile track={track} stats={stats} />
 

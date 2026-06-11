@@ -49,6 +49,13 @@ export type TrailProject = {
   mediaLibrary?: ImportedMedia[]
 }
 
+export type UploadProgress = {
+  fileIndex: number
+  fileCount: number
+  fileName: string
+  percentage: number
+}
+
 export type TrailStats = {
   distanceMeters: number
   elevationGainMeters: number
