@@ -10,37 +10,49 @@ const generatePoster = (src: string): Promise<string | null> =>
     const video = document.createElement('video')
     video.crossOrigin = 'anonymous'
     video.muted = true
+    video.defaultMuted = true
     video.playsInline = true
-    video.preload = 'metadata'
+    // iOS exige les attributs (pas seulement les propriétés) + un élément
+    // attaché au DOM et lancé pour décoder une image vers le canvas.
+    video.setAttribute('muted', '')
+    video.setAttribute('playsinline', '')
+    video.setAttribute('webkit-playsinline', '')
+    video.preload = 'auto'
+    video.style.cssText =
+      'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none'
+    document.body.appendChild(video)
 
     let settled = false
     const finish = (value: string | null) => {
       if (settled) return
       settled = true
+      try {
+        video.pause()
+      } catch {
+        /* ignore */
+      }
       video.removeAttribute('src')
       video.load()
+      video.remove()
       resolve(value)
     }
 
-    video.addEventListener('loadeddata', () => {
+    const capture = () => {
+      if (settled) return
       try {
-        video.currentTime = Math.min(0.1, (video.duration || 1) / 2)
-      } catch {
-        finish(null)
-      }
-    })
-
-    video.addEventListener('seeked', () => {
-      try {
+        if (!video.videoWidth) return
         const width = 152
         const height = 112
         const canvas = document.createElement('canvas')
         canvas.width = width
         canvas.height = height
         const ctx = canvas.getContext('2d')
-        if (!ctx || !video.videoWidth) return finish(null)
+        if (!ctx) return finish(null)
 
-        const scale = Math.max(width / video.videoWidth, height / video.videoHeight)
+        const scale = Math.max(
+          width / video.videoWidth,
+          height / video.videoHeight,
+        )
         const drawWidth = video.videoWidth * scale
         const drawHeight = video.videoHeight * scale
         ctx.drawImage(
@@ -68,11 +80,41 @@ const generatePoster = (src: string): Promise<string | null> =>
       } catch {
         finish(null)
       }
+    }
+
+    const seekToFrame = () => {
+      try {
+        video.currentTime = Math.min(0.1, (video.duration || 1) / 2)
+      } catch {
+        /* la lecture prendra le relais */
+      }
+    }
+
+    video.addEventListener('loadedmetadata', seekToFrame)
+    video.addEventListener('loadeddata', seekToFrame)
+    video.addEventListener('seeked', capture)
+
+    // Repli iOS : lancer la lecture muette puis capturer la 1re image décodée.
+    video.addEventListener('canplay', () => {
+      void video
+        .play()
+        .then(() => {
+          window.setTimeout(() => {
+            capture()
+          }, 160)
+        })
+        .catch(() => {
+          /* seeked/loadeddata couvrent le desktop */
+        })
+    })
+    video.addEventListener('timeupdate', () => {
+      if (video.currentTime > 0) capture()
     })
 
     video.addEventListener('error', () => finish(null))
-    window.setTimeout(() => finish(null), 8_000)
+    window.setTimeout(() => finish(null), 9_000)
     video.src = src
+    video.load()
   })
 
 export function useVideoPosters(
