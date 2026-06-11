@@ -82,33 +82,51 @@ const generatePoster = (src: string): Promise<string | null> =>
       }
     }
 
+    type VideoRVFC = HTMLVideoElement & {
+      requestVideoFrameCallback?: (cb: () => void) => number
+    }
+    const rvfc = (video as VideoRVFC).requestVideoFrameCallback?.bind(video)
+
+    // On vise une image après l'intro (souvent noire) du début.
+    const seekTarget = () => Math.min(1, (video.duration || 2) / 4)
     const seekToFrame = () => {
       try {
-        video.currentTime = Math.min(0.1, (video.duration || 1) / 2)
+        if (Number.isFinite(video.duration) && video.duration > 0) {
+          video.currentTime = seekTarget()
+        }
       } catch {
         /* la lecture prendra le relais */
       }
     }
 
-    video.addEventListener('loadedmetadata', seekToFrame)
-    video.addEventListener('loadeddata', seekToFrame)
-    video.addEventListener('seeked', capture)
-
-    // Repli iOS : lancer la lecture muette puis capturer la 1re image décodée.
-    video.addEventListener('canplay', () => {
-      void video
-        .play()
-        .then(() => {
-          window.setTimeout(() => {
+    // Capture seulement quand une vraie image est présentée (anti-écran noir).
+    let frameTries = 0
+    const captureWhenReady = () => {
+      if (settled) return
+      if (rvfc) {
+        const onFrame = () => {
+          if (settled) return
+          frameTries += 1
+          if (video.videoWidth && (video.currentTime > 0.05 || frameTries > 3)) {
             capture()
-          }, 160)
-        })
-        .catch(() => {
-          /* seeked/loadeddata couvrent le desktop */
-        })
-    })
-    video.addEventListener('timeupdate', () => {
-      if (video.currentTime > 0) capture()
+          } else {
+            rvfc(onFrame)
+          }
+        }
+        rvfc(onFrame)
+      } else {
+        capture()
+      }
+    }
+
+    video.addEventListener('loadedmetadata', seekToFrame)
+    video.addEventListener('seeked', captureWhenReady)
+
+    // iOS : lancer la lecture muette puis capturer la 1re image décodée.
+    video.addEventListener('canplay', () => {
+      void video.play().then(captureWhenReady).catch(() => {
+        captureWhenReady()
+      })
     })
 
     video.addEventListener('error', () => finish(null))

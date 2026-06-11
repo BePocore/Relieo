@@ -9,6 +9,7 @@ import {
   Cartographic,
   Color,
   ConstantPositionProperty,
+  DistanceDisplayCondition,
   EllipsoidTerrainProvider,
   HeadingPitchRange,
   HeightReference,
@@ -83,6 +84,17 @@ export const paletteColors = [
 
 export const traceColor = (index: number): string =>
   paletteColors[index % paletteColors.length]
+
+// Au-delà de cette distance caméra, les vignettes laissent place à un point.
+const thumbnailNearMeters = 5_000
+
+// Petit point coloré affiché quand on est loin (vignettes masquées).
+const dotMarkerUri = (color: string): string => {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">` +
+    `<circle cx="9" cy="9" r="6.5" fill="${color}" stroke="#fff" stroke-width="2.5"/></svg>`
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
 
 // Pin coloré pour un point personnalisé (sans glyphe de type).
 export const coloredMarkerDataUri = (color: string): string => {
@@ -556,7 +568,14 @@ export function TrailMap({
       const showThumbnail = Boolean(thumbnailSrc)
       const position = Cartesian3.fromDegrees(point.lng, point.lat, 0)
 
-      // Cadre blanc derrière la vignette (un seul clic possible : même point).
+      // Vignette visible de près ; au loin un simple point pour rester lisible
+      // quand plusieurs photos se chevauchent.
+      const nearCondition = new DistanceDisplayCondition(0, thumbnailNearMeters)
+      const farCondition = new DistanceDisplayCondition(
+        thumbnailNearMeters,
+        Number.MAX_VALUE,
+      )
+
       if (showThumbnail) {
         const frameId = `${id}-frame`
         pointsByEntityId.current.set(frameId, point)
@@ -573,6 +592,24 @@ export function TrailMap({
             heightReference,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
             scaleByDistance: thumbnailScaleByDistance,
+            distanceDisplayCondition: nearCondition,
+          },
+        })
+
+        // Point coloré affiché à la place de la vignette quand on est loin.
+        const dotId = `${id}-dot`
+        pointsByEntityId.current.set(dotId, point)
+        viewer.entities.add({
+          id: dotId,
+          position,
+          billboard: {
+            image: dotMarkerUri(point.color ?? '#3cdc8c'),
+            width: 16,
+            height: 16,
+            verticalOrigin: VerticalOrigin.CENTER,
+            heightReference,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            distanceDisplayCondition: farCondition,
           },
         })
       }
@@ -593,6 +630,7 @@ export function TrailMap({
           heightReference,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
           scaleByDistance: thumbnailScaleByDistance,
+          ...(showThumbnail ? { distanceDisplayCondition: nearCondition } : {}),
         },
         // Les vignettes photo n'affichent plus leur nom sur la carte.
         ...(showThumbnail
