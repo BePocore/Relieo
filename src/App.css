@@ -99,6 +99,14 @@
   line-height: 1.05;
 }
 
+/* Titre tapotable (accès Studio caché) : pas de sélection ni de zoom. */
+.brand-title {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
 .topbar-tools {
   min-width: 0;
   display: flex;

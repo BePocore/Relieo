@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { upload } from '@vercel/blob/client'
 import {
   Check,
@@ -116,6 +116,19 @@ const publicUrl = (): string => {
   url.hash = ''
   return `${url.pathname}${url.search}${url.hash}` || '/'
 }
+
+const studioUrl = (): string => {
+  const url = new URL(window.location.href)
+  url.searchParams.set('mode', 'studio')
+  url.hash = ''
+  return url.toString()
+}
+
+// Geste secret pour ouvrir le Studio : 3 appuis sur le titre puis 2 sur le
+// bouton « Lien », le tout en moins de 10 secondes.
+const secretSequence = ['title', 'title', 'title', 'copy', 'copy'] as const
+type SecretTap = (typeof secretSequence)[number]
+const secretWindowMs = 10_000
 
 const storedBasemap = (): BasemapId => {
   const stored = window.localStorage.getItem('trail-basemap')
@@ -434,6 +447,26 @@ function App() {
 
   const handleRecenter = useCallback(() => {
     setRecenterRequest((current) => current + 1)
+  }, [])
+
+  const secretTapsRef = useRef<Array<{ type: SecretTap; t: number }>>([])
+
+  const registerSecretTap = useCallback((type: SecretTap) => {
+    const now = Date.now()
+    const recent = secretTapsRef.current
+      .filter((tap) => now - tap.t < secretWindowMs)
+      .concat({ type, t: now })
+      .slice(-secretSequence.length)
+    secretTapsRef.current = recent
+
+    const matches =
+      recent.length === secretSequence.length &&
+      recent.every((tap, index) => tap.type === secretSequence[index])
+
+    if (matches) {
+      secretTapsRef.current = []
+      window.location.assign(studioUrl())
+    }
   }, [])
 
   const handleCopyLink = useCallback(async () => {
@@ -865,7 +898,9 @@ function App() {
           </span>
           <div>
             <p className="eyebrow">Carnet de randonnée</p>
-            <h1>Randonnée 3D</h1>
+            <h1 className="brand-title" onClick={() => registerSecretTap('title')}>
+              Randonnée 3D
+            </h1>
           </div>
         </div>
         <div className="topbar-tools">
@@ -879,7 +914,10 @@ function App() {
               className={copied ? 'copy-link-button copied' : 'copy-link-button'}
               title="Copier le lien"
               type="button"
-              onClick={() => void handleCopyLink()}
+              onClick={() => {
+                registerSecretTap('copy')
+                void handleCopyLink()
+              }}
             >
               {copied ? (
                 <Check aria-hidden="true" size={16} />
