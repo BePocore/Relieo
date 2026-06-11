@@ -55,6 +55,7 @@ type StudioPanelProps = {
   onAddPoint: (point: TrailPoint) => void
   onUpdatePoint: (point: TrailPoint) => void
   onDeletePoint: (pointId: string) => void
+  onToggleLock: (pointId: string) => void
   onExportPoints: () => void
   onSaveProject: () => Promise<void>
   onShowMedia: (media: LightboxMedia) => void
@@ -214,6 +215,7 @@ type SelectedPointEditorProps = {
   onShowMedia: (media: LightboxMedia) => void
   onUpdatePoint: (point: TrailPoint) => void
   onDeletePoint: (pointId: string) => void
+  onToggleLock: (pointId: string) => void
 }
 
 function SelectedPointEditor({
@@ -223,6 +225,7 @@ function SelectedPointEditor({
   onShowMedia,
   onUpdatePoint,
   onDeletePoint,
+  onToggleLock,
 }: SelectedPointEditorProps) {
   const [editDraft, setEditDraft] = useState(() =>
     draftFromPoint(selectedPoint, mediaLibrary),
@@ -301,6 +304,7 @@ function SelectedPointEditor({
         onShowMedia={onShowMedia}
         editable
         onDelete={onDeletePoint}
+        onToggleLock={onToggleLock}
         onClose={onClose}
       />
 
@@ -420,6 +424,7 @@ export function StudioPanel({
   onAddPoint,
   onUpdatePoint,
   onDeletePoint,
+  onToggleLock,
   onExportPoints,
   onSaveProject,
   onShowMedia,
@@ -508,6 +513,7 @@ export function StudioPanel({
         onShowMedia={onShowMedia}
         onUpdatePoint={onUpdatePoint}
         onDeletePoint={onDeletePoint}
+        onToggleLock={onToggleLock}
       />
     )
   }

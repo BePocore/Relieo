@@ -766,6 +766,22 @@ function App() {
     setSelectedPoint(null)
   }, [])
 
+  // Verrou de position : bascule verrouillé (défaut) / déverrouillé.
+  const handleToggleLock = useCallback((pointId: string) => {
+    setPoints((current) =>
+      current.map((point) =>
+        point.id === pointId
+          ? { ...point, locked: point.locked === false }
+          : point,
+      ),
+    )
+    setSelectedPoint((current) =>
+      current?.id === pointId
+        ? { ...current, locked: current.locked === false }
+        : current,
+    )
+  }, [])
+
   const handleExportPoints = useCallback(() => {
     const blob = new Blob([JSON.stringify(exportablePoints(points), null, 2)], {
       type: 'application/json',
@@ -1043,6 +1059,7 @@ function App() {
                   onAddPoint={handleAddPoint}
                   onUpdatePoint={handleUpdatePoint}
                   onDeletePoint={handleDeletePoint}
+                  onToggleLock={handleToggleLock}
                   onExportPoints={handleExportPoints}
                   onSaveProject={handleSaveProject}
                   onShowMedia={handleOpenLightbox}

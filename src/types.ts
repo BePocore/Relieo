@@ -28,6 +28,9 @@ export type TrailPoint = {
   skypixelUrl?: string
   description?: string
   altitude?: number
+  // Verrou de position (Studio). undefined = verrouillé par défaut ;
+  // seul `false` autorise le déplacement. Non persisté.
+  locked?: boolean
 }
 
 export type ImportedMedia = {

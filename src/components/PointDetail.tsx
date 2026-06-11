@@ -2,6 +2,8 @@ import { useState } from 'react'
 import {
   ExternalLink,
   Image,
+  Lock,
+  LockOpen,
   MapPin,
   Maximize2,
   Trash2,
@@ -19,6 +21,7 @@ type PointDetailProps = {
   onShowMedia?: (media: LightboxMedia) => void
   editable?: boolean
   onDelete?: (pointId: string) => void
+  onToggleLock?: (pointId: string) => void
 }
 
 const MediaPreview = ({
@@ -125,10 +128,13 @@ export function PointDetail({
   onShowMedia,
   editable = false,
   onDelete,
+  onToggleLock,
 }: PointDetailProps) {
   const media = resolvePointMedia(point, mediaLibrary)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const canDelete = editable && Boolean(onDelete) && Boolean(point.id)
+  const canLock = editable && Boolean(onToggleLock) && Boolean(point.id)
+  const isLocked = point.locked !== false
 
   return (
     <div className="panel-content">
@@ -192,6 +198,33 @@ export function PointDetail({
           <ExternalLink aria-hidden="true" size={17} />
           Ouvrir SkyPixel
         </a>
+      ) : null}
+
+      {canLock ? (
+        <button
+          className={
+            isLocked
+              ? 'secondary-action lock-action'
+              : 'secondary-action lock-action unlocked'
+          }
+          type="button"
+          aria-pressed={!isLocked}
+          onClick={() => {
+            if (point.id) onToggleLock?.(point.id)
+          }}
+        >
+          {isLocked ? (
+            <>
+              <Lock aria-hidden="true" size={16} />
+              Verrouillé · déverrouiller pour déplacer
+            </>
+          ) : (
+            <>
+              <LockOpen aria-hidden="true" size={16} />
+              Déverrouillé · glisser sur la carte
+            </>
+          )}
+        </button>
       ) : null}
 
       {canDelete ? (

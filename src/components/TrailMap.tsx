@@ -368,15 +368,19 @@ export function TrailMap({
 
       if (point?.id && entity) {
         cancelLongPress()
-        draggedPoint = {
-          pointerId: event.pointerId,
-          point,
-          entity,
-          position: null,
+        // Verrou par défaut : on ne déplace que les points déverrouillés.
+        // Sinon on laisse le clic ouvrir la fiche / la photo.
+        if (point.locked === false) {
+          draggedPoint = {
+            pointerId: event.pointerId,
+            point,
+            entity,
+            position: null,
+          }
+          controller.enableInputs = false
+          canvas.setPointerCapture?.(event.pointerId)
+          canvas.style.cursor = 'grabbing'
         }
-        controller.enableInputs = false
-        canvas.setPointerCapture?.(event.pointerId)
-        canvas.style.cursor = 'grabbing'
         return
       }
 
