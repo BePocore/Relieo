@@ -71,6 +71,10 @@
   color: var(--accent-ink);
   background: linear-gradient(160deg, var(--accent), var(--accent-strong));
   box-shadow: 0 6px 18px rgba(60, 220, 140, 0.28);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 
 .eyebrow {

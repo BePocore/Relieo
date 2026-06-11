@@ -125,11 +125,8 @@ const studioUrl = (): string => {
   return url.toString()
 }
 
-// Geste secret pour ouvrir le Studio : 3 appuis sur le titre puis 2 sur le
-// bouton « Lien », le tout en moins de 10 secondes.
-const secretSequence = ['title', 'title', 'title', 'copy', 'copy'] as const
-type SecretTap = (typeof secretSequence)[number]
-const secretWindowMs = 10_000
+// Accès Studio caché : appui long sur le logo (boussole).
+const studioLongPressMs = 1_500
 
 const storedBasemap = (): BasemapId => {
   const stored = window.localStorage.getItem('trail-basemap')
@@ -451,23 +448,20 @@ function App() {
     setRecenterRequest((current) => current + 1)
   }, [])
 
-  const secretTapsRef = useRef<Array<{ type: SecretTap; t: number }>>([])
+  const logoPressTimer = useRef<number | null>(null)
 
-  const registerSecretTap = useCallback((type: SecretTap) => {
-    const now = Date.now()
-    const recent = secretTapsRef.current
-      .filter((tap) => now - tap.t < secretWindowMs)
-      .concat({ type, t: now })
-      .slice(-secretSequence.length)
-    secretTapsRef.current = recent
-
-    const matches =
-      recent.length === secretSequence.length &&
-      recent.every((tap, index) => tap.type === secretSequence[index])
-
-    if (matches) {
-      secretTapsRef.current = []
+  const handleLogoPressStart = useCallback(() => {
+    if (logoPressTimer.current !== null) return
+    logoPressTimer.current = window.setTimeout(() => {
+      logoPressTimer.current = null
       window.location.assign(studioUrl())
+    }, studioLongPressMs)
+  }, [])
+
+  const handleLogoPressEnd = useCallback(() => {
+    if (logoPressTimer.current !== null) {
+      window.clearTimeout(logoPressTimer.current)
+      logoPressTimer.current = null
     }
   }, [])
 
@@ -914,14 +908,18 @@ function App() {
     <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
       <header className="topbar">
         <div className="brand">
-          <span className="brand-icon">
+          <span
+            className="brand-icon"
+            onPointerDown={handleLogoPressStart}
+            onPointerUp={handleLogoPressEnd}
+            onPointerLeave={handleLogoPressEnd}
+            onPointerCancel={handleLogoPressEnd}
+          >
             <Compass aria-hidden="true" size={22} />
           </span>
           <div>
             <p className="eyebrow">Carnet de randonnée</p>
-            <h1 className="brand-title" onClick={() => registerSecretTap('title')}>
-              Randonnée 3D
-            </h1>
+            <h1 className="brand-title">Randonnée 3D</h1>
           </div>
         </div>
         <div className="topbar-tools">
@@ -935,10 +933,7 @@ function App() {
               className={copied ? 'copy-link-button copied' : 'copy-link-button'}
               title="Copier le lien"
               type="button"
-              onClick={() => {
-                registerSecretTap('copy')
-                void handleCopyLink()
-              }}
+              onClick={() => void handleCopyLink()}
             >
               {copied ? (
                 <Check aria-hidden="true" size={16} />

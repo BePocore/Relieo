@@ -668,11 +668,11 @@ export function TrailMap({
       35,
     )
     viewer.camera.flyToBoundingSphere(target, {
-      duration: 0,
+      duration: 1.1,
       offset: new HeadingPitchRange(
         viewer.camera.heading,
         CesiumMath.toRadians(-45),
-        900,
+        2_800,
       ),
     })
     viewer.scene.requestRender()
