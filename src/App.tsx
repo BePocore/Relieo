@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { upload } from '@vercel/blob/client'
 import {
+  Check,
   Compass,
+  Copy,
   List,
   LocateFixed,
   LoaderCircle,
   Minus,
   Mountain,
+  Play,
   Plus,
   RotateCcw,
   RotateCw,
+  Square,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -136,6 +140,8 @@ function App() {
   )
   const [trackSourceName, setTrackSourceName] = useState('/data/trace.gpx')
   const [pointsSourceName, setPointsSourceName] = useState('/data/points.json')
+  const [isTourActive, setIsTourActive] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const loadTrail = async () => {
@@ -219,6 +225,26 @@ function App() {
   }, [])
 
   const stats = useMemo(() => computeTrailStats(track), [track])
+
+  // Durée estimée selon la formule de Naismith.
+  const hikingTime = useMemo(() => {
+    const distanceKm = stats.distanceMeters / 1000
+    if (!Number.isFinite(distanceKm) || distanceKm <= 0) return null
+
+    const gain = Number.isFinite(stats.elevationGainMeters)
+      ? Math.max(stats.elevationGainMeters, 0)
+      : 0
+    const totalMinutes = Math.round((distanceKm / 5) * 60 + (gain / 300) * 30)
+
+    if (totalMinutes < 60) return `${totalMinutes} min`
+
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    return minutes > 0
+      ? `${hours} h ${String(minutes).padStart(2, '0')}`
+      : `${hours} h`
+  }, [stats])
+
   const mediaPoints = useMemo(
     () =>
       points.filter(
@@ -257,6 +283,26 @@ function App() {
 
   const handleRecenter = useCallback(() => {
     setRecenterRequest((current) => current + 1)
+  }, [])
+
+  const handleCopyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(
+        window.location.origin + publicUrl(),
+      )
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError('Copie du lien impossible.')
+    }
+  }, [])
+
+  const handleToggleTour = useCallback(() => {
+    setIsTourActive((current) => !current)
+  }, [])
+
+  const handleTourStop = useCallback(() => {
+    setIsTourActive(false)
   }, [])
 
   const sendCameraCommand = useCallback((type: CameraCommand['type']) => {
@@ -520,8 +566,27 @@ function App() {
             <a className="mode-link" href={publicUrl()}>
               Voir la consultation
             </a>
-          ) : null}
-          <StatsBar stats={stats} pointCount={points.length} />
+          ) : (
+            <button
+              aria-label="Copier le lien de la carte"
+              className={copied ? 'copy-link-button copied' : 'copy-link-button'}
+              title="Copier le lien"
+              type="button"
+              onClick={() => void handleCopyLink()}
+            >
+              {copied ? (
+                <Check aria-hidden="true" size={16} />
+              ) : (
+                <Copy aria-hidden="true" size={16} />
+              )}
+              <span>{copied ? 'Copié !' : 'Lien'}</span>
+            </button>
+          )}
+          <StatsBar
+            stats={stats}
+            pointCount={points.length}
+            hikingTime={hikingTime}
+          />
         </div>
       </header>
 
@@ -531,6 +596,13 @@ function App() {
             <div className="status-banner" role="alert">
               <TriangleAlert aria-hidden="true" size={18} />
               <span>{error}</span>
+            </div>
+          ) : null}
+
+          {isTourActive ? (
+            <div className="tour-indicator" role="status">
+              <span className="tour-dot" aria-hidden="true" />
+              <span>Tour automatique en cours</span>
             </div>
           ) : null}
 
@@ -554,6 +626,29 @@ function App() {
             >
               <LocateFixed aria-hidden="true" size={18} />
               <span>Recentrer</span>
+            </button>
+            <button
+              aria-label={
+                isTourActive
+                  ? 'Arrêter le tour automatique'
+                  : 'Lancer le tour automatique'
+              }
+              aria-pressed={isTourActive}
+              className={
+                isTourActive
+                  ? 'map-tool-button tour-active'
+                  : 'map-tool-button'
+              }
+              title={isTourActive ? 'Arrêter le tour' : 'Tour automatique'}
+              type="button"
+              onClick={handleToggleTour}
+            >
+              {isTourActive ? (
+                <Square aria-hidden="true" size={16} fill="currentColor" />
+              ) : (
+                <Play aria-hidden="true" size={18} fill="currentColor" />
+              )}
+              <span>{isTourActive ? 'Stop' : 'Tour'}</span>
             </button>
             <button
               aria-label={isStudioMode ? 'Ouvrir le studio' : 'Voir le parcours'}
@@ -617,6 +712,8 @@ function App() {
               selectedPoint={selectedPoint}
               cameraCommand={cameraCommand}
               editable={isStudioMode}
+              isTourActive={isTourActive}
+              onTourStop={handleTourStop}
               onMovePoint={handleMovePoint}
               onSelectPoint={handleSelectPoint}
             />
@@ -687,6 +784,7 @@ function App() {
                   track={track}
                   stats={stats}
                   mediaLibrary={mediaLibrary}
+                  hikingTime={hikingTime}
                   onSelectPoint={handleSelectPoint}
                   onClose={handleClosePoint}
                 />

@@ -44,6 +44,8 @@ type TrailMapProps = {
   selectedPoint: TrailPoint | null
   cameraCommand: CameraCommand | null
   editable?: boolean
+  isTourActive?: boolean
+  onTourStop?: () => void
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onSelectPoint: (point: TrailPoint) => void
 }
@@ -151,6 +153,8 @@ export function TrailMap({
   selectedPoint,
   cameraCommand,
   editable = false,
+  isTourActive = false,
+  onTourStop,
   onMovePoint,
   onSelectPoint,
 }: TrailMapProps) {
@@ -159,6 +163,7 @@ export function TrailMap({
   const pointsByEntityId = useRef(new Map<string, TrailPoint>())
   const onSelectPointRef = useRef(onSelectPoint)
   const onMovePointRef = useRef(onMovePoint)
+  const onTourStopRef = useRef(onTourStop)
   const editableRef = useRef(editable)
   const selectedKeyRef = useRef<string | null>(null)
   const didInitialFitRef = useRef(false)
@@ -166,8 +171,9 @@ export function TrailMap({
   useEffect(() => {
     onSelectPointRef.current = onSelectPoint
     onMovePointRef.current = onMovePoint
+    onTourStopRef.current = onTourStop
     editableRef.current = editable
-  }, [editable, onMovePoint, onSelectPoint])
+  }, [editable, onMovePoint, onSelectPoint, onTourStop])
 
   useEffect(() => {
     const container = containerRef.current
@@ -549,6 +555,26 @@ export function TrailMap({
     }
     viewer.scene.requestRender()
   }, [cameraCommand])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed() || !isTourActive) return
+
+    const interval = window.setInterval(() => {
+      if (viewer.isDestroyed()) return
+      viewer.camera.lookRight(0.003)
+      viewer.scene.requestRender()
+    }, 50)
+
+    const canvas = viewer.scene.canvas
+    const stopTour = () => onTourStopRef.current?.()
+    canvas.addEventListener('pointerdown', stopTour)
+
+    return () => {
+      window.clearInterval(interval)
+      canvas.removeEventListener('pointerdown', stopTour)
+    }
+  }, [isTourActive])
 
   useEffect(() => {
     const viewer = viewerRef.current

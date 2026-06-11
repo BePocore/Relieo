@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   Camera,
+  Cloud,
   Download,
   FileJson,
   FileUp,
@@ -10,7 +11,6 @@ import {
   LockKeyhole,
   Mountain,
   Plus,
-  Save,
   UploadCloud,
   Video,
 } from 'lucide-react'
@@ -404,9 +404,9 @@ export function StudioPanel({
 
   return (
     <div className="panel-content studio-panel">
-      <div className="panel-heading">
+      <div className="panel-heading studio-heading">
         <div>
-          <p className="eyebrow">Studio</p>
+          <span className="studio-badge">Studio</span>
           <h2>Préparer la randonnée</h2>
         </div>
         <Mountain aria-hidden="true" size={22} />
@@ -429,12 +429,12 @@ export function StudioPanel({
           />
         </label>
         <button
-          className="secondary-action"
+          className="primary-action"
           disabled={!adminPassword || isSaving || isUploading}
           type="button"
           onClick={() => void onSaveProject()}
         >
-          <Save aria-hidden="true" size={17} />
+          <Cloud aria-hidden="true" size={17} />
           {isSaving ? 'Publication...' : 'Publier en ligne'}
         </button>
         {saveStatus ? <p className="save-status">{saveStatus}</p> : null}
