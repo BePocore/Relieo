@@ -385,17 +385,45 @@ function App() {
   const stats = useMemo(() => combineStats(traces), [traces])
   const videoPosters = useVideoPosters(points, mediaLibrary)
 
-  const mediaPoints = useMemo(
-    () =>
-      points.filter(
-        (point) =>
-          point.type === 'photo' ||
-          point.type === 'video' ||
-          point.type === '360' ||
-          Boolean(point.image || point.video || point.skypixelUrl),
-      ),
-    [points],
-  )
+  const mediaPoints = useMemo(() => {
+    const filtered = points.filter(
+      (point) =>
+        point.type === 'photo' ||
+        point.type === 'video' ||
+        point.type === '360' ||
+        Boolean(point.image || point.video || point.skypixelUrl),
+    )
+
+    // Route avec distance cumulée continue (trace 1 puis trace 2 ...).
+    const route: Array<{ lat: number; lng: number; cum: number }> = []
+    let cum = 0
+    for (const trace of traces) {
+      trace.points.forEach((tracePoint, index) => {
+        if (index > 0) cum += distanceBetween(trace.points[index - 1], tracePoint)
+        route.push({ lat: tracePoint.lat, lng: tracePoint.lng, cum })
+      })
+    }
+    if (route.length === 0) return filtered
+
+    // Clé de tri = distance le long du tracé du point de route le plus proche.
+    const orderKey = (point: TrailPoint): number => {
+      let nearest = Number.POSITIVE_INFINITY
+      let key = 0
+      for (const routePoint of route) {
+        const d = distanceBetween(point, routePoint)
+        if (d < nearest) {
+          nearest = d
+          key = routePoint.cum
+        }
+      }
+      return key
+    }
+
+    return filtered
+      .map((point) => ({ point, key: orderKey(point) }))
+      .sort((a, b) => a.key - b.key)
+      .map((entry) => entry.point)
+  }, [points, traces])
 
   const handleSelectPoint = useCallback((point: TrailPoint) => {
     setSelectedPoint(point)
