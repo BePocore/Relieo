@@ -49,7 +49,6 @@ import type {
 import { MediaLightbox } from './components/MediaLightbox'
 import { AccessGate } from './components/AccessGate'
 import { useVideoPosters } from './useVideoPosters'
-import { useFramedThumbnails } from './useFramedThumbnails'
 
 export type LightboxMedia = {
   src: string
@@ -388,8 +387,6 @@ function App() {
   )
   const stats = useMemo(() => combineStats(traces), [traces])
   const videoPosters = useVideoPosters(points, mediaLibrary)
-  const framedThumbnails = useFramedThumbnails(points, mediaLibrary, videoPosters)
-
   const mediaPoints = useMemo(() => {
     const filtered = points.filter(
       (point) =>
@@ -1108,7 +1105,6 @@ function App() {
               cameraCommand={cameraCommand}
               editable={isStudioMode}
               videoPosters={videoPosters}
-              framedThumbnails={framedThumbnails}
               onMovePoint={handleMovePoint}
               onCreatePoint={handleCreatePoint}
               onMarkerClick={handleMarkerClick}

@@ -48,7 +48,6 @@ type TrailMapProps = {
   cameraCommand: CameraCommand | null
   editable?: boolean
   videoPosters?: Record<string, string>
-  framedThumbnails?: Record<string, string>
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onCreatePoint?: (lat: number, lng: number) => void
   onMarkerClick: (point: TrailPoint) => void
@@ -213,7 +212,6 @@ export function TrailMap({
   cameraCommand,
   editable = false,
   videoPosters = {},
-  framedThumbnails = {},
   onMovePoint,
   onCreatePoint,
   onMarkerClick,
@@ -233,7 +231,6 @@ export function TrailMap({
   const didInitialFitRef = useRef(false)
   const mediaLibraryRef = useRef(mediaLibrary)
   const videoPostersRef = useRef(videoPosters)
-  const framedThumbnailsRef = useRef(framedThumbnails)
 
   useEffect(() => {
     onMarkerClickRef.current = onMarkerClick
@@ -243,8 +240,7 @@ export function TrailMap({
     editableRef.current = editable
     mediaLibraryRef.current = mediaLibrary
     videoPostersRef.current = videoPosters
-    framedThumbnailsRef.current = framedThumbnails
-  }, [editable, onMovePoint, onCreatePoint, onMarkerClick, onOpenGroup, mediaLibrary, videoPosters, framedThumbnails])
+  }, [editable, onMovePoint, onCreatePoint, onMarkerClick, onOpenGroup, mediaLibrary, videoPosters])
 
   useEffect(() => {
     const container = containerRef.current
@@ -504,13 +500,12 @@ export function TrailMap({
           : undefined
         const poster = media?.kind === 'video' ? videoPostersRef.current[media.src] : undefined
         const thumbnailSrc = media?.kind === 'image' ? media.src : poster
-        const framed = thumbnailSrc ? framedThumbnailsRef.current[thumbnailSrc] : undefined
 
         cluster.billboard.show = true
-        cluster.billboard.image = framed ?? clusterStackUri
-        cluster.billboard.width = framed ? thumbnailFrameWidth : 56
-        cluster.billboard.height = framed ? thumbnailFrameHeight : 52
-        cluster.billboard.verticalOrigin = framed ? VerticalOrigin.BOTTOM : VerticalOrigin.CENTER
+        cluster.billboard.image = thumbnailSrc ?? clusterStackUri
+        cluster.billboard.width = thumbnailSrc ? thumbnailFrameWidth : 56
+        cluster.billboard.height = thumbnailSrc ? thumbnailFrameHeight : 52
+        cluster.billboard.verticalOrigin = thumbnailSrc ? VerticalOrigin.BOTTOM : VerticalOrigin.CENTER
         cluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY
         cluster.label.show = true
         cluster.label.text = String(clustered.length)
@@ -521,7 +516,7 @@ export function TrailMap({
         cluster.label.style = LabelStyle.FILL_AND_OUTLINE
         cluster.label.showBackground = false
         // Badge en haut à droite de la vignette
-        cluster.label.pixelOffset = framed
+        cluster.label.pixelOffset = thumbnailSrc
           ? new Cartesian2(thumbnailFrameWidth / 2 - 10, -(thumbnailFrameHeight - 12))
           : new Cartesian2(2, 4)
         cluster.label.verticalOrigin = VerticalOrigin.CENTER
@@ -661,7 +656,6 @@ export function TrailMap({
       const poster =
         media?.kind === 'video' ? videoPosters[media.src] : undefined
       const thumbnailSrc = media?.kind === 'image' ? media.src : poster
-      const framed = thumbnailSrc ? framedThumbnails[thumbnailSrc] : undefined
       const showThumbnail = Boolean(thumbnailSrc)
       const position = Cartesian3.fromDegrees(point.lng, point.lat, 0)
 
@@ -671,7 +665,7 @@ export function TrailMap({
         position,
         billboard: {
           image: showThumbnail
-            ? framed ?? (thumbnailSrc as string)
+            ? (thumbnailSrc as string)
             : point.color
               ? coloredMarkerDataUri(point.color)
               : markerDataUri(point.type),
@@ -690,7 +684,7 @@ export function TrailMap({
       didInitialFitRef.current = true
       flyToTrail(viewer, track, points, 0)
     }
-  }, [mediaLibrary, points, track, traces, videoPosters, framedThumbnails])
+  }, [mediaLibrary, points, track, traces, videoPosters])
 
   useEffect(() => {
     const viewer = viewerRef.current
