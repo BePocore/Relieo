@@ -29,10 +29,9 @@ import {
   type Entity,
 } from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
-import type { ImportedMedia, Trace, TrailPoint, TrackPoint } from '../types'
+import type { Trace, TrailPoint, TrackPoint } from '../types'
 import { simplifyTrack } from '../lib/geo'
 import { markerDataUri } from '../lib/markers'
-import { resolvePointMedia } from '../lib/media'
 import { cesiumIonToken, useWorldTerrain } from '../lib/terrain'
 import type { BasemapId } from '../lib/basemaps'
 
@@ -41,14 +40,11 @@ if (cesiumIonToken) Ion.defaultAccessToken = cesiumIonToken
 type TrailMapProps = {
   traces: Trace[]
   points: TrailPoint[]
-  mediaLibrary: ImportedMedia[]
   basemap: BasemapId
   recenterRequest: number
   selectedPoint: TrailPoint | null
   cameraCommand: CameraCommand | null
   editable?: boolean
-  videoPosters?: Record<string, string>
-  framedThumbnails?: Record<string, string>
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onCreatePoint?: (lat: number, lng: number) => void
   onMarkerClick: (point: TrailPoint) => void
@@ -113,8 +109,6 @@ export const coloredMarkerDataUri = (color: string): string => {
 const combineTracePoints = (traces: Trace[]): TrackPoint[] =>
   traces.flatMap((trace) => trace.points)
 
-const thumbnailFrameWidth = 84
-const thumbnailFrameHeight = 64
 const thumbnailScaleByDistance = new NearFarScalar(1_000, 1, 160_000, 0.6)
 const arcGisTerrainUrl =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
@@ -206,14 +200,11 @@ const createBaseLayer = (basemap: BasemapId): ImageryLayer => {
 export function TrailMap({
   traces,
   points,
-  mediaLibrary,
   basemap,
   recenterRequest,
   selectedPoint,
   cameraCommand,
   editable = false,
-  videoPosters = {},
-  framedThumbnails = {},
   onMovePoint,
   onCreatePoint,
   onMarkerClick,
@@ -631,12 +622,6 @@ export function TrailMap({
     points.forEach((point, index) => {
       const id = pointEntityId(point, index)
       pointsByEntityId.current.set(id, point)
-      const media = resolvePointMedia(point, mediaLibrary)
-      const poster =
-        media?.kind === 'video' ? videoPosters[media.src] : undefined
-      const thumbnailSrc = media?.kind === 'image' ? media.src : poster
-      const framed = thumbnailSrc ? framedThumbnails[thumbnailSrc] : undefined
-      const showThumbnail = Boolean(thumbnailSrc)
       const position = Cartesian3.fromDegrees(point.lng, point.lat, 0)
 
       pointSource.entities.add({
@@ -644,13 +629,11 @@ export function TrailMap({
         name: point.title,
         position,
         billboard: {
-          image: showThumbnail
-            ? framed ?? (thumbnailSrc as string)
-            : point.color
-              ? coloredMarkerDataUri(point.color)
-              : markerDataUri(point.type),
-          width: showThumbnail ? thumbnailFrameWidth : 42,
-          height: showThumbnail ? thumbnailFrameHeight : 50,
+          image: point.color
+            ? coloredMarkerDataUri(point.color)
+            : markerDataUri(point.type),
+          width: 42,
+          height: 50,
           verticalOrigin: VerticalOrigin.BOTTOM,
           heightReference,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -664,7 +647,7 @@ export function TrailMap({
       didInitialFitRef.current = true
       flyToTrail(viewer, track, points, 0)
     }
-  }, [mediaLibrary, points, track, traces, videoPosters, framedThumbnails])
+  }, [points, track, traces])
 
   useEffect(() => {
     const viewer = viewerRef.current
