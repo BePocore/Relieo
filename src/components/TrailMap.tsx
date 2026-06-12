@@ -13,6 +13,7 @@ import {
   EllipsoidTerrainProvider,
   HeadingPitchRange,
   HeightReference,
+  HorizontalOrigin,
   ImageryLayer,
   Ion,
   KeyboardEventModifier,
@@ -33,6 +34,12 @@ import type { ImportedMedia, Trace, TrailPoint, TrackPoint } from '../types'
 import { simplifyTrack } from '../lib/geo'
 import { markerDataUri } from '../lib/markers'
 import { resolvePointMedia } from '../lib/media'
+import {
+  framedCanvasHeight,
+  framedCanvasWidth,
+  framedCardWidth,
+  framedPad,
+} from '../useFramedThumbnails'
 import { cesiumIonToken, useWorldTerrain } from '../lib/terrain'
 import type { BasemapId } from '../lib/basemaps'
 
@@ -48,6 +55,7 @@ type TrailMapProps = {
   cameraCommand: CameraCommand | null
   editable?: boolean
   videoPosters?: Record<string, string>
+  framedThumbnails?: Record<string, string>
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onCreatePoint?: (lat: number, lng: number) => void
   onMarkerClick: (point: TrailPoint) => void
@@ -112,9 +120,11 @@ export const coloredMarkerDataUri = (color: string): string => {
 const combineTracePoints = (traces: Trace[]): TrackPoint[] =>
   traces.flatMap((trace) => trace.points)
 
-const thumbnailFrameWidth = 84
-const thumbnailFrameHeight = 64
-const thumbnailScaleByDistance = new NearFarScalar(1_000, 1, 160_000, 0.6)
+// Billboard dimensionné sur le canvas de la vignette encadrée (carte + ancrage).
+const thumbnailFrameWidth = framedCanvasWidth
+const thumbnailFrameHeight = framedCanvasHeight
+// Échelle plus stable selon le zoom (1 → 0.85) pour des vignettes homogènes.
+const thumbnailScaleByDistance = new NearFarScalar(1_000, 1, 160_000, 0.85)
 const arcGisTerrainUrl =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
 
@@ -212,6 +222,7 @@ export function TrailMap({
   cameraCommand,
   editable = false,
   videoPosters = {},
+  framedThumbnails = {},
   onMovePoint,
   onCreatePoint,
   onMarkerClick,
@@ -232,6 +243,7 @@ export function TrailMap({
   const didInitialFitRef = useRef(false)
   const mediaLibraryRef = useRef(mediaLibrary)
   const videoPostersRef = useRef(videoPosters)
+  const framedThumbnailsRef = useRef(framedThumbnails)
 
   useEffect(() => {
     onMarkerClickRef.current = onMarkerClick
@@ -241,7 +253,8 @@ export function TrailMap({
     editableRef.current = editable
     mediaLibraryRef.current = mediaLibrary
     videoPostersRef.current = videoPosters
-  }, [editable, onMovePoint, onCreatePoint, onMarkerClick, onOpenGroup, mediaLibrary, videoPosters])
+    framedThumbnailsRef.current = framedThumbnails
+  }, [editable, onMovePoint, onCreatePoint, onMarkerClick, onOpenGroup, mediaLibrary, videoPosters, framedThumbnails])
 
   useEffect(() => {
     const container = containerRef.current
@@ -501,27 +514,40 @@ export function TrailMap({
           : undefined
         const poster = media?.kind === 'video' ? videoPostersRef.current[media.src] : undefined
         const thumbnailSrc = media?.kind === 'image' ? media.src : poster
+        const framed = thumbnailSrc ? framedThumbnailsRef.current[thumbnailSrc] : undefined
 
         cluster.billboard.show = true
-        cluster.billboard.image = thumbnailSrc ?? clusterStackUri
-        cluster.billboard.width = thumbnailSrc ? thumbnailFrameWidth : 56
-        cluster.billboard.height = thumbnailSrc ? thumbnailFrameHeight : 52
-        cluster.billboard.verticalOrigin = thumbnailSrc ? VerticalOrigin.BOTTOM : VerticalOrigin.CENTER
+        cluster.billboard.image = framed ?? clusterStackUri
+        cluster.billboard.width = framed ? thumbnailFrameWidth : 56
+        cluster.billboard.height = framed ? thumbnailFrameHeight : 52
+        cluster.billboard.verticalOrigin = framed ? VerticalOrigin.BOTTOM : VerticalOrigin.CENTER
         cluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY
+        if (framed) cluster.billboard.scaleByDistance = thumbnailScaleByDistance
+
+        // Pastille ronde de comptage, collée au coin haut-droit de la carte
+        // et mise à l'échelle avec la vignette (reste accrochée à tous zooms).
         cluster.label.show = true
         cluster.label.text = String(clustered.length)
-        cluster.label.font = '800 14px Inter, system-ui, sans-serif'
+        cluster.label.font = '700 13px Inter, system-ui, sans-serif'
         cluster.label.fillColor = Color.WHITE
-        cluster.label.outlineColor = Color.fromCssColorString('#0c1512')
-        cluster.label.outlineWidth = 3
-        cluster.label.style = LabelStyle.FILL_AND_OUTLINE
-        cluster.label.showBackground = false
-        // Badge en haut à droite de la vignette
-        cluster.label.pixelOffset = thumbnailSrc
-          ? new Cartesian2(thumbnailFrameWidth / 2 - 10, -(thumbnailFrameHeight - 12))
-          : new Cartesian2(2, 4)
+        cluster.label.style = LabelStyle.FILL
+        cluster.label.showBackground = true
+        cluster.label.backgroundColor = Color.fromCssColorString('#0c1512').withAlpha(0.92)
+        cluster.label.backgroundPadding = new Cartesian2(7, 5)
+        cluster.label.horizontalOrigin = HorizontalOrigin.CENTER
         cluster.label.verticalOrigin = VerticalOrigin.CENTER
         cluster.label.disableDepthTestDistance = Number.POSITIVE_INFINITY
+        if (framed) {
+          // Repère = bas-centre du canvas ; coin haut-droit de la carte au-dessus.
+          cluster.label.pixelOffset = new Cartesian2(
+            framedCardWidth / 2 - 2,
+            -(framedCanvasHeight - framedPad - 4),
+          )
+          cluster.label.scaleByDistance = thumbnailScaleByDistance
+          cluster.label.pixelOffsetScaleByDistance = thumbnailScaleByDistance
+        } else {
+          cluster.label.pixelOffset = new Cartesian2(0, 0)
+        }
       },
     )
     pointSourceRef.current = pointSource
@@ -666,7 +692,10 @@ export function TrailMap({
       const poster =
         media?.kind === 'video' ? videoPosters[media.src] : undefined
       const thumbnailSrc = media?.kind === 'image' ? media.src : poster
-      const showThumbnail = Boolean(thumbnailSrc)
+      // On n'affiche la carte média que lorsque sa version encadrée est prête,
+      // sinon on garde le pin (évite une vignette brute sans cadre/ancrage).
+      const framed = thumbnailSrc ? framedThumbnails[thumbnailSrc] : undefined
+      const showThumbnail = Boolean(framed)
       const position = Cartesian3.fromDegrees(point.lng, point.lat, 0)
 
       const target = showThumbnail ? pointSource : poiSource
@@ -676,7 +705,7 @@ export function TrailMap({
         position,
         billboard: {
           image: showThumbnail
-            ? (thumbnailSrc as string)
+            ? (framed as string)
             : point.color
               ? coloredMarkerDataUri(point.color)
               : markerDataUri(point.type),
@@ -695,7 +724,7 @@ export function TrailMap({
       didInitialFitRef.current = true
       flyToTrail(viewer, track, points, 0)
     }
-  }, [mediaLibrary, points, track, traces, videoPosters])
+  }, [mediaLibrary, points, track, traces, videoPosters, framedThumbnails])
 
   useEffect(() => {
     const viewer = viewerRef.current
