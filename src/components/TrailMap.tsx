@@ -221,6 +221,7 @@ export function TrailMap({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<Viewer | null>(null)
   const pointSourceRef = useRef<CustomDataSource | null>(null)
+  const poiSourceRef = useRef<CustomDataSource | null>(null)
   const pointsByEntityId = useRef(new Map<string, TrailPoint>())
   const onMarkerClickRef = useRef(onMarkerClick)
   const onMovePointRef = useRef(onMovePoint)
@@ -525,6 +526,12 @@ export function TrailMap({
     )
     pointSourceRef.current = pointSource
 
+    // Source dédiée aux pins POI : pas de clustering, toujours visibles à leur
+    // position exacte (ajoutée après la source média pour se dessiner au-dessus).
+    const poiSource = new CustomDataSource('poi')
+    void viewer.dataSources.add(poiSource)
+    poiSourceRef.current = poiSource
+
     viewer.screenSpaceEventHandler.setInputAction((movement: { position: Cartesian2 }) => {
       if (suppressClick) {
         suppressClick = false
@@ -587,6 +594,7 @@ export function TrailMap({
       container.replaceChildren()
       viewerRef.current = null
       pointSourceRef.current = null
+      poiSourceRef.current = null
     }
   }, [])
 
@@ -605,10 +613,12 @@ export function TrailMap({
   useEffect(() => {
     const viewer = viewerRef.current
     const pointSource = pointSourceRef.current
-    if (!viewer || viewer.isDestroyed() || !pointSource) return
+    const poiSource = poiSourceRef.current
+    if (!viewer || viewer.isDestroyed() || !pointSource || !poiSource) return
 
     viewer.entities.removeAll()
     pointSource.entities.removeAll()
+    poiSource.entities.removeAll()
     pointsByEntityId.current.clear()
 
     // Une polyligne colorée par trace (jour 1, jour 2, ...).
@@ -647,8 +657,8 @@ export function TrailMap({
       ? HeightReference.CLAMP_TO_GROUND
       : HeightReference.NONE
 
-    // Un seul billboard par point (cadre cuit dans la vignette) pour que le
-    // regroupement compte juste : groupe = N images quand ça se chevauche.
+    // Vignettes média → source clusterisée (se regroupent entre elles).
+    // Pins POI → source non clusterisée, toujours visibles à leur position.
     points.forEach((point, index) => {
       const id = pointEntityId(point, index)
       pointsByEntityId.current.set(id, point)
@@ -659,7 +669,8 @@ export function TrailMap({
       const showThumbnail = Boolean(thumbnailSrc)
       const position = Cartesian3.fromDegrees(point.lng, point.lat, 0)
 
-      pointSource.entities.add({
+      const target = showThumbnail ? pointSource : poiSource
+      target.entities.add({
         id,
         name: point.title,
         position,
