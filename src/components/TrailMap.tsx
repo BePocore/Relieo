@@ -52,6 +52,7 @@ type TrailMapProps = {
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onCreatePoint?: (lat: number, lng: number) => void
   onMarkerClick: (point: TrailPoint) => void
+  onOpenGroup?: (points: TrailPoint[]) => void
 }
 
 export type CameraCommand = {
@@ -216,6 +217,7 @@ export function TrailMap({
   onMovePoint,
   onCreatePoint,
   onMarkerClick,
+  onOpenGroup,
 }: TrailMapProps) {
   const track = useMemo(() => combineTracePoints(traces), [traces])
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -225,6 +227,7 @@ export function TrailMap({
   const onMarkerClickRef = useRef(onMarkerClick)
   const onMovePointRef = useRef(onMovePoint)
   const onCreatePointRef = useRef(onCreatePoint)
+  const onOpenGroupRef = useRef(onOpenGroup)
   const editableRef = useRef(editable)
   const selectedKeyRef = useRef<string | null>(null)
   const didInitialFitRef = useRef(false)
@@ -233,8 +236,9 @@ export function TrailMap({
     onMarkerClickRef.current = onMarkerClick
     onMovePointRef.current = onMovePoint
     onCreatePointRef.current = onCreatePoint
+    onOpenGroupRef.current = onOpenGroup
     editableRef.current = editable
-  }, [editable, onMovePoint, onCreatePoint, onMarkerClick])
+  }, [editable, onMovePoint, onCreatePoint, onMarkerClick, onOpenGroup])
 
   useEffect(() => {
     const container = containerRef.current
@@ -474,7 +478,7 @@ export function TrailMap({
     const pointSource = new CustomDataSource('points')
     void viewer.dataSources.add(pointSource)
     pointSource.clustering.enabled = true
-    pointSource.clustering.pixelRange = 44
+    pointSource.clustering.pixelRange = 30
     pointSource.clustering.minimumClusterSize = 2
     pointSource.clustering.clusterBillboards = true
     pointSource.clustering.clusterLabels = true
@@ -508,15 +512,29 @@ export function TrailMap({
       const picked = viewer.scene.pick(movement.position)
       const pickedId = picked?.id
 
-      // Clic sur un groupe : on zoome pour l'ouvrir.
+      // Clic sur un groupe : si les photos sont étalées on zoome, sinon
+      // (quasi même endroit) on ouvre la galerie pour les feuilleter.
       if (Array.isArray(pickedId)) {
-        const positions = (pickedId as Entity[])
+        const entities = pickedId as Entity[]
+        const positions = entities
           .map((entity) =>
             entity.position?.getValue(viewer.clock.currentTime) ?? null,
           )
           .filter((value): value is Cartesian3 => value !== null)
-        if (positions.length > 0) {
-          const sphere = BoundingSphere.fromPoints(positions)
+        if (positions.length === 0) return
+
+        const sphere = BoundingSphere.fromPoints(positions)
+        const groupPoints = entities
+          .map((entity) =>
+            defined(entity.id)
+              ? pointsByEntityId.current.get(entity.id as string)
+              : undefined,
+          )
+          .filter((value): value is TrailPoint => value !== undefined)
+
+        if (sphere.radius < 120) {
+          onOpenGroupRef.current?.(groupPoints)
+        } else {
           viewer.camera.flyToBoundingSphere(sphere, {
             duration: 0.9,
             offset: new HeadingPitchRange(

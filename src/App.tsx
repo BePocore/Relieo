@@ -260,7 +260,10 @@ function App() {
     null,
   )
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
-  const [lightboxMedia, setLightboxMedia] = useState<LightboxMedia | null>(null)
+  const [lightbox, setLightbox] = useState<{
+    items: LightboxMedia[]
+    index: number
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [adminPassword, setAdminPassword] = useState(() =>
@@ -437,11 +440,11 @@ function App() {
   }, [])
 
   const handleOpenLightbox = useCallback((media: LightboxMedia) => {
-    setLightboxMedia(media)
+    setLightbox({ items: [media], index: 0 })
   }, [])
 
   const handleCloseLightbox = useCallback(() => {
-    setLightboxMedia(null)
+    setLightbox(null)
   }, [])
 
   // Clic sur un marqueur : photo/vidéo en grand, sinon ouverture de la fiche.
@@ -449,16 +452,33 @@ function App() {
     (point: TrailPoint) => {
       const media = resolvePointMedia(point, mediaLibrary)
       if (media && (media.kind === 'image' || media.kind === 'video')) {
-        setLightboxMedia({
-          src: media.src,
-          kind: media.kind,
-          title: point.title,
+        setLightbox({
+          items: [{ src: media.src, kind: media.kind, title: point.title }],
+          index: 0,
         })
         return
       }
       handleSelectPoint(point)
     },
     [handleSelectPoint, mediaLibrary],
+  )
+
+  // Clic sur un groupe de vignettes : galerie des photos/vidéos du groupe.
+  const handleOpenGroup = useCallback(
+    (groupPoints: TrailPoint[]) => {
+      const items = groupPoints
+        .map((point): LightboxMedia | null => {
+          const media = resolvePointMedia(point, mediaLibrary)
+          if (!media || (media.kind !== 'image' && media.kind !== 'video')) {
+            return null
+          }
+          return { src: media.src, kind: media.kind, title: point.title }
+        })
+        .filter((item): item is LightboxMedia => item !== null)
+
+      if (items.length > 0) setLightbox({ items, index: 0 })
+    },
+    [mediaLibrary],
   )
 
   const handleAdminPasswordChange = useCallback((password: string) => {
@@ -1092,6 +1112,7 @@ function App() {
               onMovePoint={handleMovePoint}
               onCreatePoint={handleCreatePoint}
               onMarkerClick={handleMarkerClick}
+              onOpenGroup={handleOpenGroup}
             />
           )}
 
@@ -1181,8 +1202,12 @@ function App() {
         ) : null}
       </main>
 
-      {lightboxMedia ? (
-        <MediaLightbox media={lightboxMedia} onClose={handleCloseLightbox} />
+      {lightbox ? (
+        <MediaLightbox
+          items={lightbox.items}
+          startIndex={lightbox.index}
+          onClose={handleCloseLightbox}
+        />
       ) : null}
 
       {!isStudioMode && !isLoading && accessCode && !accessGranted ? (
