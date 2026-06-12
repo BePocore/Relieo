@@ -25,3 +25,6 @@ dist-ssr
 
 .vercel
 .env*
+
+# Claude Code — local machine settings (keep launch.json shared)
+.claude/settings.local.json
