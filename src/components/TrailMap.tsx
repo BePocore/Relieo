@@ -566,18 +566,10 @@ export function TrailMap({
       const picked = viewer.scene.pick(movement.position)
       const pickedId = picked?.id
 
-      // Clic sur un groupe : si les photos sont étalées on zoome, sinon
-      // (quasi même endroit) on ouvre la galerie pour les feuilleter.
+      // Clic sur un groupe (« 2 ») : on ouvre toujours la galerie pour
+      // feuilleter toutes les photos du groupe (flèches / swipe).
       if (Array.isArray(pickedId)) {
         const entities = pickedId as Entity[]
-        const positions = entities
-          .map((entity) =>
-            entity.position?.getValue(viewer.clock.currentTime) ?? null,
-          )
-          .filter((value): value is Cartesian3 => value !== null)
-        if (positions.length === 0) return
-
-        const sphere = BoundingSphere.fromPoints(positions)
         const groupPoints = entities
           .map((entity) =>
             defined(entity.id)
@@ -586,18 +578,7 @@ export function TrailMap({
           )
           .filter((value): value is TrailPoint => value !== undefined)
 
-        if (sphere.radius < 120) {
-          onOpenGroupRef.current?.(groupPoints)
-        } else {
-          viewer.camera.flyToBoundingSphere(sphere, {
-            duration: 0.9,
-            offset: new HeadingPitchRange(
-              viewer.camera.heading,
-              CesiumMath.toRadians(-55),
-              Math.max(sphere.radius * 3.2, 400),
-            ),
-          })
-        }
+        if (groupPoints.length > 0) onOpenGroupRef.current?.(groupPoints)
         return
       }
 

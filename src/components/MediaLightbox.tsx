@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type TouchEvent as ReactTouchEvent } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import type { LightboxMedia } from '../App'
 
@@ -20,6 +20,18 @@ export function MediaLightbox({
   const go = (delta: number) =>
     setIndex((current) => (current + delta + count) % count)
 
+  // Swipe horizontal (tactile) pour passer à la photo suivante / précédente.
+  const [touchStartX, setTouchStartX] = useState<number | null>(null)
+  const handleTouchStart = (event: ReactTouchEvent) => {
+    setTouchStartX(event.changedTouches[0]?.clientX ?? null)
+  }
+  const handleTouchEnd = (event: ReactTouchEvent) => {
+    if (touchStartX === null || count <= 1) return
+    const deltaX = (event.changedTouches[0]?.clientX ?? touchStartX) - touchStartX
+    if (Math.abs(deltaX) > 45) go(deltaX < 0 ? 1 : -1)
+    setTouchStartX(null)
+  }
+
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -40,6 +52,8 @@ export function MediaLightbox({
       aria-modal="true"
       aria-label={media.title ?? 'Média en grand'}
       onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
       <button
         className="lightbox-close"
