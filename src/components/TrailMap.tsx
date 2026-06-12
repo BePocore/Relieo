@@ -9,7 +9,7 @@ import {
   Cartographic,
   Color,
   ConstantPositionProperty,
-  DistanceDisplayCondition,
+  CustomDataSource,
   EllipsoidTerrainProvider,
   HeadingPitchRange,
   HeightReference,
@@ -48,6 +48,7 @@ type TrailMapProps = {
   cameraCommand: CameraCommand | null
   editable?: boolean
   videoPosters?: Record<string, string>
+  framedThumbnails?: Record<string, string>
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onCreatePoint?: (lat: number, lng: number) => void
   onMarkerClick: (point: TrailPoint) => void
@@ -85,16 +86,16 @@ export const paletteColors = [
 export const traceColor = (index: number): string =>
   paletteColors[index % paletteColors.length]
 
-// Au-delà de cette distance caméra, les vignettes laissent place à un point.
-const thumbnailNearMeters = 5_000
-
-// Petit point coloré affiché quand on est loin (vignettes masquées).
-const dotMarkerUri = (color: string): string => {
+// Icône d'un groupe de vignettes qui se chevauchent (pile de photos).
+const clusterStackUri = (() => {
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">` +
-    `<circle cx="9" cy="9" r="6.5" fill="${color}" stroke="#fff" stroke-width="2.5"/></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="52" viewBox="0 0 56 52">` +
+    `<rect x="16" y="4" width="34" height="26" rx="6" fill="#fff" stroke="rgba(8,14,11,0.32)" stroke-width="1.5"/>` +
+    `<rect x="10" y="11" width="36" height="28" rx="6" fill="#fff" stroke="rgba(8,14,11,0.34)" stroke-width="1.5"/>` +
+    `<rect x="5" y="19" width="40" height="30" rx="7" fill="#fff" stroke="rgba(8,14,11,0.4)" stroke-width="1.5"/>` +
+    `</svg>`
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
-}
+})()
 
 // Pin coloré pour un point personnalisé (sans glyphe de type).
 export const coloredMarkerDataUri = (color: string): string => {
@@ -111,23 +112,9 @@ export const coloredMarkerDataUri = (color: string): string => {
 const combineTracePoints = (traces: Trace[]): TrackPoint[] =>
   traces.flatMap((trace) => trace.points)
 
-const thumbnailWidth = 76
-const thumbnailHeight = 56
 const thumbnailFrameWidth = 84
 const thumbnailFrameHeight = 64
 const thumbnailScaleByDistance = new NearFarScalar(1_000, 1, 160_000, 0.6)
-
-// Cadre photo : bordure blanche au centre transparent, pour que la vignette
-// reste visible quel que soit l'ordre de rendu des billboards Cesium.
-const thumbnailFrameUri = (() => {
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="84" height="64" viewBox="0 0 84 64">' +
-    '<rect x="4" y="4" width="76" height="56" rx="9" fill="none" ' +
-    'stroke="#ffffff" stroke-width="6"/>' +
-    '<rect x="1.5" y="1.5" width="81" height="61" rx="11" fill="none" ' +
-    'stroke="rgba(8,14,11,0.32)" stroke-width="1.5"/></svg>'
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
-})()
 const arcGisTerrainUrl =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
 
@@ -225,6 +212,7 @@ export function TrailMap({
   cameraCommand,
   editable = false,
   videoPosters = {},
+  framedThumbnails = {},
   onMovePoint,
   onCreatePoint,
   onMarkerClick,
@@ -232,6 +220,7 @@ export function TrailMap({
   const track = useMemo(() => combineTracePoints(traces), [traces])
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<Viewer | null>(null)
+  const pointSourceRef = useRef<CustomDataSource | null>(null)
   const pointsByEntityId = useRef(new Map<string, TrailPoint>())
   const onMarkerClickRef = useRef(onMarkerClick)
   const onMovePointRef = useRef(onMovePoint)
@@ -393,6 +382,11 @@ export function TrailMap({
         event.clientY - rect.top,
       )
       const picked = viewer.scene.pick(screenPosition)
+      // Sur un groupe (cluster) : ni déplacement ni création de point.
+      if (Array.isArray(picked?.id)) {
+        cancelLongPress()
+        return
+      }
       const entity = picked?.id as Entity | undefined
       const point = defined(entity?.id)
         ? pointsByEntityId.current.get(entity.id)
@@ -476,13 +470,66 @@ export function TrailMap({
     canvas.addEventListener('pointerup', handlePointerUp)
     canvas.addEventListener('pointercancel', handlePointerUp)
 
+    // Source dédiée aux points, avec regroupement quand ça se chevauche.
+    const pointSource = new CustomDataSource('points')
+    void viewer.dataSources.add(pointSource)
+    pointSource.clustering.enabled = true
+    pointSource.clustering.pixelRange = 44
+    pointSource.clustering.minimumClusterSize = 2
+    pointSource.clustering.clusterBillboards = true
+    pointSource.clustering.clusterLabels = true
+    pointSource.clustering.clusterPoints = true
+    pointSource.clustering.clusterEvent.addEventListener(
+      (clustered, cluster) => {
+        cluster.billboard.show = true
+        cluster.billboard.image = clusterStackUri
+        cluster.billboard.width = 56
+        cluster.billboard.height = 52
+        cluster.billboard.verticalOrigin = VerticalOrigin.CENTER
+        cluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY
+        cluster.label.show = true
+        cluster.label.text = String(clustered.length)
+        cluster.label.font = '800 15px Inter, system-ui, sans-serif'
+        cluster.label.fillColor = Color.fromCssColorString('#0c1512')
+        cluster.label.style = LabelStyle.FILL
+        cluster.label.showBackground = false
+        cluster.label.pixelOffset = new Cartesian2(2, 4)
+        cluster.label.verticalOrigin = VerticalOrigin.CENTER
+        cluster.label.disableDepthTestDistance = Number.POSITIVE_INFINITY
+      },
+    )
+    pointSourceRef.current = pointSource
+
     viewer.screenSpaceEventHandler.setInputAction((movement: { position: Cartesian2 }) => {
       if (suppressClick) {
         suppressClick = false
         return
       }
       const picked = viewer.scene.pick(movement.position)
-      const entity = picked?.id as Entity | undefined
+      const pickedId = picked?.id
+
+      // Clic sur un groupe : on zoome pour l'ouvrir.
+      if (Array.isArray(pickedId)) {
+        const positions = (pickedId as Entity[])
+          .map((entity) =>
+            entity.position?.getValue(viewer.clock.currentTime) ?? null,
+          )
+          .filter((value): value is Cartesian3 => value !== null)
+        if (positions.length > 0) {
+          const sphere = BoundingSphere.fromPoints(positions)
+          viewer.camera.flyToBoundingSphere(sphere, {
+            duration: 0.9,
+            offset: new HeadingPitchRange(
+              viewer.camera.heading,
+              CesiumMath.toRadians(-55),
+              Math.max(sphere.radius * 3.2, 400),
+            ),
+          })
+        }
+        return
+      }
+
+      const entity = pickedId as Entity | undefined
       if (!defined(entity?.id)) return
       const point = pointsByEntityId.current.get(entity.id)
       if (point) onMarkerClickRef.current(point)
@@ -500,6 +547,7 @@ export function TrailMap({
       viewer.destroy()
       container.replaceChildren()
       viewerRef.current = null
+      pointSourceRef.current = null
     }
   }, [])
 
@@ -517,9 +565,11 @@ export function TrailMap({
 
   useEffect(() => {
     const viewer = viewerRef.current
-    if (!viewer || viewer.isDestroyed()) return
+    const pointSource = pointSourceRef.current
+    if (!viewer || viewer.isDestroyed() || !pointSource) return
 
     viewer.entities.removeAll()
+    pointSource.entities.removeAll()
     pointsByEntityId.current.clear()
 
     // Une polyligne colorée par trace (jour 1, jour 2, ...).
@@ -558,6 +608,8 @@ export function TrailMap({
       ? HeightReference.CLAMP_TO_GROUND
       : HeightReference.NONE
 
+    // Un seul billboard par point (cadre cuit dans la vignette) pour que le
+    // regroupement compte juste : groupe = N images quand ça se chevauche.
     points.forEach((point, index) => {
       const id = pointEntityId(point, index)
       pointsByEntityId.current.set(id, point)
@@ -565,94 +617,27 @@ export function TrailMap({
       const poster =
         media?.kind === 'video' ? videoPosters[media.src] : undefined
       const thumbnailSrc = media?.kind === 'image' ? media.src : poster
+      const framed = thumbnailSrc ? framedThumbnails[thumbnailSrc] : undefined
       const showThumbnail = Boolean(thumbnailSrc)
       const position = Cartesian3.fromDegrees(point.lng, point.lat, 0)
 
-      // Vignette visible de près ; au loin un simple point pour rester lisible
-      // quand plusieurs photos se chevauchent.
-      const nearCondition = new DistanceDisplayCondition(0, thumbnailNearMeters)
-      const farCondition = new DistanceDisplayCondition(
-        thumbnailNearMeters,
-        Number.MAX_VALUE,
-      )
-
-      if (showThumbnail) {
-        const frameId = `${id}-frame`
-        pointsByEntityId.current.set(frameId, point)
-        viewer.entities.add({
-          id: frameId,
-          position,
-          billboard: {
-            image: thumbnailFrameUri,
-            width: thumbnailFrameWidth,
-            height: thumbnailFrameHeight,
-            verticalOrigin: VerticalOrigin.BOTTOM,
-            pixelOffset: new Cartesian2(0, 4),
-            eyeOffset: new Cartesian3(0, 0, -1),
-            heightReference,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            scaleByDistance: thumbnailScaleByDistance,
-            distanceDisplayCondition: nearCondition,
-          },
-        })
-
-        // Point coloré affiché à la place de la vignette quand on est loin.
-        const dotId = `${id}-dot`
-        pointsByEntityId.current.set(dotId, point)
-        viewer.entities.add({
-          id: dotId,
-          position,
-          billboard: {
-            image: dotMarkerUri(point.color ?? '#3cdc8c'),
-            width: 16,
-            height: 16,
-            verticalOrigin: VerticalOrigin.CENTER,
-            heightReference,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            distanceDisplayCondition: farCondition,
-          },
-        })
-      }
-
-      viewer.entities.add({
+      pointSource.entities.add({
         id,
         name: point.title,
         position,
         billboard: {
           image: showThumbnail
-            ? (thumbnailSrc as string)
+            ? framed ?? (thumbnailSrc as string)
             : point.color
               ? coloredMarkerDataUri(point.color)
               : markerDataUri(point.type),
-          width: showThumbnail ? thumbnailWidth : 42,
-          height: showThumbnail ? thumbnailHeight : 50,
+          width: showThumbnail ? thumbnailFrameWidth : 42,
+          height: showThumbnail ? thumbnailFrameHeight : 50,
           verticalOrigin: VerticalOrigin.BOTTOM,
           heightReference,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
           scaleByDistance: thumbnailScaleByDistance,
-          ...(showThumbnail ? { distanceDisplayCondition: nearCondition } : {}),
         },
-        // Les vignettes photo n'affichent plus leur nom sur la carte.
-        ...(showThumbnail
-          ? {}
-          : {
-              label: {
-                text: point.title,
-                font: '700 13px Inter, system-ui, sans-serif',
-                fillColor: Color.WHITE,
-                outlineColor: Color.fromCssColorString('#111827'),
-                outlineWidth: 3,
-                style: LabelStyle.FILL_AND_OUTLINE,
-                showBackground: true,
-                backgroundColor: Color.fromCssColorString('rgba(17, 24, 39, 0.82)'),
-                backgroundPadding: new Cartesian2(8, 5),
-                pixelOffset: new Cartesian2(0, -57),
-                verticalOrigin: VerticalOrigin.BOTTOM,
-                heightReference,
-                disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                scaleByDistance: new NearFarScalar(1_000, 1, 150_000, 0.52),
-              },
-            }),
       })
     })
 
@@ -661,7 +646,7 @@ export function TrailMap({
       didInitialFitRef.current = true
       flyToTrail(viewer, track, points, 0)
     }
-  }, [mediaLibrary, points, track, traces, videoPosters])
+  }, [mediaLibrary, points, track, traces, videoPosters, framedThumbnails])
 
   useEffect(() => {
     const viewer = viewerRef.current
