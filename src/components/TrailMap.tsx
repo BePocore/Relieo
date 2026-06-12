@@ -521,6 +521,18 @@ export function TrailMap({
         const thumbnailSrc = media?.kind === 'image' ? media.src : poster
         const framed = thumbnailSrc ? framedThumbnailsRef.current[thumbnailSrc] : undefined
 
+        // Cesium ne met l'id du groupe que sur le label : on le copie sur le
+        // billboard pour que le clic sur la carte (pas juste le badge) ouvre
+        // la galerie.
+        cluster.billboard.id = clustered
+        // Même référence d'altitude que les vignettes individuelles, sinon le
+        // groupe flotte à l'altitude 0 et dérive au zoom sur le terrain 3D.
+        const clampReference = useWorldTerrain
+          ? HeightReference.CLAMP_TO_GROUND
+          : HeightReference.NONE
+        cluster.billboard.heightReference = clampReference
+        cluster.label.heightReference = clampReference
+
         cluster.billboard.show = true
         cluster.billboard.image = framed ?? clusterStackUri
         cluster.billboard.width = framed ? thumbnailFrameWidth : 56
