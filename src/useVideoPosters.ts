@@ -167,7 +167,14 @@ export function useVideoPosters(
     const sources = new Set<string>()
     for (const point of points) {
       const media = resolvePointMedia(point, mediaLibrary)
-      if (media?.kind === 'video') sources.add(media.src)
+      if (media?.kind === 'video') {
+        if (media.thumbnailSrc) {
+          posterCache.set(media.src, media.thumbnailSrc)
+          sources.add(media.src)
+        } else {
+          sources.add(media.src)
+        }
+      }
     }
 
     let cancelled = false

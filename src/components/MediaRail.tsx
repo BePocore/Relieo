@@ -40,7 +40,11 @@ export function MediaRail({
               <span className="media-tile-visual">
                 {media?.kind === 'image' || videoPoster ? (
                   <img
-                    src={media?.kind === 'image' ? media.src : videoPoster}
+                    src={
+                      media?.kind === 'image'
+                        ? (media.thumbnailSrc ?? media.src)
+                        : videoPoster
+                    }
                     alt=""
                     decoding="async"
                     loading="lazy"

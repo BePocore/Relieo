@@ -1,5 +1,6 @@
 import { get, put } from '@vercel/blob'
 import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
+import { hasR2Config, r2GetText, r2PutText } from '../server/r2.js'
 
 const projectPath = 'rando3d/project.json'
 
@@ -16,6 +17,19 @@ const isProjectPayload = (value: unknown): boolean => {
 
 export async function GET() {
   try {
+    if (hasR2Config()) {
+      const body = await r2GetText(projectPath)
+      if (!body) {
+        return Response.json(
+          { message: 'Aucune carte en ligne enregistree.' },
+          { status: 404, headers: jsonHeaders },
+        )
+      }
+      return new Response(body, {
+        headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const blob = await get(projectPath, {
       access: 'public',
     })
@@ -30,9 +44,18 @@ export async function GET() {
     const project = await new Response(blob.stream).json()
     return Response.json(project, { headers: jsonHeaders })
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : 'Lecture de la carte impossible.'
-    return Response.json({ message }, { status: 500, headers: jsonHeaders })
+    const storageBlocked = /403|blocked|suspended|limits/i.test(rawMessage)
+    return Response.json(
+      {
+        code: storageBlocked ? 'STORAGE_SUSPENDED' : 'STORAGE_READ_FAILED',
+        message: storageBlocked
+          ? 'Stockage en ligne sature. La copie locale reste disponible dans le Studio.'
+          : rawMessage,
+      },
+      { status: storageBlocked ? 503 : 500, headers: jsonHeaders },
+    )
   }
 }
 
@@ -68,21 +91,38 @@ export async function PUT(request: Request) {
       )
     }
 
-    const blob = await put(projectPath, body, {
-      access: 'public',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      cacheControlMaxAge: 60,
-      contentType: 'application/json',
-    })
+    const url = hasR2Config()
+      ? await r2PutText(projectPath, body)
+      : (
+          await put(projectPath, body, {
+            access: 'public',
+            addRandomSuffix: false,
+            allowOverwrite: true,
+            cacheControlMaxAge: 60,
+            contentType: 'application/json',
+          })
+        ).url
 
     return Response.json(
-      { savedAt: new Date().toISOString(), url: blob.url },
+      {
+        provider: hasR2Config() ? 'r2' : 'vercel-blob',
+        savedAt: new Date().toISOString(),
+        url,
+      },
       { headers: jsonHeaders },
     )
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : 'Sauvegarde en ligne impossible.'
-    return Response.json({ message }, { status: 500, headers: jsonHeaders })
+    const storageBlocked = /403|blocked|suspended|limits/i.test(rawMessage)
+    return Response.json(
+      {
+        code: storageBlocked ? 'STORAGE_SUSPENDED' : 'STORAGE_WRITE_FAILED',
+        message: storageBlocked
+          ? 'Stockage en ligne sature. La copie locale a ete conservee.'
+          : rawMessage,
+      },
+      { status: storageBlocked ? 503 : 500, headers: jsonHeaders },
+    )
   }
 }

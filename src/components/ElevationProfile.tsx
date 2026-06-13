@@ -1,7 +1,7 @@
 import { Activity } from 'lucide-react'
 import type { Trace, TrailStats } from '../types'
 import { distanceBetween } from '../lib/geo'
-import { traceColor } from './TrailMap'
+import { traceColor } from '../lib/mapStyles'
 import {
   formatDistance,
   formatElevation,

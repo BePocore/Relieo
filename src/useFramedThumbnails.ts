@@ -165,7 +165,7 @@ export function useFramedThumbnails(
     const sources = new Set<string>()
     for (const point of points) {
       const media = resolvePointMedia(point, mediaLibrary)
-      if (media?.kind === 'image') sources.add(media.src)
+      if (media?.kind === 'image') sources.add(media.thumbnailSrc ?? media.src)
       else if (media?.kind === 'video' && videoPosters[media.src]) {
         sources.add(videoPosters[media.src])
       }

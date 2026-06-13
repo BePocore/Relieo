@@ -26,26 +26,34 @@ un panneau flottant sur ordinateur ou une feuille basse sur mobile et iPad.
 Dans le Studio, un marqueur peut etre saisi et deplace directement sur le
 terrain pour corriger une position GPS avant publication.
 
-## Sauvegarde en ligne
+## Sauvegarde locale et en ligne
 
-La carte publiee est stockee dans Vercel Blob. Les points, la trace et la
-bibliotheque media sont donc communs au telephone, a l'iPad et a l'ordinateur.
-Le mot de passe Studio est demande uniquement pour importer des medias et
-publier des modifications.
+Le Studio conserve automatiquement une copie du projet dans IndexedDB sur
+l'appareil. Le bouton `Sauvegarder le projet complet` telecharge aussi un JSON
+restaurable qui contient les traces, points, couleurs, descriptions et liens
+media. Les originaux restent stockes dans le cloud et sont ouverts dans leur
+qualite d'import ; la carte utilise une vignette legere pour rester fluide.
 
-Dans le projet Vercel :
+Cloudflare R2 est le stockage recommande pour les grosses bibliotheques. Quand
+les variables R2 ci-dessous sont presentes, le projet et les medias y sont
+enregistres. Sinon l'application conserve la compatibilite Vercel Blob.
 
-1. Ouvre `Storage`, cree un Blob Store public et connecte-le au projet. Vercel
-   ajoute automatiquement `BLOB_READ_WRITE_TOKEN`.
-2. Dans `Settings > Environment Variables`, ajoute
-   `RANDO3D_ADMIN_PASSWORD` avec le mot de passe de ton choix.
-3. Redeploie le projet.
+Variables Vercel :
+
+1. `RANDO3D_ADMIN_PASSWORD`
+2. `R2_ACCOUNT_ID`
+3. `R2_ACCESS_KEY_ID`
+4. `R2_SECRET_ACCESS_KEY`
+5. `R2_BUCKET_NAME`
+6. `R2_PUBLIC_BASE_URL` (domaine public du bucket, sans slash final)
+
+Le bucket R2 doit autoriser les requetes `PUT` depuis le domaine Vercel et les
+requetes `GET` publiques. Les uploads utilisent une URL signee temporaire : les
+cles R2 ne sont jamais envoyees au navigateur. Une empreinte de fichier evite
+de renvoyer deux fois le meme original.
 
 Le Studio est disponible avec `/?mode=studio`. Le bouton `Publier en ligne`
-remplace la sauvegarde locale du navigateur. Les photos et videos importees
-sont envoyees directement du navigateur vers Vercel Blob.
-Les fichiers originaux sont conserves sans compression : la fiche ouvre le
-media source dans sa qualite d'import.
+partage la derniere copie avec le telephone, l'iPad et l'ordinateur.
 
 ## Donnees
 

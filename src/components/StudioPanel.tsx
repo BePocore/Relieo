@@ -6,6 +6,7 @@ import {
   Download,
   FileJson,
   FileUp,
+  HardDrive,
   Image,
   KeyRound,
   List,
@@ -36,7 +37,7 @@ import { ElevationProfile } from './ElevationProfile'
 import { PointDetail } from './PointDetail'
 import { PointTypeIcon } from './PointTypeIcon'
 import { ColorSwatches } from './ColorSwatches'
-import { paletteColors, traceColor } from './TrailMap'
+import { paletteColors, traceColor } from '../lib/mapStyles'
 import { newPointTitle } from '../App'
 
 type StudioPanelProps = {
@@ -62,6 +63,8 @@ type StudioPanelProps = {
   onToggleLock: (pointId: string) => void
   onSetPointColor: (pointId: string, color: string) => void
   onExportPoints: () => void
+  onExportProject: () => void
+  onImportProject: (file: File) => Promise<void>
   onSaveProject: () => Promise<void>
   onShowMedia: (media: LightboxMedia) => void
   adminPassword: string
@@ -73,6 +76,7 @@ type StudioPanelProps = {
   onAccessCodeChange: (code: string) => void
   onAdminPasswordChange: (password: string) => void
   saveStatus: string | null
+  localSaveStatus: string | null
 }
 
 type ReportSection = {
@@ -104,6 +108,13 @@ function ImportReportCard({
       icon: <TriangleAlert aria-hidden="true" size={15} />,
       tone: 'warn',
       entries: report.offTrack,
+    },
+    {
+      key: 'duplicates',
+      title: 'Deja presents',
+      icon: <HardDrive aria-hidden="true" size={15} />,
+      tone: 'ok',
+      entries: report.duplicates,
     },
     {
       key: 'failed',
@@ -480,6 +491,8 @@ export function StudioPanel({
   onToggleLock,
   onSetPointColor,
   onExportPoints,
+  onExportProject,
+  onImportProject,
   onSaveProject,
   onShowMedia,
   onAccessCodeChange,
@@ -491,6 +504,7 @@ export function StudioPanel({
   onDismissReport,
   onAdminPasswordChange,
   saveStatus,
+  localSaveStatus,
 }: StudioPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>('points')
   const [draft, setDraft] = useState<DraftPoint>(initialDraft)
@@ -599,7 +613,7 @@ export function StudioPanel({
             type="password"
             value={adminPassword}
             onChange={(event) => onAdminPasswordChange(event.target.value)}
-            placeholder="Mot de passe Vercel"
+            placeholder="Mot de passe Studio"
           />
         </label>
         <label className="studio-password">
@@ -648,6 +662,12 @@ export function StudioPanel({
           </div>
         ) : null}
         {saveStatus ? <p className="save-status">{saveStatus}</p> : null}
+        {localSaveStatus ? (
+          <p className="local-save-status">
+            <HardDrive aria-hidden="true" size={14} />
+            {localSaveStatus}
+          </p>
+        ) : null}
         {importReport ? (
           <ImportReportCard
             report={importReport}
@@ -809,7 +829,7 @@ export function StudioPanel({
               <strong>Photos / vidéos</strong>
               <small>
                 {isUploading
-                  ? 'Envoi vers Vercel...'
+                  ? 'Envoi vers le stockage...'
                   : adminPassword
                     ? `${mediaLibrary.length} média(s)`
                     : 'Mot de passe Studio requis'}
@@ -835,6 +855,32 @@ export function StudioPanel({
             <Download aria-hidden="true" size={17} />
             Exporter points.json
           </button>
+
+          <button
+            className="secondary-action"
+            type="button"
+            onClick={onExportProject}
+          >
+            <Download aria-hidden="true" size={17} />
+            Sauvegarder le projet complet
+          </button>
+
+          <label className="upload-tile project-restore-tile">
+            <HardDrive aria-hidden="true" size={22} />
+            <span>
+              <strong>Restaurer un projet</strong>
+              <small>Trace, points, couleurs et medias</small>
+            </span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) void onImportProject(file)
+                event.currentTarget.value = ''
+              }}
+            />
+          </label>
 
           <div className="media-list">
             {mediaLibrary.length === 0 ? (

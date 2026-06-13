@@ -25,6 +25,7 @@ export const resolvePointMedia = (
   src: string
   kind: MediaKind
   name?: string
+  thumbnailSrc?: string
   width?: number
   height?: number
   durationSeconds?: number
@@ -42,6 +43,7 @@ export const resolvePointMedia = (
         src: media.url,
         kind: media.kind,
         name: media.name,
+        thumbnailSrc: media.thumbnailUrl,
         width: media.width,
         height: media.height,
         durationSeconds: media.durationSeconds,
@@ -60,6 +62,7 @@ export const resolvePointMedia = (
       src: media.url,
       kind: media.kind,
       name: media.name,
+      thumbnailSrc: media.thumbnailUrl,
       width: media.width,
       height: media.height,
       durationSeconds: media.durationSeconds,

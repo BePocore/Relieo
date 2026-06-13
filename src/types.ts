@@ -39,6 +39,8 @@ export type ImportedMedia = {
   id: string
   name: string
   url: string
+  fingerprint?: string
+  thumbnailUrl?: string
   kind: MediaKind
   size: number
   mimeType?: string
@@ -79,6 +81,7 @@ export type ImportReport = {
   placed: ImportReportEntry[]
   noGps: ImportReportEntry[]
   offTrack: ImportReportEntry[]
+  duplicates: ImportReportEntry[]
   failed: ImportReportEntry[]
 }
 

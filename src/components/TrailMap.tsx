@@ -35,6 +35,7 @@ import type { ImportedMedia, Trace, TrailPoint, TrackPoint } from '../types'
 import { simplifyTrack } from '../lib/geo'
 import { markerDataUri } from '../lib/markers'
 import { resolvePointMedia } from '../lib/media'
+import { coloredMarkerDataUri, traceColor } from '../lib/mapStyles'
 import {
   framedCanvasHeight,
   framedCanvasWidth,
@@ -79,24 +80,6 @@ export type CameraCommand = {
 const routeOuterColor = Color.fromCssColorString('#ffffff')
 
 // Palette partagée (traces et points) — 12 couleurs, réutilisée dans le Studio.
-export const paletteColors = [
-  '#f4512c',
-  '#3cdc8c',
-  '#3b82f6',
-  '#f59e0b',
-  '#a855f7',
-  '#ec4899',
-  '#ef4444',
-  '#14b8a6',
-  '#eab308',
-  '#8b5cf6',
-  '#06b6d4',
-  '#f97316',
-]
-
-export const traceColor = (index: number): string =>
-  paletteColors[index % paletteColors.length]
-
 // Icône d'un groupe de vignettes qui se chevauchent (pile de photos).
 const clusterStackUri = (() => {
   const svg =
@@ -109,17 +92,6 @@ const clusterStackUri = (() => {
 })()
 
 // Pin coloré pour un point personnalisé (sans glyphe de type).
-export const coloredMarkerDataUri = (color: string): string => {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="58" viewBox="0 0 48 58">
-      <path fill="rgba(14, 23, 35, 0.25)" d="M24 58c6.5 0 11.8-1.5 11.8-3.4S30.5 51.2 24 51.2 12.2 52.8 12.2 54.6 17.5 58 24 58Z"/>
-      <path fill="${color}" stroke="#fff" stroke-width="3" d="M24 3C13.5 3 5 11.3 5 21.6 5 36.3 24 54 24 54s19-17.7 19-32.4C43 11.3 34.5 3 24 3Z"/>
-      <circle cx="24" cy="22" r="9" fill="rgba(255,255,255,0.96)"/>
-    </svg>
-  `
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
-}
-
 const combineTracePoints = (traces: Trace[]): TrackPoint[] =>
   traces.flatMap((trace) => trace.points)
 
@@ -184,7 +156,7 @@ const thumbForPoint = (
   if (!media) return { hasMedia: false, framed: undefined }
   const thumbnailSrc =
     media.kind === 'image'
-      ? media.src
+      ? (media.thumbnailSrc ?? media.src)
       : media.kind === 'video'
         ? videoPosters[media.src]
         : undefined
@@ -560,7 +532,8 @@ export function TrailMap({
           ? resolvePointMedia(anchorPoint, mediaLibraryRef.current)
           : undefined
         const poster = media?.kind === 'video' ? videoPostersRef.current[media.src] : undefined
-        const thumbnailSrc = media?.kind === 'image' ? media.src : poster
+        const thumbnailSrc =
+          media?.kind === 'image' ? (media.thumbnailSrc ?? media.src) : poster
         const framed = thumbnailSrc ? framedThumbnailsRef.current[thumbnailSrc] : undefined
 
         // Cesium ne met l'id du groupe que sur le label : on le copie sur le
