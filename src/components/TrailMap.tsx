@@ -775,13 +775,19 @@ export function TrailMap({
 
     // On vise la hauteur réelle du terrain sous le point (sinon, en terrain 3D,
     // la cible reste au niveau de la mer et la caméra cadre à côté du marqueur).
+    // Le terrain est exagéré verticalement (verticalExaggeration) : les marqueurs
+    // sont posés sur le relief exagéré, donc on applique le même facteur, sinon
+    // la cible est trop basse et le point finit décalé (en haut de l'écran).
     const carto = Cartographic.fromDegrees(selectedPoint.lng, selectedPoint.lat)
-    const terrainHeight = viewer.scene.globe.getHeight(carto) ?? 0
+    const trueHeight = viewer.scene.globe.getHeight(carto) ?? 0
+    const exaggeration = viewer.scene.verticalExaggeration || 1
+    const relative = viewer.scene.verticalExaggerationRelativeHeight || 0
+    const renderedHeight = (trueHeight - relative) * exaggeration + relative
     const target = new BoundingSphere(
       Cartesian3.fromDegrees(
         selectedPoint.lng,
         selectedPoint.lat,
-        terrainHeight,
+        renderedHeight,
       ),
       35,
     )
