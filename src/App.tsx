@@ -811,6 +811,85 @@ function App() {
     setImportReport(null)
   }, [])
 
+  // Import depuis la fiche d'un point : upload du fichier puis rattachement
+  // immédiat comme média du point (photo du haut de la fiche).
+  const handleAttachMedia = useCallback(
+    async (pointId: string, file: File) => {
+      if (!adminPassword) {
+        setSaveStatus('Saisis le mot de passe Studio avant un import media.')
+        return
+      }
+      if (mediaKindFromFile(file) === null) {
+        setSaveStatus('Format non reconnu : photo ou vidéo attendue.')
+        return
+      }
+
+      setIsUploading(true)
+      setSaveStatus(`Envoi de ${file.name}...`)
+      let media: ImportedMedia | null = null
+      try {
+        media = await createImportedMedia(file)
+        if (!media) {
+          setSaveStatus('Format non reconnu : photo ou vidéo attendue.')
+          return
+        }
+        const blob = await upload(safeMediaPath(file.name), file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload',
+          headers: {
+            'x-admin-password': adminPassword,
+          },
+          contentType: file.type || 'application/octet-stream',
+          multipart: file.size > 10 * 1024 * 1024,
+        })
+        const uploaded: ImportedMedia = { ...media, url: blob.url }
+
+        // Remplace une éventuelle entrée du même nom (URL fraîche).
+        setMediaLibrary((current) => [
+          ...current.filter(
+            (item) => item.name.toLowerCase() !== uploaded.name.toLowerCase(),
+          ),
+          uploaded,
+        ])
+
+        const applyMedia = (point: TrailPoint): TrailPoint => ({
+          ...point,
+          mediaName: uploaded.name,
+          mediaKind: uploaded.kind,
+          image: uploaded.kind === 'image' ? uploaded.url : undefined,
+          video: uploaded.kind === 'video' ? uploaded.url : undefined,
+          type:
+            uploaded.kind === 'video'
+              ? 'video'
+              : point.type === '360'
+                ? '360'
+                : 'photo',
+        })
+
+        setPoints((current) =>
+          current.map((point) =>
+            point.id === pointId ? applyMedia(point) : point,
+          ),
+        )
+        setSelectedPoint((current) =>
+          current?.id === pointId ? applyMedia(current) : current,
+        )
+        setError(null)
+        setSaveStatus('Média attaché au point. Publie la carte pour partager.')
+      } catch (uploadError) {
+        setSaveStatus(
+          uploadError instanceof Error
+            ? `Envoi impossible : ${uploadError.message}`
+            : 'Envoi impossible.',
+        )
+      } finally {
+        if (media) URL.revokeObjectURL(media.url)
+        setIsUploading(false)
+      }
+    },
+    [adminPassword],
+  )
+
   const handleAddPoint = useCallback((point: TrailPoint) => {
     setPoints((current) => [...current, point])
     setSelectedPoint(point)
@@ -1171,6 +1250,7 @@ function App() {
                   onSetTraceColor={handleSetTraceColor}
                   onImportPoints={handleImportPoints}
                   onImportMedia={handleImportMedia}
+                  onAttachMedia={handleAttachMedia}
                   onAddPoint={handleAddPoint}
                   onUpdatePoint={handleUpdatePoint}
                   onDeletePoint={handleDeletePoint}

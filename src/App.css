@@ -1495,6 +1495,44 @@
   pointer-events: none;
 }
 
+/* Import direct depuis la fiche d'un point (photo du haut). */
+.attach-media-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--accent-border);
+  border-radius: 11px;
+  color: var(--text);
+  background: rgba(60, 220, 140, 0.06);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.attach-media-action:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.attach-media-action svg {
+  color: var(--accent);
+}
+
+.attach-media-action input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.attach-media-action:has(input:disabled) {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .upload-tile strong,
 .upload-tile small,
 .media-row strong,

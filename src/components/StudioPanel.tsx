@@ -55,6 +55,7 @@ type StudioPanelProps = {
   onSetTraceColor: (traceId: string, color: string) => void
   onImportPoints: (file: File) => Promise<void>
   onImportMedia: (files: File[]) => Promise<void>
+  onAttachMedia: (pointId: string, file: File) => Promise<void>
   onAddPoint: (point: TrailPoint) => void
   onUpdatePoint: (point: TrailPoint) => void
   onDeletePoint: (pointId: string) => void
@@ -215,8 +216,10 @@ const draftFromPoint = (
 type SelectedPointEditorProps = {
   selectedPoint: TrailPoint
   mediaLibrary: ImportedMedia[]
+  isUploading: boolean
   onClose: () => void
   onShowMedia: (media: LightboxMedia) => void
+  onAttachMedia: (pointId: string, file: File) => Promise<void>
   onUpdatePoint: (point: TrailPoint) => void
   onDeletePoint: (pointId: string) => void
   onToggleLock: (pointId: string) => void
@@ -226,8 +229,10 @@ type SelectedPointEditorProps = {
 function SelectedPointEditor({
   selectedPoint,
   mediaLibrary,
+  isUploading,
   onClose,
   onShowMedia,
+  onAttachMedia,
   onUpdatePoint,
   onDeletePoint,
   onToggleLock,
@@ -321,6 +326,27 @@ function SelectedPointEditor({
         <div className="form-heading">
           <strong>Ajuster le point</strong>
         </div>
+
+        {selectedPoint.id ? (
+          <label className="attach-media-action">
+            <UploadCloud aria-hidden="true" size={17} />
+            {isUploading
+              ? 'Envoi en cours...'
+              : 'Importer une photo / vidéo pour ce point'}
+            <input
+              type="file"
+              accept="image/*,video/*"
+              disabled={isUploading}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file && selectedPoint.id) {
+                  void onAttachMedia(selectedPoint.id, file)
+                }
+              }}
+            />
+          </label>
+        ) : null}
 
         <label>
           <span>Titre</span>
@@ -447,6 +473,7 @@ export function StudioPanel({
   onSetTraceColor,
   onImportPoints,
   onImportMedia,
+  onAttachMedia,
   onAddPoint,
   onUpdatePoint,
   onDeletePoint,
@@ -537,8 +564,10 @@ export function StudioPanel({
         key={selectedPoint.id ?? selectedPoint.title}
         selectedPoint={selectedPoint}
         mediaLibrary={mediaLibrary}
+        isUploading={isUploading}
         onClose={onClose}
         onShowMedia={onShowMedia}
+        onAttachMedia={onAttachMedia}
         onUpdatePoint={onUpdatePoint}
         onDeletePoint={onDeletePoint}
         onToggleLock={onToggleLock}
