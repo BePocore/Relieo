@@ -1,6 +1,6 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
-import { hasR2Config, r2PrepareUpload } from '../server/r2.js'
+import { hasR2Config, R2QuotaError, r2PrepareUpload } from '../server/r2.js'
 
 const allowedContentTypes = [
   'application/octet-stream',
@@ -22,6 +22,7 @@ export async function POST(request: Request) {
       contentType?: string
       fingerprint?: string
       kind?: 'media' | 'preview'
+      size?: number
     }
 
     if (body.type === 'rando3d.prepare-upload' && hasR2Config()) {
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
         .replace(/^-+|-+$/g, '')
       const contentType = body.contentType?.trim() || 'application/octet-stream'
       const kind = body.kind === 'preview' ? 'previews' : 'media'
+      const size = Number(body.size)
 
       if (!fingerprint || fingerprint.length < 16) {
         return Response.json({ message: 'Empreinte de fichier invalide.' }, { status: 400 })
@@ -52,11 +54,15 @@ export async function POST(request: Request) {
       if (!allowedContentTypes.includes(contentType)) {
         return Response.json({ message: 'Type de fichier non autorise.' }, { status: 400 })
       }
+      if (!Number.isSafeInteger(size) || size <= 0) {
+        return Response.json({ message: 'Taille de fichier invalide.' }, { status: 400 })
+      }
 
       const extension = body.kind === 'preview' ? '.jpg' : `-${cleanName || 'media'}`
       const prepared = await r2PrepareUpload({
         key: `rando3d/${kind}/${fingerprint}${extension}`,
         contentType,
+        size,
       })
       return Response.json({ provider: 'r2', ...prepared })
     }
@@ -107,6 +113,18 @@ export async function POST(request: Request) {
 
     return Response.json(response)
   } catch (error) {
+    if (error instanceof R2QuotaError) {
+      return Response.json(
+        {
+          code: error.code,
+          limitBytes: error.limitBytes,
+          requestedBytes: error.requestedBytes,
+          usedBytes: error.usedBytes,
+          message: 'Limite de 9,99 Go atteinte. Supprime des medias avant de continuer.',
+        },
+        { status: 413 },
+      )
+    }
     const rawMessage =
       error instanceof Error ? error.message : 'Envoi du media impossible.'
     const storageBlocked = /403|blocked|suspended|limits/i.test(rawMessage)

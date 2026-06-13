@@ -68,6 +68,7 @@ export const uploadMedia = async ({
       contentType,
       fingerprint,
       kind,
+      size: file.size,
     }),
   })
 

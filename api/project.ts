@@ -1,6 +1,6 @@
 import { get, put } from '@vercel/blob'
 import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
-import { hasR2Config, r2GetText, r2PutText } from '../server/r2.js'
+import { hasR2Config, R2QuotaError, r2GetText, r2PutText } from '../server/r2.js'
 
 const projectPath = 'rando3d/project.json'
 
@@ -112,6 +112,15 @@ export async function PUT(request: Request) {
       { headers: jsonHeaders },
     )
   } catch (error) {
+    if (error instanceof R2QuotaError) {
+      return Response.json(
+        {
+          code: error.code,
+          message: 'Limite de 9,99 Go atteinte. La copie locale du projet est conservee.',
+        },
+        { status: 413, headers: jsonHeaders },
+      )
+    }
     const rawMessage =
       error instanceof Error ? error.message : 'Sauvegarde en ligne impossible.'
     const storageBlocked = /403|blocked|suspended|limits/i.test(rawMessage)

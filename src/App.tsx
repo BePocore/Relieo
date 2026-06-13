@@ -220,7 +220,7 @@ const friendlyStorageMessage = (message: string): string => {
 }
 
 // Nombre d'envois simultanes vers le stockage lors d'un import groupe.
-const uploadConcurrency = 4
+const uploadConcurrency = 1
 
 // Seuil au-delà duquel un média géolocalisé est jugé « hors tracé ».
 // Adaptatif : proportionnel à l'emprise de la trace, plancher à 3 km.
