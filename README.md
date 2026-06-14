@@ -33,6 +33,8 @@ propre dossier `rando3d/randonnees/<code>/` avec le projet, les originaux et
 les aperçus. Le fichier `project.json` contient les traces, points, couleurs,
 descriptions et références média. Les originaux sont ouverts dans leur qualité
 d'import ; la carte utilise une vignette légère pour rester fluide.
+Quand le code change puis que la randonnée est publiée, le dossier est copié
+vers le nouveau nom avant la suppression de l'ancien emplacement.
 
 Cloudflare R2 est obligatoire pour le projet et les médias.
 

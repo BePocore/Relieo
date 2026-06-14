@@ -343,6 +343,11 @@ function App() {
   const [accessGranted, setAccessGranted] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  useEffect(() => {
+    // Supprime l'ancien secours IndexedDB. R2 est désormais l'unique stockage.
+    if ('indexedDB' in window) indexedDB.deleteDatabase('rando3d-local')
+  }, [])
+
   const applyProject = useCallback((project: TrailProject) => {
     const loadedTraces =
       project.traces && project.traces.length > 0
