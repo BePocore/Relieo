@@ -44,33 +44,36 @@ export const getInitialPerfTier = (): PerfTier => {
 }
 
 type FpsWatchdogOptions = {
-  // On compte les images « longues » (jank réel) hors warmup et hors arrière-plan.
-  longFrameMs?: number
-  // Au-delà : c'est probablement un onglet en pause, pas du jank → ignoré.
-  maxFrameMs?: number
-  neededLongFrames?: number
   warmupMs?: number
+  windowMs?: number
+  minFps?: number
+  neededBadWindows?: number
   observeMs?: number
 }
 
-// Surveille le rendu : si l'appareil « rame » (beaucoup d'images longues d'affilée
-// pendant la fenêtre d'observation), appelle onLowPerf UNE fois. Ne fait jamais
-// l'inverse (pas d'upgrade auto → pas de va-et-vient). Renvoie un stop().
+// Surveille le framerate moyen par fenêtres glissantes. Ne déclasse QUE si le
+// framerate est mauvais sur plusieurs fenêtres CONSÉCUTIVES (jank soutenu, pas
+// un simple pic de chargement) — sinon des appareils corrects basculeraient à
+// tort. Jamais d'upgrade auto (pas de va-et-vient). Renvoie un stop().
 export const createFpsWatchdog = (
   onLowPerf: () => void,
   options: FpsWatchdogOptions = {},
 ): { stop: () => void } => {
-  const longFrameMs = options.longFrameMs ?? 55
-  const maxFrameMs = options.maxFrameMs ?? 300
-  const neededLongFrames = options.neededLongFrames ?? 14
-  const warmupMs = options.warmupMs ?? 1000
-  const observeMs = options.observeMs ?? 12000
+  // Temps de chauffe long : on ignore le pic de rendu du chargement initial.
+  const warmupMs = options.warmupMs ?? 3500
+  const windowMs = options.windowMs ?? 2000
+  const minFps = options.minFps ?? 22
+  // 3 fenêtres de 2 s = ~6 s de jank continu avant de déclasser.
+  const neededBadWindows = options.neededBadWindows ?? 3
+  const observeMs = options.observeMs ?? 30000
 
   let raf = 0
   let stopped = false
-  let longFrames = 0
+  let warmed = false
+  let windowStart = 0
+  let frames = 0
+  let badWindows = 0
   const start = performance.now()
-  let last = start
 
   const stop = () => {
     if (stopped) return
@@ -80,26 +83,46 @@ export const createFpsWatchdog = (
 
   const tick = (now: number) => {
     if (stopped) return
-    const delta = now - last
-    last = now
 
-    if (
-      now - start > warmupMs &&
-      !document.hidden &&
-      delta > longFrameMs &&
-      delta < maxFrameMs
-    ) {
-      longFrames += 1
-      if (longFrames >= neededLongFrames) {
-        stop()
-        onLowPerf()
-        return
+    if (!warmed) {
+      if (now - start >= warmupMs) {
+        warmed = true
+        windowStart = now
+        frames = 0
       }
+      raf = requestAnimationFrame(tick)
+      return
     }
 
     if (now - start > observeMs) {
       stop()
       return
+    }
+
+    // Onglet en arrière-plan : non représentatif, on réinitialise la fenêtre.
+    if (document.hidden) {
+      windowStart = now
+      frames = 0
+      raf = requestAnimationFrame(tick)
+      return
+    }
+
+    frames += 1
+    const elapsed = now - windowStart
+    if (elapsed >= windowMs) {
+      const fps = (frames * 1000) / elapsed
+      if (fps < minFps) {
+        badWindows += 1
+        if (badWindows >= neededBadWindows) {
+          stop()
+          onLowPerf()
+          return
+        }
+      } else {
+        badWindows = 0 // doit être consécutif
+      }
+      windowStart = now
+      frames = 0
     }
     raf = requestAnimationFrame(tick)
   }
