@@ -182,7 +182,9 @@ export function useVideoPosters(
     const total = sources.size
     let done = 0
     let cancelled = false
-    setProgress({ done: 0, total })
+    queueMicrotask(() => {
+      if (!cancelled) setProgress({ done: 0, total })
+    })
     const markDone = () => {
       if (cancelled) return
       done += 1
