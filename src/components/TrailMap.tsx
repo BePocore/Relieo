@@ -47,7 +47,7 @@ import type { BasemapId } from '../lib/basemaps'
 
 if (cesiumIonToken) Ion.defaultAccessToken = cesiumIonToken
 
-type TrailMapProps = {
+export type TrailMapProps = {
   traces: Trace[]
   points: TrailPoint[]
   mediaLibrary: ImportedMedia[]

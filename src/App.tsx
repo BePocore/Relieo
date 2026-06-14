@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   Check,
   ChevronDown,
@@ -55,6 +63,12 @@ import { MediaLightbox } from './components/MediaLightbox'
 import { AccessGate } from './components/AccessGate'
 import { useVideoPosters } from './useVideoPosters'
 import { useFramedThumbnails } from './useFramedThumbnails'
+
+const MapLibreTrailMap = lazy(() =>
+  import('./components/MapLibreTrailMap').then((module) => ({
+    default: module.MapLibreTrailMap,
+  })),
+)
 
 export type LightboxMedia = {
   src: string
@@ -294,6 +308,10 @@ const formatKilometers = (meters: number): string => {
 }
 
 function App() {
+  const mapEngine =
+    new URLSearchParams(window.location.search).get('engine') === 'cesium'
+      ? 'cesium'
+      : 'maplibre'
   const [isStudioMode] = useState(() => isStudioUrl())
   const [isPanelOpen, setIsPanelOpen] = useState(() => isStudioUrl())
   const [traces, setTraces] = useState<Trace[]>([])
@@ -321,6 +339,10 @@ function App() {
     !useWorldTerrain ||
     perfMode === 'force-2d' ||
     (perfMode === 'auto' && autoTier === 'low')
+  // Le prototype MapLibre garde le relief en mode Auto. Le bouton permet
+  // toujours de forcer explicitement la 2D pour comparer.
+  const mapFlat2D =
+    perfMode === 'force-2d' || (mapEngine === 'cesium' && flat2D)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
@@ -382,7 +404,10 @@ function App() {
         const [gpxResponse, pointsResponse, projectResponse, localProject] = await Promise.all([
           fetch('/data/trace.gpx'),
           fetch('/data/points.json'),
-          fetch('/api/project', { cache: 'no-store' }).catch(() => null),
+          fetch(
+            import.meta.env.DEV ? '/prototype-api/project' : '/api/project',
+            { cache: 'no-store' },
+          ).catch(() => null),
           loadLocalProject().catch(() => null),
         ])
 
@@ -452,7 +477,7 @@ function App() {
     }
 
     void loadTrail()
-  }, [applyProject, isStudioMode])
+  }, [applyProject, isStudioMode, mapEngine])
 
   const combinedPoints = useMemo(
     () => traces.flatMap((trace) => trace.points),
@@ -747,10 +772,10 @@ function App() {
   // Détection auto : en 3D + mode Auto, on surveille le framerate ; si l'appareil
   // rame, on bascule définitivement en 2D pour la session (jamais l'inverse).
   useEffect(() => {
-    if (!mapReady || flat2D || perfMode !== 'auto' || !useWorldTerrain) return
+    if (!mapReady || mapFlat2D || perfMode !== 'auto' || !useWorldTerrain) return
     const watchdog = createFpsWatchdog(() => setAutoTier('low'))
     return () => watchdog.stop()
-  }, [mapReady, flat2D, perfMode])
+  }, [mapReady, mapFlat2D, perfMode])
 
   const handleRecenter = useCallback(() => {
     setRecenterRequest((current) => current + 1)
@@ -1419,7 +1444,11 @@ function App() {
   const needsAccess = !isStudioMode && Boolean(accessCode) && !accessGranted
 
   return (
-    <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
+    <div
+      className={`${isStudioMode ? 'app-shell studio-mode' : 'app-shell'}${
+        mapEngine === 'maplibre' ? ' maplibre-prototype' : ''
+      }`}
+    >
       <header className="topbar">
         <div className="brand">
           <span
@@ -1477,7 +1506,7 @@ function App() {
             title="Mode carte : Auto / 2D / 3D"
             aria-label="Mode carte : cliquer pour basculer entre Auto, 2D et Relief 3D"
           >
-            {flat2D ? (
+            {mapFlat2D ? (
               <MapIcon aria-hidden="true" size={16} />
             ) : (
               <Mountain aria-hidden="true" size={16} />
@@ -1487,9 +1516,11 @@ function App() {
                 ? 'Vue 2D'
                 : perfMode === 'force-3d'
                   ? 'Relief 3D'
-                  : `Auto · ${flat2D ? '2D' : '3D'}`}
+                  : mapEngine === 'maplibre'
+                    ? 'Relief 3D'
+                    : `Auto · ${mapFlat2D ? '2D' : '3D'}`}
             </span>
-            {!cesiumIonToken && isStudioMode ? (
+            {mapEngine === 'cesium' && !cesiumIonToken && isStudioMode ? (
               <small>Token Cesium conseillé</small>
             ) : null}
           </button>
@@ -1547,7 +1578,7 @@ function App() {
             >
               <RotateCw aria-hidden="true" size={18} />
             </button>
-            {!flat2D ? (
+            {!mapFlat2D ? (
               <>
                 <button
                   aria-label="Relever la vue"
@@ -1593,6 +1624,34 @@ function App() {
           ) : needsAccess ? (
             // Carte non montée tant que le code n'est pas saisi (la porte couvre).
             <div className="loading-state" />
+          ) : mapEngine === 'maplibre' ? (
+            <Suspense
+              fallback={
+                <div className="loading-state">
+                  <LoaderCircle aria-hidden="true" size={26} />
+                  <span>Initialisation MapLibre</span>
+                </div>
+              }
+            >
+              <MapLibreTrailMap
+                traces={traces}
+                points={points}
+                mediaLibrary={mediaLibrary}
+                basemap={basemap}
+                recenterRequest={recenterRequest}
+                selectedPoint={selectedPoint}
+                cameraCommand={cameraCommand}
+                editable={isStudioMode}
+                videoPosters={videoPosters}
+                framedThumbnails={framedThumbnails}
+                onMovePoint={handleMovePoint}
+                onCreatePoint={handleCreatePoint}
+                onMarkerClick={handleMarkerClick}
+                onOpenGroup={handleOpenGroup}
+                onReady={() => setTilesReady(true)}
+                flat2D={mapFlat2D}
+              />
+            </Suspense>
           ) : (
             <TrailMap
               traces={traces}
@@ -1610,7 +1669,7 @@ function App() {
               onMarkerClick={handleMarkerClick}
               onOpenGroup={handleOpenGroup}
               onReady={() => setTilesReady(true)}
-              flat2D={flat2D}
+              flat2D={mapFlat2D}
             />
           )}
 

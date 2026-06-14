@@ -217,6 +217,113 @@
   user-select: none;
 }
 
+.maplibre-map,
+.maplibregl-map,
+.maplibregl-canvas-container,
+.maplibregl-canvas {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.maplibregl-canvas {
+  outline: none;
+}
+
+.maplibre-photo-marker {
+  width: 82px;
+  height: 60px;
+  opacity: 1;
+  padding: 3px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 5px 16px rgba(3, 10, 7, 0.42);
+  cursor: pointer;
+  transform-origin: center;
+  transition: border-color 140ms ease, transform 140ms ease;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.maplibre-photo-marker:hover,
+.maplibre-photo-marker.selected {
+  border-color: var(--accent);
+  transform: scale(1.08);
+}
+
+.maplibre-photo-marker img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 4px;
+  object-fit: cover;
+  opacity: 1;
+}
+
+.maplibre-photo-marker.type-video::after,
+.maplibre-photo-marker.type-360::after {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #ffffff;
+  background: rgba(7, 14, 11, 0.78);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.maplibre-photo-marker.type-video::after {
+  content: 'VIDEO';
+}
+
+.maplibre-photo-marker.type-360::after {
+  content: '360';
+}
+
+.maplibregl-ctrl-bottom-right {
+  right: 8px;
+  bottom: 116px;
+}
+
+.maplibregl-ctrl-attrib {
+  color: #1a2822;
+  font-size: 10px;
+  opacity: 0.76;
+}
+
+.maplibre-metrics {
+  position: absolute;
+  bottom: 126px;
+  left: 16px;
+  z-index: 8;
+  min-height: 32px;
+  padding: 6px 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9px;
+  color: var(--text-faint);
+  background: rgba(8, 17, 13, 0.78);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: none;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.maplibre-metrics strong {
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+
 .cesium-viewer-bottom,
 .cesium-viewer-toolbar,
 .cesium-viewer-fullscreenContainer {
@@ -2128,6 +2235,30 @@
     bottom: max(8px, env(safe-area-inset-bottom));
     left: 8px;
     justify-content: flex-start;
+  }
+
+  .maplibre-metrics {
+    bottom: calc(92px + env(safe-area-inset-bottom));
+    left: 8px;
+    max-width: calc(100% - 74px);
+    gap: 6px;
+  }
+
+  .maplibre-photo-marker {
+    width: 72px;
+    height: 52px;
+  }
+
+  .maplibregl-ctrl-bottom-right {
+    right: 4px;
+    bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .maplibregl-ctrl-attrib {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .media-rail-track {
