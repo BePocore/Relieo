@@ -166,6 +166,28 @@
     <div class="loading" id="loading"><div class="spin"></div>Chargement…</div>
 
     <script>
+      // ── Diagnostic visible : toute erreur s'affiche à l'écran ──────────────
+      function showError(msg) {
+        const box = document.getElementById('loading') || document.body
+        box.classList && box.classList.remove('loading')
+        box.style.cssText =
+          'position:absolute;inset:0;z-index:9;display:block;overflow:auto;' +
+          'padding:18px;background:#1a0c0c;color:#ffd9de;font:600 13px/1.5 ' +
+          'ui-monospace,monospace;white-space:pre-wrap;'
+        box.textContent = '⚠️ Erreur dans l’aperçu :\n\n' + msg
+      }
+      window.addEventListener('error', (e) =>
+        showError((e.message || 'erreur') + '\n' + (e.filename || '') + ':' + e.lineno),
+      )
+      window.addEventListener('unhandledrejection', (e) =>
+        showError('Promise rejetée : ' + (e.reason && (e.reason.stack || e.reason.message || e.reason))),
+      )
+      if (typeof maplibregl === 'undefined') {
+        showError('Le script MapLibre (CDN) ne s’est pas chargé. CSP ou réseau ?')
+      }
+    </script>
+
+    <script>
       // ── Données : on réutilise telles quelles celles du site ───────────────
       // resolvePointMedia (version minimale, alignée sur src/lib/media.ts) pour
       // retrouver la vignette d'un point depuis la médiathèque.
@@ -235,8 +257,6 @@
       function baseStyle(which) {
         return {
           version: 8,
-          glyphs:
-            'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
           sources: {
             base: {
               type: 'raster',
@@ -271,6 +291,7 @@
 
       // ── Initialisation ─────────────────────────────────────────────────────
       ;(async function main() {
+       try {
         const project = await loadProject()
         const traces =
           project.traces && project.traces.length
@@ -495,6 +516,9 @@
           // Échange juste les tuiles du fond : terrain/points/trace conservés.
           map.getSource('base').setTiles(RASTER[which].tiles)
         })
+       } catch (err) {
+         showError((err && (err.stack || err.message)) || String(err))
+       }
       })()
     </script>
   </body>
