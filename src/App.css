@@ -2265,4 +2265,12 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* Exception : la barre de chargement doit rester animée (retour visuel de
+     progression), même quand l'OS demande de réduire les animations —
+     sinon elle paraît figée/cassée. */
+  .app-loader-bar > span {
+    animation-duration: 1.2s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
