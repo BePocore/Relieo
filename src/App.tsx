@@ -8,6 +8,7 @@ import {
   List,
   LocateFixed,
   LoaderCircle,
+  Map as MapIcon,
   Minus,
   Mountain,
   Play,
@@ -35,7 +36,8 @@ import {
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
 import { loadLocalProject, saveLocalProject } from './lib/projectBackup'
-import { cesiumIonToken, terrainStatusLabel } from './lib/terrain'
+import { cesiumIonToken, useWorldTerrain } from './lib/terrain'
+import { createFpsWatchdog, getInitialPerfTier } from './lib/deviceTier'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import type {
   ImportedMedia,
@@ -82,6 +84,14 @@ const pointTypes: PointType[] = ['photo', 'video', '360', 'poi']
 const adminPasswordStorageKey = 'rando3d-admin-password'
 export const newPointTitle = 'Nouveau point'
 const accessGrantStorageKey = 'rando3d-access-granted'
+
+// Réglage de performance carte : Auto (détection), ou forcé en 2D / 3D.
+type PerfMode = 'auto' | 'force-2d' | 'force-3d'
+const perfModeStorageKey = 'rando3d-perf-mode'
+const readPerfMode = (): PerfMode => {
+  const stored = window.localStorage.getItem(perfModeStorageKey)
+  return stored === 'force-2d' || stored === 'force-3d' ? stored : 'auto'
+}
 
 let traceIdCounter = 0
 const createTraceId = (): string => {
@@ -296,6 +306,16 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   // Voile plein écran tant que la carte 3D n'a pas fini de charger ses tuiles.
   const [mapReady, setMapReady] = useState(false)
+  // Mode performance carte (2D allégé sur appareils faibles).
+  const [perfMode, setPerfMode] = useState<PerfMode>(() => readPerfMode())
+  const [autoTier, setAutoTier] = useState<'high' | 'low'>(() =>
+    getInitialPerfTier(),
+  )
+  // 2D effectif : terrain forcé plat (env), ou réglage manuel, ou auto faible.
+  const flat2D =
+    !useWorldTerrain ||
+    perfMode === 'force-2d' ||
+    (perfMode === 'auto' && autoTier === 'low')
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
@@ -681,6 +701,28 @@ function App() {
     setBasemap(nextBasemap)
     window.localStorage.setItem('trail-basemap', nextBasemap)
   }, [])
+
+  // Bascule manuelle du mode carte : Auto → 2D → 3D → Auto (persistée).
+  const handleCyclePerfMode = useCallback(() => {
+    setPerfMode((current) => {
+      const next: PerfMode =
+        current === 'auto'
+          ? 'force-2d'
+          : current === 'force-2d'
+            ? 'force-3d'
+            : 'auto'
+      window.localStorage.setItem(perfModeStorageKey, next)
+      return next
+    })
+  }, [])
+
+  // Détection auto : en 3D + mode Auto, on surveille le framerate ; si l'appareil
+  // rame, on bascule définitivement en 2D pour la session (jamais l'inverse).
+  useEffect(() => {
+    if (!mapReady || flat2D || perfMode !== 'auto' || !useWorldTerrain) return
+    const watchdog = createFpsWatchdog(() => setAutoTier('low'))
+    return () => watchdog.stop()
+  }, [mapReady, flat2D, perfMode])
 
   const handleRecenter = useCallback(() => {
     setRecenterRequest((current) => current + 1)
@@ -1396,13 +1438,29 @@ function App() {
             </div>
           ) : null}
 
-          <div className="terrain-badge">
-            <Mountain aria-hidden="true" size={16} />
-            <span>{terrainStatusLabel}</span>
+          <button
+            type="button"
+            className="terrain-badge terrain-toggle"
+            onClick={handleCyclePerfMode}
+            title="Mode carte : Auto / 2D / 3D"
+            aria-label="Mode carte : cliquer pour basculer entre Auto, 2D et Relief 3D"
+          >
+            {flat2D ? (
+              <MapIcon aria-hidden="true" size={16} />
+            ) : (
+              <Mountain aria-hidden="true" size={16} />
+            )}
+            <span>
+              {perfMode === 'force-2d'
+                ? 'Vue 2D'
+                : perfMode === 'force-3d'
+                  ? 'Relief 3D'
+                  : `Auto · ${flat2D ? '2D' : '3D'}`}
+            </span>
             {!cesiumIonToken && isStudioMode ? (
               <small>Token Cesium conseillé</small>
             ) : null}
-          </div>
+          </button>
 
           <BasemapControl basemap={basemap} onChange={handleBasemapChange} />
 
@@ -1457,22 +1515,26 @@ function App() {
             >
               <RotateCw aria-hidden="true" size={18} />
             </button>
-            <button
-              aria-label="Relever la vue"
-              title="Relever la vue"
-              type="button"
-              onClick={() => sendCameraCommand('tilt-up')}
-            >
-              <ChevronUp aria-hidden="true" size={19} />
-            </button>
-            <button
-              aria-label="Vue plongeante"
-              title="Vue plongeante"
-              type="button"
-              onClick={() => sendCameraCommand('tilt-down')}
-            >
-              <ChevronDown aria-hidden="true" size={19} />
-            </button>
+            {!flat2D ? (
+              <>
+                <button
+                  aria-label="Relever la vue"
+                  title="Relever la vue"
+                  type="button"
+                  onClick={() => sendCameraCommand('tilt-up')}
+                >
+                  <ChevronUp aria-hidden="true" size={19} />
+                </button>
+                <button
+                  aria-label="Vue plongeante"
+                  title="Vue plongeante"
+                  type="button"
+                  onClick={() => sendCameraCommand('tilt-down')}
+                >
+                  <ChevronDown aria-hidden="true" size={19} />
+                </button>
+              </>
+            ) : null}
             <button
               aria-label="Zoomer"
               title="Zoomer"
@@ -1513,6 +1575,7 @@ function App() {
               onMarkerClick={handleMarkerClick}
               onOpenGroup={handleOpenGroup}
               onReady={() => setMapReady(true)}
+              flat2D={flat2D}
             />
           )}
 

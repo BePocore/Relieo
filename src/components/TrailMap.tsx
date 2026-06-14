@@ -56,6 +56,8 @@ type TrailMapProps = {
   selectedPoint: TrailPoint | null
   cameraCommand: CameraCommand | null
   editable?: boolean
+  // Mode 2D allégé (terrain plat + vue du dessus) pour les appareils faibles.
+  flat2D?: boolean
   videoPosters?: Record<string, string>
   framedThumbnails?: Record<string, string>
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
@@ -113,6 +115,18 @@ const clusterLabelOffsetZero = new Cartesian2(0, 0)
 const arcGisTerrainUrl =
   'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
 
+// Vue 3D (inclinaison) : 2 doigts, clic droit, molette cliquée ou Ctrl+glisser.
+// Vidé en mode 2D (vue du dessus verrouillée).
+const tilt3DEventTypes = [
+  CameraEventType.PINCH,
+  CameraEventType.RIGHT_DRAG,
+  CameraEventType.MIDDLE_DRAG,
+  {
+    eventType: CameraEventType.LEFT_DRAG,
+    modifier: KeyboardEventModifier.CTRL,
+  },
+]
+
 const computeBounds = (track: TrackPoint[], points: TrailPoint[]): Rectangle => {
   const coordinates = [
     ...track.map(({ lat, lng }) => ({ lat, lng })),
@@ -169,6 +183,7 @@ const flyToTrail = (
   track: TrackPoint[],
   points: TrailPoint[],
   duration: number,
+  flat2D = false,
 ) => {
   const positions = (track.length > 0 ? track : points).map((point) =>
     Cartesian3.fromDegrees(point.lng, point.lat, 0),
@@ -184,8 +199,9 @@ const flyToTrail = (
   viewer.camera.flyToBoundingSphere(sphere, {
     duration,
     offset: new HeadingPitchRange(
-      CesiumMath.toRadians(24),
-      CesiumMath.toRadians(-52),
+      // 2D : vue du dessus, sans rotation ni inclinaison.
+      CesiumMath.toRadians(flat2D ? 0 : 24),
+      CesiumMath.toRadians(flat2D ? -90 : -52),
       Math.max(sphere.radius * 4.8, 2_500),
     ),
   })
@@ -227,6 +243,7 @@ export function TrailMap({
   selectedPoint,
   cameraCommand,
   editable = false,
+  flat2D = false,
   videoPosters = {},
   framedThumbnails = {},
   onMovePoint,
@@ -253,6 +270,13 @@ export function TrailMap({
   const mediaLibraryRef = useRef(mediaLibrary)
   const videoPostersRef = useRef(videoPosters)
   const framedThumbnailsRef = useRef(framedThumbnails)
+  // Mode 2D + données courantes lues par les callbacks/effets sans les ajouter
+  // en dépendances (évite de relancer le lourd effet d'init).
+  const flat2DRef = useRef(flat2D)
+  const pointsRef = useRef(points)
+  const trackRef = useRef(track)
+  // L'init applique déjà l'état 2D initial ; l'effet de bascule ignore son 1er run.
+  const flat2DFirstRunRef = useRef(true)
   // Vignette encadrée déjà appliquée à l'entité (id → src), pour ne mettre à
   // jour que les billboards dont la vignette vient d'arriver (rafraîchissement
   // incrémental, sans reconstruire la carte).
@@ -268,7 +292,10 @@ export function TrailMap({
     mediaLibraryRef.current = mediaLibrary
     videoPostersRef.current = videoPosters
     framedThumbnailsRef.current = framedThumbnails
-  }, [editable, onMovePoint, onCreatePoint, onMarkerClick, onOpenGroup, onReady, mediaLibrary, videoPosters, framedThumbnails])
+    flat2DRef.current = flat2D
+    pointsRef.current = points
+    trackRef.current = track
+  }, [editable, onMovePoint, onCreatePoint, onMarkerClick, onOpenGroup, onReady, mediaLibrary, videoPosters, framedThumbnails, flat2D, points, track])
 
   useEffect(() => {
     const container = containerRef.current
@@ -279,8 +306,15 @@ export function TrailMap({
     const coarsePointer =
       window.matchMedia('(pointer: coarse)').matches ||
       navigator.maxTouchPoints > 0
+    // État initial du mode 2D (les bascules ultérieures passent par l'effet
+    // dédié plus bas). msaa/antialias ne sont réglables qu'à la création.
+    const flat2D0 = flat2DRef.current
+    const terrain3D0 = useWorldTerrain && !flat2D0
     const devicePixelRatio = Math.max(window.devicePixelRatio || 1, 1)
-    const targetPixelRatio = Math.min(devicePixelRatio, coarsePointer ? 2 : 2.25)
+    const targetPixelRatio = Math.min(
+      devicePixelRatio,
+      flat2D0 ? 1.5 : coarsePointer ? 2 : 2.25,
+    )
 
     const viewer = new Viewer(container, {
       animation: false,
@@ -298,11 +332,11 @@ export function TrailMap({
       shouldAnimate: false,
       requestRenderMode: true,
       maximumRenderTimeChange: Number.POSITIVE_INFINITY,
-      msaaSamples: coarsePointer ? 2 : 4,
+      msaaSamples: flat2D0 ? 1 : coarsePointer ? 2 : 4,
       useBrowserRecommendedResolution: false,
       contextOptions: {
         webgl: {
-          antialias: true,
+          antialias: !flat2D0,
           powerPreference: 'high-performance',
         },
       },
@@ -311,14 +345,14 @@ export function TrailMap({
     viewer.resolutionScale = targetPixelRatio / devicePixelRatio
     container.dataset.renderDpr = targetPixelRatio.toFixed(2)
     viewer.scene.postProcessStages.fxaa.enabled = true
-    viewer.scene.globe.maximumScreenSpaceError = coarsePointer ? 2 : 1.5
-    viewer.scene.globe.tileCacheSize = coarsePointer ? 260 : 420
+    viewer.scene.globe.maximumScreenSpaceError = flat2D0 ? 3 : coarsePointer ? 2 : 1.5
+    viewer.scene.globe.tileCacheSize = flat2D0 ? 100 : coarsePointer ? 260 : 420
     viewer.scene.globe.preloadAncestors = true
     viewer.scene.globe.preloadSiblings = true
     viewer.scene.globe.depthTestAgainstTerrain = false
     viewer.scene.globe.baseColor = Color.fromCssColorString('#c7d1cc')
     viewer.scene.backgroundColor = Color.fromCssColorString('#b9c8c1')
-    viewer.scene.verticalExaggeration = useWorldTerrain ? 1.25 : 1
+    viewer.scene.verticalExaggeration = terrain3D0 ? 1.25 : 1
     viewer.scene.globe.enableLighting = false
     viewer.scene.fog.enabled = false
 
@@ -340,17 +374,9 @@ export function TrailMap({
     controller.rotateEventTypes = CameraEventType.LEFT_DRAG
     // Zoom : molette ou pincement à deux doigts.
     controller.zoomEventTypes = [CameraEventType.WHEEL, CameraEventType.PINCH]
-    // Vue 3D (haut/bas/côté) : 2 doigts, clic droit, molette cliquée ou Ctrl+glisser.
-    controller.tiltEventTypes = [
-      CameraEventType.PINCH,
-      CameraEventType.RIGHT_DRAG,
-      CameraEventType.MIDDLE_DRAG,
-      {
-        eventType: CameraEventType.LEFT_DRAG,
-        modifier: KeyboardEventModifier.CTRL,
-      },
-    ]
-    if (useWorldTerrain) {
+    // Inclinaison désactivée en 2D (vue du dessus verrouillée).
+    controller.tiltEventTypes = flat2D0 ? [] : tilt3DEventTypes
+    if (terrain3D0) {
       void ArcGISTiledElevationTerrainProvider.fromUrl(arcGisTerrainUrl)
         .then((terrainProvider) => {
           if (!viewer.isDestroyed()) {
@@ -657,6 +683,51 @@ export function TrailMap({
     }
   }, [])
 
+  // Bascule 2D ⇄ 3D au runtime (toggle manuel ou downgrade auto). Mute le viewer
+  // existant sans le détruire : terrain plat vs relief, exagération, inclinaison,
+  // allègement du rendu, et recadrage vue du dessus. Le 1er run est ignoré (l'init
+  // a déjà posé l'état initial).
+  useEffect(() => {
+    if (flat2DFirstRunRef.current) {
+      flat2DFirstRunRef.current = false
+      return
+    }
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+    const scene = viewer.scene
+    const controller = scene.screenSpaceCameraController
+    const terrain3D = useWorldTerrain && !flat2D
+    const coarsePointer =
+      window.matchMedia('(pointer: coarse)').matches ||
+      navigator.maxTouchPoints > 0
+
+    if (terrain3D) {
+      void ArcGISTiledElevationTerrainProvider.fromUrl(arcGisTerrainUrl)
+        .then((terrainProvider) => {
+          if (!viewer.isDestroyed()) {
+            viewer.terrainProvider = terrainProvider
+            scene.requestRender()
+          }
+        })
+        .catch(() => undefined)
+    } else {
+      viewer.terrainProvider = new EllipsoidTerrainProvider()
+    }
+
+    scene.verticalExaggeration = terrain3D ? 1.25 : 1
+    controller.tiltEventTypes = flat2D ? [] : tilt3DEventTypes
+
+    const devicePixelRatio = Math.max(window.devicePixelRatio || 1, 1)
+    const cap = flat2D ? 1.5 : coarsePointer ? 2 : 2.25
+    viewer.resolutionScale = Math.min(devicePixelRatio, cap) / devicePixelRatio
+    scene.globe.maximumScreenSpaceError = flat2D ? 3 : coarsePointer ? 2 : 1.5
+    scene.globe.tileCacheSize = flat2D ? 100 : coarsePointer ? 260 : 420
+
+    // Recadre sur la trace avec la nouvelle vue (du dessus en 2D, inclinée en 3D).
+    flyToTrail(viewer, trackRef.current, pointsRef.current, 0.8, flat2D)
+    scene.requestRender()
+  }, [flat2D])
+
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer || viewer.isDestroyed()) return
@@ -771,7 +842,7 @@ export function TrailMap({
     viewer.scene.requestRender()
     if (!didInitialFitRef.current) {
       didInitialFitRef.current = true
-      flyToTrail(viewer, track, points, 0)
+      flyToTrail(viewer, track, points, 0, flat2DRef.current)
     }
   }, [mediaLibrary, points, track])
 
@@ -808,12 +879,16 @@ export function TrailMap({
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer || recenterRequest === 0) return
-    flyToTrail(viewer, track, points, 0)
+    flyToTrail(viewer, track, points, 0, flat2DRef.current)
   }, [points, recenterRequest, track])
 
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer || !cameraCommand) return
+    // En 2D, on ignore l'inclinaison (vue du dessus verrouillée).
+    if (flat2DRef.current && (cameraCommand.type === 'tilt-up' || cameraCommand.type === 'tilt-down')) {
+      return
+    }
 
     const height = Math.max(viewer.camera.positionCartographic.height, 100)
     if (cameraCommand.type === 'turn-left') {
@@ -870,7 +945,8 @@ export function TrailMap({
       duration: 1.1,
       offset: new HeadingPitchRange(
         viewer.camera.heading,
-        CesiumMath.toRadians(-45),
+        // 2D : vue du dessus ; 3D : légèrement plongeante.
+        CesiumMath.toRadians(flat2DRef.current ? -90 : -45),
         2_800,
       ),
     })
