@@ -873,7 +873,16 @@ export function TrailMap({
       thumbAppliedRef.current.set(id, framed)
       changed = true
     })
-    if (changed) viewer.scene.requestRender()
+    if (changed) {
+      // Les billboards de GROUPE (clusters) ne sont PAS des entités : la boucle
+      // ci-dessus ne les met pas à jour. Un cluster formé avant que la vignette
+      // de son ancre soit prête garde l'image « pile vide » (clusterStackUri)
+      // jusqu'au prochain recalcul (zoom/pan). On force donc le reclustering
+      // pour que clusterEvent refire et récupère la vignette maintenant prête.
+      pointSource.clustering.enabled = false
+      pointSource.clustering.enabled = true
+      viewer.scene.requestRender()
+    }
   }, [framedThumbnails, videoPosters])
 
   useEffect(() => {
