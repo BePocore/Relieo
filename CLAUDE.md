@@ -12,11 +12,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 There is no test suite.
 
-Env vars: `VITE_CESIUM_ION_TOKEN` (Cesium Ion), `VITE_FLAT_TERRAIN=true` (force flat terrain for testing), `RANDO3D_ADMIN_PASSWORD` (server, gates publishing/upload), `BLOB_READ_WRITE_TOKEN` (auto-added by Vercel Blob).
+Env vars: `RANDO3D_ADMIN_PASSWORD` (server, gates publishing/upload), the `R2_*` variables documented in `README.md`, and `BLOB_READ_WRITE_TOKEN` only for the legacy Vercel Blob fallback.
 
 ## Architecture
 
-React 19 + Vite + CesiumJS single-page app deployed on Vercel. One URL, two modes selected at mount by `?mode=studio` (or `#studio`): **public** consultation (read-only) vs **studio** (editing). `App.tsx` holds essentially all state with `useState` — there is no store or router.
+React 19 + Vite + MapLibre GL JS single-page app deployed on Vercel. One URL, two modes selected at mount by `?mode=studio` (or `#studio`): **public** consultation (read-only) vs **studio** (editing). `App.tsx` holds essentially all state with `useState` — there is no store or router.
 
 ### Data model & persistence
 
@@ -32,15 +32,15 @@ The published map is one JSON object (`TrailProject` in `src/types.ts`) stored i
 
 ### `src/lib/` — pure, framework-free logic
 
-`geo.ts` (haversine `distanceBetween`, Douglas–Peucker `simplifyTrack`, `computeTrailStats`), `gpx.ts` (GPX → `TrackPoint[]`), `media.ts` (EXIF/GPS extraction via `exifr`, `resolvePointMedia` that maps a point to its displayable media), `markers.ts` (SVG marker pins as data URIs), `basemaps.ts`, `terrain.ts`, `format.ts`, `pointMeta.ts`. These are imported widely; treat them as the stable core.
+`geo.ts` (haversine `distanceBetween`, Douglas–Peucker `simplifyTrack`, `computeTrailStats`), `gpx.ts` (GPX → `TrackPoint[]`), `media.ts` (EXIF/GPS extraction via `exifr`, `resolvePointMedia` that maps a point to its displayable media), `markers.ts` (SVG marker pins as data URIs), `basemaps.ts`, `format.ts`, `pointMeta.ts`. These are imported widely; treat them as the stable core.
 
-### Cesium layer — `components/TrailMap.tsx`
+### MapLibre layer — `components/MapLibreTrailMap.tsx`
 
-The only imperative Cesium code. A `Viewer` is created once in a `useEffect`; subsequent effects rebuild entities when `traces`/`points`/posters change. Notable patterns:
+The map, terrain, route layers, clusters and HTML media markers live in this component. A MapLibre map is created once in a `useEffect`; subsequent effects update GeoJSON sources and markers. Notable patterns:
 
-- **Native camera controls** are configured directly on `screenSpaceCameraController` (1-finger pan, pinch zoom, 2-finger/right-drag tilt). Custom pointer handlers add: marker **drag** in studio (points are **locked by default** — only `locked === false` is draggable) and **long-press** on empty map to create a point. `cameraCommand` prop drives the on-screen rotate/zoom/tilt buttons.
-- **Points live in a `CustomDataSource` with clustering enabled** so overlapping thumbnails collapse into a stacked-count badge. For the count to be correct each point is exactly **one billboard** — the white photo frame is baked into the thumbnail image (see `useFramedThumbnails`) rather than drawn as a second billboard. Clicking a cluster zooms if the points are spread, or opens a gallery lightbox if they share a location.
-- Route polylines stay in `viewer.entities`; only markers are clustered.
+- **Native touch controls** handle pan, pinch zoom, rotation and pitch. Media markers are draggable in studio only when `locked === false`; double-clicking the map creates a point. `cameraCommand` drives the on-screen rotate/zoom/tilt buttons.
+- Points use a clustered GeoJSON source at distant zoom levels. At closer zoom levels, HTML markers display the real lightweight previews while preserving direct clicks and full opacity over terrain.
+- Routes are rendered as rounded GPU line layers over AWS Terrarium relief. Satellite, Topo and classic map raster sources can be switched without recreating the map.
 
 ### Client-side media thumbnailing (`src/useVideoPosters.ts`, `src/useFramedThumbnails.ts`)
 

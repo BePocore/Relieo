@@ -206,8 +206,7 @@
 
 .trail-map,
 .trail-map-canvas,
-.cesium-widget,
-.cesium-widget canvas {
+.maplibregl-map {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -217,7 +216,6 @@
   user-select: none;
 }
 
-.maplibre-map,
 .maplibregl-map,
 .maplibregl-canvas-container,
 .maplibregl-canvas {
@@ -322,12 +320,6 @@
 .maplibre-metrics strong {
   color: var(--accent);
   font-size: 0.7rem;
-}
-
-.cesium-viewer-bottom,
-.cesium-viewer-toolbar,
-.cesium-viewer-fullscreenContainer {
-  display: none !important;
 }
 
 /* ── Contrôles flottants sur la carte ───────────────────────── */

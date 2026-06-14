@@ -6,11 +6,42 @@ import maplibregl, {
 } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson'
-import type { TrailMapProps } from './TrailMap'
+import type { BasemapId } from '../lib/basemaps'
 import { simplifyTrack } from '../lib/geo'
 import { resolvePointMedia } from '../lib/media'
 import { markerDataUri } from '../lib/markers'
 import { traceColor } from '../lib/mapStyles'
+import type { ImportedMedia, Trace, TrailPoint } from '../types'
+
+export type CameraCommand = {
+  id: number
+  type:
+    | 'turn-left'
+    | 'turn-right'
+    | 'zoom-in'
+    | 'zoom-out'
+    | 'tilt-up'
+    | 'tilt-down'
+}
+
+export type MapLibreTrailMapProps = {
+  traces: Trace[]
+  points: TrailPoint[]
+  mediaLibrary: ImportedMedia[]
+  basemap: BasemapId
+  recenterRequest: number
+  selectedPoint: TrailPoint | null
+  cameraCommand: CameraCommand | null
+  editable?: boolean
+  flat2D?: boolean
+  videoPosters?: Record<string, string>
+  framedThumbnails?: Record<string, string>
+  onMovePoint?: (pointId: string, lat: number, lng: number) => void
+  onCreatePoint?: (lat: number, lng: number) => void
+  onMarkerClick: (point: TrailPoint) => void
+  onOpenGroup?: (points: TrailPoint[]) => void
+  onReady?: () => void
+}
 
 type MapMetrics = {
   fps: number | null
@@ -94,7 +125,7 @@ const createStyle = (): StyleSpecification => ({
   ],
 })
 
-const pointKey = (point: TrailMapProps['points'][number], index: number) =>
+const pointKey = (point: TrailPoint, index: number) =>
   point.id ?? `point-${index}`
 
 const emptyPoints = (): FeatureCollection<Point> => ({
@@ -108,8 +139,8 @@ const emptyRoutes = (): FeatureCollection<LineString> => ({
 })
 
 const boundsFor = (
-  traces: TrailMapProps['traces'],
-  points: TrailMapProps['points'],
+  traces: Trace[],
+  points: TrailPoint[],
 ) => {
   const bounds = new LngLatBounds()
   for (const trace of traces) {
@@ -142,7 +173,7 @@ const loadHtmlImage = (src: string, alt: string) =>
   })
 
 const routeGeoJson = (
-  traces: TrailMapProps['traces'],
+  traces: Trace[],
   compact: boolean,
 ): FeatureCollection<LineString> => ({
   type: 'FeatureCollection',
@@ -185,7 +216,7 @@ export function MapLibreTrailMap({
   onMarkerClick,
   onOpenGroup,
   onReady,
-}: TrailMapProps) {
+}: MapLibreTrailMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const domMarkersRef = useRef<maplibregl.Marker[]>([])
@@ -402,7 +433,7 @@ export function MapLibreTrailMap({
               (point, index) => pointKey(point, index) === leaf.properties?.pointId,
             ),
           )
-          .filter((point): point is TrailMapProps['points'][number] => Boolean(point))
+          .filter((point): point is TrailPoint => Boolean(point))
         if (group.length > 0) callbacksRef.current.onOpenGroup?.(group)
       })
 
@@ -483,7 +514,7 @@ export function MapLibreTrailMap({
 
       const features: Array<Feature<Point>> = []
       const mediaMarkers: Array<{
-        point: TrailMapProps['points'][number]
+        point: TrailPoint
         thumbnailSource: string
       }> = []
       for (let index = 0; index < points.length; index += 1) {

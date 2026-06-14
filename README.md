@@ -1,6 +1,6 @@
 # Carte interactive 3D
 
-Site Vite + React + CesiumJS pour presenter une randonnee avec trace GPX,
+Site Vite + React + MapLibre GL JS pour presenter une randonnee avec trace GPX,
 photos geolocalisees, points d'interet et liens SkyPixel 360.
 
 ## Deux interfaces
@@ -71,7 +71,7 @@ Si aucune position n'est trouvee, ajoute ou ajuste le point manuellement.
 
 Fichiers publics :
 
-- `public/data/trace.gpx` : trace GPX affichee sur le globe.
+- `public/data/trace.gpx` : trace GPX affichee sur le terrain.
 - `public/data/points.json` : points avec `lat`, `lng`, `title`, `type`,
   `image`, `video`, `skypixelUrl`, `description`.
 - `public/photos/*` : images appelees par `points.json`.
@@ -129,31 +129,18 @@ Le frontend Vite est genere dans `dist`. Les fichiers `api/project.ts` et
 `api/upload.ts` deviennent des Vercel Functions pour la sauvegarde partagee et
 l'import des medias.
 
-## Terrain 3D Cesium
+## Terrain 3D MapLibre
 
-La carte utilise Cesium World Terrain pour afficher les montagnes en relief,
-avec la trace GPX plaquee sur le terrain. Pour publier proprement, cree un token
-Cesium Ion puis ajoute-le dans `.env` :
-
-```env
-VITE_CESIUM_ION_TOKEN=ton_token_ici
-```
-
-Si la carte reste plate ou affiche seulement le fallback clair, recree un token
-Cesium Ion avec `assets:read`, l'acces aux assets publics / World Terrain, et
-les URLs autorisees du site local puis publie.
-
-Pour forcer une carte plate pendant des tests :
-
-```env
-VITE_FLAT_TERRAIN=true
-```
+La carte utilise MapLibre GL JS et les tuiles d'altitude AWS Terrarium pour
+afficher les montagnes en relief, avec la trace GPX superposee au terrain.
+Aucun token cartographique n'est necessaire. Le bouton `Relief 3D` permet de
+basculer temporairement en vue 2D.
 
 ## Fonds de carte
 
 Le fond par defaut est `Topo`, plus fiable pour lire la randonnee, les reliefs
-et la trace. Un selecteur sur la carte permet aussi de passer en `Relief`,
-`Satellite` ou `Carte` classique.
+et la trace. Un selecteur sur la carte permet aussi de passer en `Satellite` ou
+`Carte` classique.
 
 ## Suite prevue
 

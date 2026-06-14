@@ -32,8 +32,7 @@ import { MediaRail } from './components/MediaRail'
 import { PublicPanel } from './components/PublicPanel'
 import { StudioPanel } from './components/StudioPanel'
 import { StatsBar } from './components/StatsBar'
-import { TrailMap } from './components/TrailMap'
-import type { CameraCommand } from './components/TrailMap'
+import type { CameraCommand } from './components/MapLibreTrailMap'
 import { computeTrailStats, distanceBetween } from './lib/geo'
 import { parseGpx } from './lib/gpx'
 import { fileFingerprint, uploadMedia } from './lib/cloudUpload'
@@ -44,8 +43,6 @@ import {
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
 import { loadLocalProject, saveLocalProject } from './lib/projectBackup'
-import { cesiumIonToken, useWorldTerrain } from './lib/terrain'
-import { createFpsWatchdog, getInitialPerfTier } from './lib/deviceTier'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import type {
   ImportedMedia,
@@ -99,7 +96,6 @@ const adminPasswordStorageKey = 'rando3d-admin-password'
 export const newPointTitle = 'Nouveau point'
 const accessGrantStorageKey = 'rando3d-access-granted'
 
-// Réglage de performance carte : Auto (détection), ou forcé en 2D / 3D.
 type PerfMode = 'auto' | 'force-2d' | 'force-3d'
 const perfModeStorageKey = 'rando3d-perf-mode'
 const readPerfMode = (): PerfMode => {
@@ -308,10 +304,6 @@ const formatKilometers = (meters: number): string => {
 }
 
 function App() {
-  const mapEngine =
-    new URLSearchParams(window.location.search).get('engine') === 'cesium'
-      ? 'cesium'
-      : 'maplibre'
   const [isStudioMode] = useState(() => isStudioUrl())
   const [isPanelOpen, setIsPanelOpen] = useState(() => isStudioUrl())
   const [traces, setTraces] = useState<Trace[]>([])
@@ -323,26 +315,15 @@ function App() {
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   // Voile plein écran tant que la carte n'est pas prête. `tilesReady` = tuiles
-  // du globe chargées ; `mapReady` ajoute l'attente des vignettes photo (sinon
+  // de carte chargées ; `mapReady` ajoute l'attente des vignettes photo (sinon
   // le voile se lève avant que les marqueurs n'apparaissent → impression de
   // « rechargement » des photos une fois la carte affichée).
   const [tilesReady, setTilesReady] = useState(false)
   const [mapReady, setMapReady] = useState(false)
   const settleTimerRef = useRef<number | null>(null)
-  // Mode performance carte (2D allégé sur appareils faibles).
+  // Le relief reste le mode principal, avec une vue 2D manuelle si nécessaire.
   const [perfMode, setPerfMode] = useState<PerfMode>(() => readPerfMode())
-  const [autoTier, setAutoTier] = useState<'high' | 'low'>(() =>
-    getInitialPerfTier(),
-  )
-  // 2D effectif : terrain forcé plat (env), ou réglage manuel, ou auto faible.
-  const flat2D =
-    !useWorldTerrain ||
-    perfMode === 'force-2d' ||
-    (perfMode === 'auto' && autoTier === 'low')
-  // Le prototype MapLibre garde le relief en mode Auto. Le bouton permet
-  // toujours de forcer explicitement la 2D pour comparer.
-  const mapFlat2D =
-    perfMode === 'force-2d' || (mapEngine === 'cesium' && flat2D)
+  const mapFlat2D = perfMode === 'force-2d'
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
@@ -404,10 +385,7 @@ function App() {
         const [gpxResponse, pointsResponse, projectResponse, localProject] = await Promise.all([
           fetch('/data/trace.gpx'),
           fetch('/data/points.json'),
-          fetch(
-            import.meta.env.DEV ? '/prototype-api/project' : '/api/project',
-            { cache: 'no-store' },
-          ).catch(() => null),
+          fetch('/api/project', { cache: 'no-store' }).catch(() => null),
           loadLocalProject().catch(() => null),
         ])
 
@@ -477,7 +455,7 @@ function App() {
     }
 
     void loadTrail()
-  }, [applyProject, isStudioMode, mapEngine])
+  }, [applyProject, isStudioMode])
 
   const combinedPoints = useMemo(
     () => traces.flatMap((trace) => trace.points),
@@ -491,7 +469,7 @@ function App() {
   const { thumbnails: framedThumbnails, ready: framedReady } =
     useFramedThumbnails(points, mediaLibrary, videoPosters)
 
-  // On lève le voile seulement quand TOUT est réellement prêt : tuiles du globe
+  // On lève le voile seulement quand TOUT est réellement prêt : tuiles de carte
   // + lot complet des posters vidéo + lot complet des vignettes encadrées.
   // Un court délai de stabilisation évite un flash pendant leur installation.
   const assetsReady = postersReady && framedReady
@@ -755,7 +733,7 @@ function App() {
     window.localStorage.setItem('trail-basemap', nextBasemap)
   }, [])
 
-  // Bascule manuelle du mode carte : Auto → 2D → 3D → Auto (persistée).
+  // Conserve le cycle existant : Auto → 2D → 3D → Auto.
   const handleCyclePerfMode = useCallback(() => {
     setPerfMode((current) => {
       const next: PerfMode =
@@ -768,14 +746,6 @@ function App() {
       return next
     })
   }, [])
-
-  // Détection auto : en 3D + mode Auto, on surveille le framerate ; si l'appareil
-  // rame, on bascule définitivement en 2D pour la session (jamais l'inverse).
-  useEffect(() => {
-    if (!mapReady || mapFlat2D || perfMode !== 'auto' || !useWorldTerrain) return
-    const watchdog = createFpsWatchdog(() => setAutoTier('low'))
-    return () => watchdog.stop()
-  }, [mapReady, mapFlat2D, perfMode])
 
   const handleRecenter = useCallback(() => {
     setRecenterRequest((current) => current + 1)
@@ -1439,16 +1409,11 @@ function App() {
     traces,
   ])
 
-  // Carte protégée : on saisit le code AVANT de charger la carte (Cesium est
-  // lourd, inutile de le charger pour quelqu'un qui n'a pas encore l'accès).
+  // Carte protégée : on saisit le code avant de charger le moteur cartographique.
   const needsAccess = !isStudioMode && Boolean(accessCode) && !accessGranted
 
   return (
-    <div
-      className={`${isStudioMode ? 'app-shell studio-mode' : 'app-shell'}${
-        mapEngine === 'maplibre' ? ' maplibre-prototype' : ''
-      }`}
-    >
+    <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
       <header className="topbar">
         <div className="brand">
           <span
@@ -1512,17 +1477,8 @@ function App() {
               <Mountain aria-hidden="true" size={16} />
             )}
             <span>
-              {perfMode === 'force-2d'
-                ? 'Vue 2D'
-                : perfMode === 'force-3d'
-                  ? 'Relief 3D'
-                  : mapEngine === 'maplibre'
-                    ? 'Relief 3D'
-                    : `Auto · ${mapFlat2D ? '2D' : '3D'}`}
+              {mapFlat2D ? 'Vue 2D' : 'Relief 3D'}
             </span>
-            {mapEngine === 'cesium' && !cesiumIonToken && isStudioMode ? (
-              <small>Token Cesium conseillé</small>
-            ) : null}
           </button>
 
           <BasemapControl basemap={basemap} onChange={handleBasemapChange} />
@@ -1624,7 +1580,7 @@ function App() {
           ) : needsAccess ? (
             // Carte non montée tant que le code n'est pas saisi (la porte couvre).
             <div className="loading-state" />
-          ) : mapEngine === 'maplibre' ? (
+          ) : (
             <Suspense
               fallback={
                 <div className="loading-state">
@@ -1652,25 +1608,6 @@ function App() {
                 flat2D={mapFlat2D}
               />
             </Suspense>
-          ) : (
-            <TrailMap
-              traces={traces}
-              points={points}
-              mediaLibrary={mediaLibrary}
-              basemap={basemap}
-              recenterRequest={recenterRequest}
-              selectedPoint={selectedPoint}
-              cameraCommand={cameraCommand}
-              editable={isStudioMode}
-              videoPosters={videoPosters}
-              framedThumbnails={framedThumbnails}
-              onMovePoint={handleMovePoint}
-              onCreatePoint={handleCreatePoint}
-              onMarkerClick={handleMarkerClick}
-              onOpenGroup={handleOpenGroup}
-              onReady={() => setTilesReady(true)}
-              flat2D={mapFlat2D}
-            />
           )}
 
           <MediaRail
