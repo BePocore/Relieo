@@ -467,10 +467,8 @@ function App() {
     useFramedThumbnails(points, mediaLibrary, videoPosters)
 
   // On lève le voile seulement quand TOUT est réellement prêt : tuiles du globe
-  // + posters vidéo + vignettes encadrées (compte des terminées, pas une
-  // heuristique de « plus de changement »). Un court délai de stabilisation
-  // évite de lever pendant la transition posters→vignettes ; les deps incluent
-  // framedThumbnails pour ré-armer à chaque nouvelle vignette restante.
+  // + lot complet des posters vidéo + lot complet des vignettes encadrées.
+  // Un court délai de stabilisation évite un flash pendant leur installation.
   const assetsReady = postersReady && framedReady
   useEffect(() => {
     if (!tilesReady || mapReady) return
@@ -484,15 +482,8 @@ function App() {
         window.clearTimeout(settleTimerRef.current)
       }
     }
-  }, [tilesReady, mapReady, assetsReady, framedThumbnails, videoPosters])
+  }, [tilesReady, mapReady, assetsReady])
 
-  // Plafond de sécurité : ne jamais bloquer indéfiniment (réseau très lent,
-  // génération coincée). Généreux car la voie normale est l'attente réelle.
-  useEffect(() => {
-    if (!tilesReady) return
-    const cap = window.setTimeout(() => setMapReady(true), 20000)
-    return () => window.clearTimeout(cap)
-  }, [tilesReady])
   const mediaPoints = useMemo(() => {
     const filtered = points.filter(
       (point) =>

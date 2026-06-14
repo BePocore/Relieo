@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { resolvePointMedia } from './lib/media'
 import type { ImportedMedia, TrailPoint } from './types'
 
 // Cache global des vignettes vidéo (1re image), évite de régénérer.
 const posterCache = new Map<string, string>()
+const pending = new Map<string, Promise<string | null>>()
+
+type VideoSource = {
+  src: string
+  thumbnailSrc?: string
+}
 
 const generatePoster = (src: string): Promise<string | null> =>
   new Promise((resolve) => {
@@ -157,64 +163,71 @@ const schedulePoster = (src: string): Promise<string | null> =>
     else posterQueue.push(run)
   })
 
+const loadVideoPoster = (src: string): Promise<string | null> => {
+  const cached = posterCache.get(src)
+  if (cached) return Promise.resolve(cached)
+
+  const existing = pending.get(src)
+  if (existing) return existing
+
+  const request = schedulePoster(src).then((dataUrl) => {
+    if (dataUrl) posterCache.set(src, dataUrl)
+    pending.delete(src)
+    return dataUrl
+  })
+  pending.set(src, request)
+  return request
+}
+
 export function useVideoPosters(
   points: TrailPoint[],
   mediaLibrary: ImportedMedia[],
 ): { posters: Record<string, string>; ready: boolean } {
-  const [posters, setPosters] = useState<Record<string, string>>({})
-  // Progression réelle (résolu OU échoué) pour savoir quand tout est traité.
-  const [progress, setProgress] = useState({ done: 0, total: 0 })
-
-  useEffect(() => {
-    const sources = new Set<string>()
+  const sources = useMemo(() => {
+    const next = new Map<string, VideoSource>()
     for (const point of points) {
       const media = resolvePointMedia(point, mediaLibrary)
       if (media?.kind === 'video') {
-        if (media.thumbnailSrc) {
-          posterCache.set(media.src, media.thumbnailSrc)
-          sources.add(media.src)
-        } else {
-          sources.add(media.src)
-        }
+        next.set(media.src, { src: media.src, thumbnailSrc: media.thumbnailSrc })
       }
     }
-
-    const total = sources.size
-    let done = 0
+    return [...next.values()]
+  }, [points, mediaLibrary])
+  const [batch, setBatch] = useState<{
+    sources: VideoSource[] | null
+    posters: Record<string, string>
+  }>({ sources: null, posters: {} })
+  useEffect(() => {
     let cancelled = false
-    queueMicrotask(() => {
-      if (!cancelled) setProgress({ done: 0, total })
-    })
-    const markDone = () => {
+
+    const loadBatch = async () => {
+      const entries = await Promise.all(
+        sources.map(async ({ src, thumbnailSrc }) => {
+          if (thumbnailSrc) {
+            posterCache.set(src, thumbnailSrc)
+            return [src, thumbnailSrc] as const
+          }
+          return [src, await loadVideoPoster(src)] as const
+        }),
+      )
       if (cancelled) return
-      done += 1
-      setProgress({ done, total })
+
+      const posters: Record<string, string> = {}
+      for (const [src, dataUrl] of entries) {
+        if (dataUrl) posters[src] = dataUrl
+      }
+      setBatch({ sources, posters })
     }
 
-    sources.forEach((src) => {
-      if (posterCache.has(src)) {
-        const cached = posterCache.get(src)
-        if (cached) {
-          setPosters((current) =>
-            current[src] === cached ? current : { ...current, [src]: cached },
-          )
-        }
-        markDone()
-        return
-      }
-      void schedulePoster(src).then((dataUrl) => {
-        if (!cancelled && dataUrl) {
-          posterCache.set(src, dataUrl)
-          setPosters((current) => ({ ...current, [src]: dataUrl }))
-        }
-        markDone()
-      })
-    })
+    void loadBatch()
 
     return () => {
       cancelled = true
     }
-  }, [points, mediaLibrary])
+  }, [sources])
 
-  return { posters, ready: progress.done >= progress.total }
+  return {
+    posters: batch.posters,
+    ready: batch.sources === sources,
+  }
 }

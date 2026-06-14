@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { resolvePointMedia } from './lib/media'
 import type { ImportedMedia, TrailPoint } from './types'
 
@@ -6,6 +6,7 @@ import type { ImportedMedia, TrailPoint } from './types'
 // photo à coins arrondis, fin liseré blanc + ombre douce. La carte est
 // centrée sur sa coordonnée côté carte (billboard verticalOrigin CENTER).
 const cache = new Map<string, string>()
+const pending = new Map<string, Promise<string | null>>()
 
 // Dimensions logiques de la vignette (avant facteur retina). Réutilisées côté
 // carte pour dimensionner le billboard sans déformer l'image.
@@ -152,6 +153,22 @@ const scheduleFraming = (src: string): Promise<string | null> =>
     else framingQueue.push(run)
   })
 
+const loadFramedThumbnail = (src: string): Promise<string | null> => {
+  const cached = cache.get(src)
+  if (cached) return Promise.resolve(cached)
+
+  const existing = pending.get(src)
+  if (existing) return existing
+
+  const request = scheduleFraming(src).then((dataUrl) => {
+    if (dataUrl) cache.set(src, dataUrl)
+    pending.delete(src)
+    return dataUrl
+  })
+  pending.set(src, request)
+  return request
+}
+
 // Renvoie, par source d'affichage (url image ou poster vidéo), la vignette
 // encadrée prête pour la carte.
 export function useFramedThumbnails(
@@ -159,56 +176,46 @@ export function useFramedThumbnails(
   mediaLibrary: ImportedMedia[],
   videoPosters: Record<string, string>,
 ): { thumbnails: Record<string, string>; ready: boolean } {
-  const [framed, setFramed] = useState<Record<string, string>>({})
-  // Progression réelle (résolu OU échoué) pour lever le voile au bon moment.
-  const [progress, setProgress] = useState({ done: 0, total: 0 })
-
-  useEffect(() => {
-    const sources = new Set<string>()
+  const sources = useMemo(() => {
+    const next = new Set<string>()
     for (const point of points) {
       const media = resolvePointMedia(point, mediaLibrary)
-      if (media?.kind === 'image') sources.add(media.thumbnailSrc ?? media.src)
+      if (media?.kind === 'image') next.add(media.thumbnailSrc ?? media.src)
       else if (media?.kind === 'video' && videoPosters[media.src]) {
-        sources.add(videoPosters[media.src])
+        next.add(videoPosters[media.src])
       }
     }
-
-    const total = sources.size
-    let done = 0
+    return [...next]
+  }, [points, mediaLibrary, videoPosters])
+  const [batch, setBatch] = useState<{
+    sources: string[] | null
+    thumbnails: Record<string, string>
+  }>({ sources: null, thumbnails: {} })
+  useEffect(() => {
     let cancelled = false
-    queueMicrotask(() => {
-      if (!cancelled) setProgress({ done: 0, total })
-    })
-    const markDone = () => {
+
+    const loadBatch = async () => {
+      const entries = await Promise.all(
+        sources.map(async (src) => [src, await loadFramedThumbnail(src)] as const),
+      )
       if (cancelled) return
-      done += 1
-      setProgress({ done, total })
+
+      const thumbnails: Record<string, string> = {}
+      for (const [src, dataUrl] of entries) {
+        if (dataUrl) thumbnails[src] = dataUrl
+      }
+      setBatch({ sources, thumbnails })
     }
 
-    sources.forEach((src) => {
-      if (cache.has(src)) {
-        const cached = cache.get(src)
-        if (cached) {
-          setFramed((current) =>
-            current[src] === cached ? current : { ...current, [src]: cached },
-          )
-        }
-        markDone()
-        return
-      }
-      void scheduleFraming(src).then((dataUrl) => {
-        if (!cancelled && dataUrl) {
-          cache.set(src, dataUrl)
-          setFramed((current) => ({ ...current, [src]: dataUrl }))
-        }
-        markDone()
-      })
-    })
+    void loadBatch()
 
     return () => {
       cancelled = true
     }
-  }, [points, mediaLibrary, videoPosters])
+  }, [sources])
 
-  return { thumbnails: framed, ready: progress.done >= progress.total }
+  return {
+    thumbnails: batch.thumbnails,
+    ready: batch.sources === sources,
+  }
 }
