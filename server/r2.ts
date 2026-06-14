@@ -1,4 +1,7 @@
 import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
@@ -122,6 +125,126 @@ export const r2PublicUrl = (key: string): string => {
   const { publicBaseUrl } = config()
   const encodedKey = key.split('/').map(encodeURIComponent).join('/')
   return `${publicBaseUrl}/${encodedKey}`
+}
+
+export const r2KeyFromPublicUrl = (url: string): string | null => {
+  const { publicBaseUrl } = config()
+  const prefix = `${publicBaseUrl}/`
+  if (!url.startsWith(prefix)) return null
+  try {
+    return url
+      .slice(prefix.length)
+      .split('/')
+      .map(decodeURIComponent)
+      .join('/')
+  } catch {
+    return null
+  }
+}
+
+export const r2ObjectExists = async (key: string): Promise<boolean> => {
+  return (await objectSize(key)) > 0
+}
+
+export const r2CopyObject = async (
+  sourceKey: string,
+  destinationKey: string,
+): Promise<void> => {
+  await r2CopyObjects([{ sourceKey, destinationKey }])
+}
+
+export const r2CopyObjects = async (
+  objects: Array<{ sourceKey: string; destinationKey: string }>,
+): Promise<void> => {
+  const { bucket } = config()
+  const unique = Array.from(
+    new Map(
+      objects
+        .filter(({ sourceKey, destinationKey }) => sourceKey !== destinationKey)
+        .map((item) => [item.destinationKey, item]),
+    ).values(),
+  )
+  const pending = (
+    await Promise.all(
+      unique.map(async (item) => ({
+        ...item,
+        destinationExists: await r2ObjectExists(item.destinationKey),
+        sourceSize: await objectSize(item.sourceKey),
+      })),
+    )
+  ).filter((item) => !item.destinationExists)
+
+  const missing = pending.find((item) => item.sourceSize <= 0)
+  if (missing) throw new Error(`Fichier R2 introuvable : ${missing.sourceKey}`)
+  const incomingBytes = pending.reduce((sum, item) => sum + item.sourceSize, 0)
+  if (incomingBytes > 0) await assertStorageCapacity({ incomingBytes })
+
+  for (const { sourceKey, destinationKey } of pending) {
+    await client().send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        CopySource: `${bucket}/${encodeURIComponent(sourceKey).replace(/%2F/g, '/')}`,
+        Key: destinationKey,
+      }),
+    )
+  }
+}
+
+export const r2DeleteObject = async (key: string): Promise<void> => {
+  const { bucket } = config()
+  await client().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+}
+
+export const r2ListKeys = async (prefix: string): Promise<string[]> => {
+  const { bucket } = config()
+  let continuationToken: string | undefined
+  const keys: string[] = []
+  do {
+    const page = await client().send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    )
+    keys.push(
+      ...(page.Contents ?? [])
+        .map((object) => object.Key)
+        .filter((key): key is string => Boolean(key)),
+    )
+    continuationToken = page.IsTruncated
+      ? page.NextContinuationToken
+      : undefined
+  } while (continuationToken)
+  return keys
+}
+
+export const r2CopyPrefix = async (
+  sourcePrefix: string,
+  destinationPrefix: string,
+): Promise<void> => {
+  const keys = await r2ListKeys(sourcePrefix)
+  await r2CopyObjects(
+    keys.map((sourceKey) => ({
+      sourceKey,
+      destinationKey: `${destinationPrefix}${sourceKey.slice(sourcePrefix.length)}`,
+    })),
+  )
+}
+
+export const r2DeletePrefix = async (prefix: string): Promise<void> => {
+  const { bucket } = config()
+  const keys = await r2ListKeys(prefix)
+  for (let index = 0; index < keys.length; index += 1000) {
+    const chunk = keys.slice(index, index + 1000)
+    if (chunk.length === 0) continue
+    await client().send(
+      new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: { Objects: chunk.map((Key) => ({ Key })), Quiet: true },
+      }),
+    )
+  }
 }
 
 export const r2GetText = async (key: string): Promise<string | null> => {

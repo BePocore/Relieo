@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 There is no test suite.
 
-Env vars: `RANDO3D_ADMIN_PASSWORD` (server, gates publishing/upload), the `R2_*` variables documented in `README.md`, and `BLOB_READ_WRITE_TOKEN` only for the legacy Vercel Blob fallback.
+Env vars: `RANDO3D_ADMIN_PASSWORD` (server, gates publishing/upload) and the required `R2_*` variables documented in `README.md`.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ React 19 + Vite + MapLibre GL JS single-page app deployed on Vercel. One URL, tw
 
 ### Data model & persistence
 
-The published map is one JSON object (`TrailProject` in `src/types.ts`) stored in **Vercel Blob** at `rando3d/project.json`, fetched/saved through `/api/project` (GET/PUT). On load, App also falls back to the static `public/data/trace.gpx` + `public/data/points.json` if no online project exists.
+The published map is one JSON object (`TrailProject` in `src/types.ts`) stored in **Cloudflare R2** at `rando3d/randonnees/<code>/project.json`, fetched/saved through `/api/project` (GET/PUT). `rando3d/active.json` identifies the currently published hike. There is no browser or static-data fallback.
 
 - Routes are `traces: Trace[]` (multiple GPX, each with a `color`). The legacy flat `track: TrackPoint[]` field is still written on save **because `api/project.ts` validates the PUT with `Array.isArray(project.track)`** — keep it populated (it's the concatenation of all traces). Old single-track projects are wrapped into one trace on load.
 - `points: TrailPoint[]` are the photo/video/360/POI markers. `accessCode` (optional) drives the visitor gate.
@@ -28,7 +28,7 @@ The published map is one JSON object (`TrailProject` in `src/types.ts`) stored i
 
 ### Serverless API (`api/`, `server/`)
 
-`api/project.ts` (read/write the project blob) and `api/upload.ts` (Vercel Blob client-upload handshake) become Vercel Functions. Both authenticate via the `x-admin-password` header compared to `RANDO3D_ADMIN_PASSWORD` (`server/auth.ts`). Media files are uploaded **directly from the browser** to Vercel Blob via `@vercel/blob/client`; the function only authorizes the token.
+`api/project.ts` and `api/upload.ts` become Vercel Functions backed exclusively by Cloudflare R2. Both authenticate via the `x-admin-password` header compared to `RANDO3D_ADMIN_PASSWORD` (`server/auth.ts`). Media files are uploaded directly from the browser through signed R2 URLs; failed files are never added to the project and must be selected again.
 
 ### `src/lib/` — pure, framework-free logic
 
@@ -44,7 +44,7 @@ The map, terrain, route layers, clusters and HTML media markers live in this com
 
 ### Client-side media thumbnailing (`src/useVideoPosters.ts`, `src/useFramedThumbnails.ts`)
 
-Both hooks generate data-URL images on the fly and cache them. `useVideoPosters` captures a video's first non-black frame (uses `requestVideoFrameCallback` + a DOM-attached muted/playsinline element for iOS Safari, which won't decode frames from a detached/unplayed video). `useFramedThumbnails` draws the photo/poster into a canvas with a white frame. Both rely on Vercel Blob serving `Access-Control-Allow-Origin: *` so the cross-origin images can be drawn to canvas without tainting (do not break this assumption).
+Both hooks generate data-URL images on the fly and cache them. `useVideoPosters` captures a video's first non-black frame (uses `requestVideoFrameCallback` + a DOM-attached muted/playsinline element for iOS Safari, which won't decode frames from a detached/unplayed video). `useFramedThumbnails` draws the photo/poster into a canvas with a white frame. Both rely on the public R2 domain serving permissive CORS headers so cross-origin images can be drawn to canvas without tainting.
 
 ### Access control
 

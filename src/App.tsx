@@ -42,7 +42,6 @@ import {
   resolvePointMedia,
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
-import { loadLocalProject, saveLocalProject } from './lib/projectBackup'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import type {
   ImportedMedia,
@@ -254,7 +253,7 @@ const normalizeProject = (
 
 const friendlyStorageMessage = (message: string): string => {
   return /403|blocked|suspended|limits|sature/i.test(message)
-    ? 'Stockage en ligne sature. La copie locale de ton projet est conservee.'
+    ? 'Stockage Cloudflare R2 saturé. Les fichiers en échec doivent être réimportés.'
     : message
 }
 
@@ -336,7 +335,6 @@ function App() {
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
-  const [localSaveStatus, setLocalSaveStatus] = useState<string | null>(null)
   const [adminPassword, setAdminPassword] = useState(() =>
     window.sessionStorage.getItem(adminPasswordStorageKey) ?? '',
   )
@@ -382,25 +380,9 @@ function App() {
         setIsLoading(true)
         setError(null)
 
-        const [gpxResponse, pointsResponse, projectResponse, localProject] = await Promise.all([
-          fetch('/data/trace.gpx'),
-          fetch('/data/points.json'),
-          fetch('/api/project', { cache: 'no-store' }).catch(() => null),
-          loadLocalProject().catch(() => null),
-        ])
-
-        if (!gpxResponse.ok) {
-          throw new Error('Impossible de charger /data/trace.gpx.')
-        }
-
-        if (!pointsResponse.ok) {
-          throw new Error('Impossible de charger /data/points.json.')
-        }
-
-        const [gpxText, rawPoints] = await Promise.all([
-          gpxResponse.text(),
-          pointsResponse.json() as Promise<TrailPoint[]>,
-        ])
+        const projectResponse = await fetch('/api/project', {
+          cache: 'no-store',
+        }).catch(() => null)
 
         let onlineProject: TrailProject | null = null
         let onlineError: string | null = null
@@ -420,29 +402,10 @@ function App() {
           onlineError = result?.message ?? 'Carte en ligne indisponible.'
         }
 
-        if (onlineProject) {
-          applyProject(onlineProject)
-          setLocalSaveStatus('Projet en ligne charge et copie locale active.')
-        } else if (localProject && normalizeProject(localProject)) {
-          applyProject(normalizeProject(localProject) as TrailProject)
-          setSaveStatus(
-            `${friendlyStorageMessage(onlineError ?? 'Cloud indisponible.')} Projet local restaure.`,
-          )
-          setLocalSaveStatus('Copie locale restauree sur cet appareil.')
-        } else {
-          setTraces([
-            { id: createTraceId(), name: 'Trace', points: parseGpx(gpxText) },
-          ])
-          setPoints(
-            rawPoints
-              .map((point, index) => normalizePoint(point, index))
-              .filter((point): point is TrailPoint => point !== null),
-          )
-          setAccessGranted(true)
-          if (onlineError && isStudioMode) {
-            setSaveStatus(friendlyStorageMessage(onlineError))
-          }
+        if (!onlineProject) {
+          throw new Error(onlineError ?? 'Aucune randonnée disponible dans Cloudflare R2.')
         }
+        applyProject(onlineProject)
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -550,50 +513,6 @@ function App() {
     }
   })
 
-  const localSaveTimerRef = useRef<number | null>(null)
-  useEffect(() => {
-    if (isLoading) return
-    if (localSaveTimerRef.current !== null) {
-      window.clearTimeout(localSaveTimerRef.current)
-    }
-
-    localSaveTimerRef.current = window.setTimeout(() => {
-      const snapshot = latestProjectRef.current
-      const project: TrailProject = {
-        track: snapshot.traces.flatMap((trace) => trace.points),
-        traces: snapshot.traces,
-        accessCode: snapshot.accessCode.trim() || undefined,
-        points: exportablePoints(snapshot.points),
-        mediaLibrary: snapshot.mediaLibrary.filter(
-          (media) => !media.url.startsWith('blob:'),
-        ),
-        trackSourceName:
-          snapshot.traces.map((trace) => trace.name).join(' · ') || 'Traces',
-        pointsSourceName: snapshot.pointsSourceName,
-        savedAt: new Date().toISOString(),
-      }
-
-      void saveLocalProject(project)
-        .then(() => {
-          setLocalSaveStatus(
-            `Copie locale enregistree a ${new Date().toLocaleTimeString('fr-FR', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}.`,
-          )
-        })
-        .catch(() => {
-          setLocalSaveStatus('Copie locale impossible sur ce navigateur.')
-        })
-    }, 500)
-
-    return () => {
-      if (localSaveTimerRef.current !== null) {
-        window.clearTimeout(localSaveTimerRef.current)
-      }
-    }
-  }, [accessCode, isLoading, mediaLibrary, points, pointsSourceName, traces])
-
   const saveProjectSilently = useCallback(async () => {
     const snapshot = latestProjectRef.current
     if (!snapshot.adminPassword) return
@@ -604,9 +523,7 @@ function App() {
         traces: snapshot.traces,
         accessCode: snapshot.accessCode.trim() || undefined,
         points: exportablePoints(snapshot.points),
-        mediaLibrary: snapshot.mediaLibrary.filter(
-          (media) => !media.url.startsWith('blob:'),
-        ),
+        mediaLibrary: snapshot.mediaLibrary,
         trackSourceName:
           snapshot.traces.map((trace) => trace.name).join(' · ') || 'Traces',
         pointsSourceName: snapshot.pointsSourceName,
@@ -636,7 +553,7 @@ function App() {
           ? friendlyStorageMessage(saveError.message)
           : 'Sauvegarde auto impossible.'
       setSaveStatus(
-        `Sauvegarde en ligne impossible : ${message} Copie locale conservee.`,
+        `Sauvegarde R2 impossible : ${message}`,
       )
     }
   }, [])
@@ -883,6 +800,10 @@ function App() {
       setSaveStatus('Saisis le mot de passe Studio avant un import media.')
       return
     }
+    if (!accessCode.trim()) {
+      setSaveStatus('Renseigne le code de la randonnée avant un import média.')
+      return
+    }
 
     const mediaFiles = files.filter((file) => mediaKindFromFile(file) !== null)
     if (mediaFiles.length === 0) {
@@ -971,6 +892,7 @@ function App() {
             file,
             fingerprint,
             adminPassword,
+            trailCode: accessCode,
             onProgress: (loaded) => {
               loadedByIndex[index] = loaded
               refreshProgress(file.name)
@@ -983,6 +905,7 @@ function App() {
                 file: preview,
                 fingerprint,
                 adminPassword,
+                trailCode: accessCode,
                 kind: 'preview',
               }).catch(() => null)
             : null
@@ -1103,7 +1026,7 @@ function App() {
         : 'Medias envoyes. Publie la carte pour partager les points.',
     )
     if (importedMedia.length > 0) scheduleAutosave()
-  }, [adminPassword, points, combinedPoints, mediaLibrary, scheduleAutosave])
+  }, [accessCode, adminPassword, points, combinedPoints, mediaLibrary, scheduleAutosave])
 
   const handleDismissReport = useCallback(() => {
     setImportReport(null)
@@ -1115,6 +1038,10 @@ function App() {
     async (pointId: string, file: File) => {
       if (!adminPassword) {
         setSaveStatus('Saisis le mot de passe Studio avant un import media.')
+        return
+      }
+      if (!accessCode.trim()) {
+        setSaveStatus('Renseigne le code de la randonnée avant un import média.')
         return
       }
       if (mediaKindFromFile(file) === null) {
@@ -1137,7 +1064,12 @@ function App() {
         )
         const original = existing
           ? { url: existing.url }
-          : await uploadMedia({ file, fingerprint, adminPassword })
+          : await uploadMedia({
+              file,
+              fingerprint,
+              adminPassword,
+              trailCode: accessCode,
+            })
         const preview = existing?.thumbnailUrl
           ? null
           : await createMediaPreview(file, media.kind)
@@ -1148,6 +1080,7 @@ function App() {
                 file: preview,
                 fingerprint,
                 adminPassword,
+                trailCode: accessCode,
                 kind: 'preview',
               }).catch(() => null)
             : null
@@ -1202,7 +1135,7 @@ function App() {
         setIsUploading(false)
       }
     },
-    [adminPassword, mediaLibrary, scheduleAutosave],
+    [accessCode, adminPassword, mediaLibrary, scheduleAutosave],
   )
 
   const handleAddPoint = useCallback((point: TrailPoint) => {
@@ -1292,59 +1225,13 @@ function App() {
     URL.revokeObjectURL(url)
   }, [points])
 
-  const handleExportProject = useCallback(() => {
-    const project: TrailProject = {
-      track: combinedPoints,
-      traces,
-      accessCode: accessCode.trim() || undefined,
-      points: exportablePoints(points),
-      mediaLibrary: mediaLibrary.filter(
-        (media) => !media.url.startsWith('blob:'),
-      ),
-      trackSourceName: traces.map((trace) => trace.name).join(' · ') || 'Traces',
-      pointsSourceName,
-      savedAt: new Date().toISOString(),
-    }
-    const blob = new Blob([JSON.stringify(project, null, 2)], {
-      type: 'application/json',
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `rando3d-projet-${new Date().toISOString().slice(0, 10)}.json`
-    link.click()
-    URL.revokeObjectURL(url)
-    setLocalSaveStatus('Fichier projet complet telecharge.')
-  }, [accessCode, combinedPoints, mediaLibrary, points, pointsSourceName, traces])
-
-  const handleImportProject = useCallback(
-    async (file: File) => {
-      try {
-        const project = normalizeProject(
-          JSON.parse(await file.text()) as Partial<TrailProject>,
-        )
-        if (!project) {
-          throw new Error('Ce fichier ne contient pas un projet Rando 3D valide.')
-        }
-        applyProject(project)
-        await saveLocalProject({ ...project, savedAt: new Date().toISOString() })
-        setError(null)
-        setSaveStatus('Projet restaure. Tu peux maintenant le publier en ligne.')
-        setLocalSaveStatus('Projet restaure et conserve localement.')
-      } catch (importError) {
-        setError(
-          importError instanceof Error
-            ? importError.message
-            : 'Restauration du projet impossible.',
-        )
-      }
-    },
-    [applyProject],
-  )
-
   const handleSaveProject = useCallback(async () => {
     if (!adminPassword) {
       setSaveStatus('Saisis le mot de passe Studio.')
+      return
+    }
+    if (!accessCode.trim()) {
+      setSaveStatus('Le code de la randonnée est obligatoire pour créer son dossier R2.')
       return
     }
 
@@ -1358,16 +1245,11 @@ function App() {
         traces,
         accessCode: accessCode.trim() || undefined,
         points: exportablePoints(points),
-        mediaLibrary: mediaLibrary.filter(
-          (media) => !media.url.startsWith('blob:'),
-        ),
+        mediaLibrary,
         trackSourceName: traces.map((trace) => trace.name).join(' · ') || 'Traces',
         pointsSourceName,
         savedAt: new Date().toISOString(),
       }
-
-      await saveLocalProject(project)
-      setLocalSaveStatus('Copie locale enregistree avant publication.')
 
       const response = await fetch('/api/project', {
         method: 'PUT',
@@ -1379,6 +1261,7 @@ function App() {
       })
 
       const result = (await response.json().catch(() => null)) as {
+        folder?: string
         message?: string
       } | null
 
@@ -1386,7 +1269,11 @@ function App() {
         throw new Error(result?.message ?? 'Publication en ligne impossible.')
       }
 
-      setSaveStatus('Carte publiee en ligne pour tous les appareils.')
+      const folder =
+        result && 'folder' in result && typeof result.folder === 'string'
+          ? result.folder
+          : accessCode.trim()
+      setSaveStatus(`Randonnée enregistrée dans Cloudflare R2 : ${folder}.`)
       setError(null)
     } catch (saveError) {
       const message =
@@ -1394,7 +1281,7 @@ function App() {
           ? friendlyStorageMessage(saveError.message)
           : 'Publication en ligne impossible.'
       setSaveStatus(
-        `${message} La copie locale reste enregistree sur cet appareil.`,
+        `${message} Les fichiers non envoyés doivent être réimportés.`,
       )
     } finally {
       setIsSaving(false)
@@ -1668,8 +1555,6 @@ function App() {
                   onToggleLock={handleToggleLock}
                   onSetPointColor={handleSetPointColor}
                   onExportPoints={handleExportPoints}
-                  onExportProject={handleExportProject}
-                  onImportProject={handleImportProject}
                   onSaveProject={handleSaveProject}
                   onShowMedia={handleOpenLightbox}
                   onAccessCodeChange={handleAccessCodeChange}
@@ -1681,7 +1566,6 @@ function App() {
                   onDismissReport={handleDismissReport}
                   onAdminPasswordChange={handleAdminPasswordChange}
                   saveStatus={saveStatus}
-                  localSaveStatus={localSaveStatus}
                 />
               ) : (
                 <PublicPanel

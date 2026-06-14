@@ -1,6 +1,6 @@
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
 import { hasR2Config, R2QuotaError, r2PrepareUpload } from '../server/r2.js'
+import { cleanStorageName, trailLocation } from '../server/trailStorage.js'
 
 const allowedContentTypes = [
   'application/octet-stream',
@@ -14,104 +14,66 @@ const allowedContentTypes = [
   'video/x-m4v',
 ]
 
+type PrepareUploadBody = {
+  type: 'rando3d.prepare-upload'
+  fileName?: string
+  contentType?: string
+  fingerprint?: string
+  kind?: 'media' | 'preview'
+  size?: number
+  trailCode?: string
+}
+
 export async function POST(request: Request) {
+  if (!hasR2Config()) {
+    return Response.json(
+      { message: 'Cloudflare R2 n’est pas configuré.' },
+      { status: 503 },
+    )
+  }
+  if (!hasAdminPassword()) {
+    return Response.json(
+      { message: 'RANDO3D_ADMIN_PASSWORD manque dans Vercel.' },
+      { status: 503 },
+    )
+  }
+  if (!isAdminRequest(request)) {
+    return Response.json(
+      { message: 'Mot de passe Studio incorrect.' },
+      { status: 401 },
+    )
+  }
+
   try {
-    const body = (await request.json()) as HandleUploadBody | {
-      type: 'rando3d.prepare-upload'
-      fileName?: string
-      contentType?: string
-      fingerprint?: string
-      kind?: 'media' | 'preview'
-      size?: number
+    const body = (await request.json()) as PrepareUploadBody
+    if (body.type !== 'rando3d.prepare-upload') {
+      return Response.json({ message: 'Requête d’envoi invalide.' }, { status: 400 })
     }
 
-    if (body.type === 'rando3d.prepare-upload' && hasR2Config()) {
-      if (!hasAdminPassword()) {
-        return Response.json(
-          { message: 'RANDO3D_ADMIN_PASSWORD manque dans Vercel.' },
-          { status: 503 },
-        )
-      }
-      if (!isAdminRequest(request)) {
-        return Response.json(
-          { message: 'Mot de passe Studio incorrect.' },
-          { status: 401 },
-        )
-      }
+    const fingerprint = body.fingerprint?.replace(/[^a-f0-9]/gi, '')
+    const contentType = body.contentType?.trim() || 'application/octet-stream'
+    const size = Number(body.size)
+    const location = trailLocation(body.trailCode ?? '')
 
-      const fingerprint = body.fingerprint?.replace(/[^a-f0-9]/gi, '')
-      const cleanName = (body.fileName ?? 'media')
-        .normalize('NFKD')
-        .replace(/[^a-zA-Z0-9._-]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-      const contentType = body.contentType?.trim() || 'application/octet-stream'
-      const kind = body.kind === 'preview' ? 'previews' : 'media'
-      const size = Number(body.size)
-
-      if (!fingerprint || fingerprint.length < 16) {
-        return Response.json({ message: 'Empreinte de fichier invalide.' }, { status: 400 })
-      }
-      if (!allowedContentTypes.includes(contentType)) {
-        return Response.json({ message: 'Type de fichier non autorise.' }, { status: 400 })
-      }
-      if (!Number.isSafeInteger(size) || size <= 0) {
-        return Response.json({ message: 'Taille de fichier invalide.' }, { status: 400 })
-      }
-
-      const extension = body.kind === 'preview' ? '.jpg' : `-${cleanName || 'media'}`
-      const prepared = await r2PrepareUpload({
-        key: `rando3d/${kind}/${fingerprint}${extension}`,
-        contentType,
-        size,
-      })
-      return Response.json({ provider: 'r2', ...prepared })
+    if (!fingerprint || fingerprint.length < 16) {
+      return Response.json({ message: 'Empreinte de fichier invalide.' }, { status: 400 })
+    }
+    if (!allowedContentTypes.includes(contentType)) {
+      return Response.json({ message: 'Type de fichier non autorisé.' }, { status: 400 })
+    }
+    if (!Number.isSafeInteger(size) || size <= 0) {
+      return Response.json({ message: 'Taille de fichier invalide.' }, { status: 400 })
     }
 
-    if (body.type === 'rando3d.prepare-upload') {
-      return Response.json(
-        { message: 'Cloudflare R2 non configure, utilisation de Vercel Blob.' },
-        { status: 409 },
-      )
-    }
-
-    if (body.type === 'blob.generate-client-token') {
-      if (!hasAdminPassword()) {
-        return Response.json(
-          { message: 'RANDO3D_ADMIN_PASSWORD manque dans Vercel.' },
-          { status: 503 },
-        )
-      }
-
-      if (!isAdminRequest(request)) {
-        return Response.json(
-          { message: 'Mot de passe Studio incorrect.' },
-          { status: 401 },
-        )
-      }
-    }
-
-    const response = await handleUpload({
-      request,
-      body: body as HandleUploadBody,
-      onBeforeGenerateToken: async (pathname) => {
-        const allowedPath =
-          pathname.startsWith('rando3d/media/') ||
-          pathname.startsWith('rando3d/previews/')
-        if (!allowedPath || pathname.includes('..')) {
-          throw new Error('Chemin de media invalide.')
-        }
-
-        return {
-          allowedContentTypes,
-          maximumSizeInBytes: 2 * 1024 * 1024 * 1024,
-          addRandomSuffix: true,
-          allowOverwrite: false,
-          cacheControlMaxAge: 31_536_000,
-        }
-      },
+    const folder = body.kind === 'preview' ? 'previews' : 'media'
+    const fileName = cleanStorageName(body.fileName ?? 'media')
+    const suffix = body.kind === 'preview' ? `${fingerprint}.jpg` : `${fingerprint}-${fileName}`
+    const prepared = await r2PrepareUpload({
+      key: `${location.prefix}/${folder}/${suffix}`,
+      contentType,
+      size,
     })
-
-    return Response.json(response)
+    return Response.json({ provider: 'r2', folder: location.folder, ...prepared })
   } catch (error) {
     if (error instanceof R2QuotaError) {
       return Response.json(
@@ -120,22 +82,17 @@ export async function POST(request: Request) {
           limitBytes: error.limitBytes,
           requestedBytes: error.requestedBytes,
           usedBytes: error.usedBytes,
-          message: 'Limite de 9,99 Go atteinte. Supprime des medias avant de continuer.',
+          message: 'Limite de 9,99 Go atteinte. Le fichier n’a pas été enregistré.',
         },
         { status: 413 },
       )
     }
-    const rawMessage =
-      error instanceof Error ? error.message : 'Envoi du media impossible.'
-    const storageBlocked = /403|blocked|suspended|limits/i.test(rawMessage)
     return Response.json(
       {
-        code: storageBlocked ? 'STORAGE_SUSPENDED' : 'UPLOAD_FAILED',
-        message: storageBlocked
-          ? 'Stockage en ligne sature. Aucun fichier local n a ete perdu.'
-          : rawMessage,
+        code: 'UPLOAD_FAILED',
+        message: error instanceof Error ? error.message : 'Envoi R2 impossible.',
       },
-      { status: storageBlocked ? 503 : 400 },
+      { status: 400 },
     )
   }
 }

@@ -26,17 +26,15 @@ un panneau flottant sur ordinateur ou une feuille basse sur mobile et iPad.
 Dans le Studio, un marqueur peut etre saisi et deplace directement sur le
 terrain pour corriger une position GPS avant publication.
 
-## Sauvegarde locale et en ligne
+## Sauvegarde Cloudflare R2
 
-Le Studio conserve automatiquement une copie du projet dans IndexedDB sur
-l'appareil. Le bouton `Sauvegarder le projet complet` telecharge aussi un JSON
-restaurable qui contient les traces, points, couleurs, descriptions et liens
-media. Les originaux restent stockes dans le cloud et sont ouverts dans leur
-qualite d'import ; la carte utilise une vignette legere pour rester fluide.
+Cloudflare R2 est l'unique source de verite. Chaque randonnée possède son
+propre dossier `rando3d/randonnees/<code>/` avec le projet, les originaux et
+les aperçus. Le fichier `project.json` contient les traces, points, couleurs,
+descriptions et références média. Les originaux sont ouverts dans leur qualité
+d'import ; la carte utilise une vignette légère pour rester fluide.
 
-Cloudflare R2 est le stockage recommande pour les grosses bibliotheques. Quand
-les variables R2 ci-dessous sont presentes, le projet et les medias y sont
-enregistres. Sinon l'application conserve la compatibilite Vercel Blob.
+Cloudflare R2 est obligatoire pour le projet et les médias.
 
 Variables Vercel :
 
@@ -57,25 +55,14 @@ partage la derniere copie avec le telephone, l'iPad et l'ordinateur.
 
 ## Donnees
 
-Tu peux travailler de deux facons :
-
-- depuis l'interface du site, avec les boutons d'import GPX, JSON, photos et
-  videos ;
-- en remplacant les fichiers dans `public` avant de publier.
+Les données sont importées depuis le Studio avec les boutons GPX, JSON, photos
+et vidéos, puis enregistrées dans le dossier Cloudflare R2 de la randonnée.
 
 Dans le studio, l'import des photos lit les coordonnees GPS EXIF quand elles
 existent et cree automatiquement un point sur la carte. Les videos sont aussi
 analysees, mais leur GPS depend du format et de l'appareil : l'extraction est
 faite au mieux lorsque le fichier contient une position ISO6709 ou QuickTime.
 Si aucune position n'est trouvee, ajoute ou ajuste le point manuellement.
-
-Fichiers publics :
-
-- `public/data/trace.gpx` : trace GPX affichee sur le terrain.
-- `public/data/points.json` : points avec `lat`, `lng`, `title`, `type`,
-  `image`, `video`, `skypixelUrl`, `description`.
-- `public/photos/*` : images appelees par `points.json`.
-- `public/videos/*` : videos appelees par `points.json`.
 
 Types supportes dans `points.json` :
 
