@@ -304,8 +304,13 @@ function App() {
   const [recenterRequest, setRecenterRequest] = useState(0)
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  // Voile plein écran tant que la carte 3D n'a pas fini de charger ses tuiles.
+  // Voile plein écran tant que la carte n'est pas prête. `tilesReady` = tuiles
+  // du globe chargées ; `mapReady` ajoute l'attente des vignettes photo (sinon
+  // le voile se lève avant que les marqueurs n'apparaissent → impression de
+  // « rechargement » des photos une fois la carte affichée).
+  const [tilesReady, setTilesReady] = useState(false)
   const [mapReady, setMapReady] = useState(false)
+  const settleTimerRef = useRef<number | null>(null)
   // Mode performance carte (2D allégé sur appareils faibles).
   const [perfMode, setPerfMode] = useState<PerfMode>(() => readPerfMode())
   const [autoTier, setAutoTier] = useState<'high' | 'low'>(() =>
@@ -456,6 +461,28 @@ function App() {
   const stats = useMemo(() => combineStats(traces), [traces])
   const videoPosters = useVideoPosters(points, mediaLibrary)
   const framedThumbnails = useFramedThumbnails(points, mediaLibrary, videoPosters)
+
+  // Une fois les tuiles prêtes, on lève le voile quand les vignettes ont fini
+  // d'arriver (plus de nouvelle vignette pendant ~700 ms = « settle »). Plafond
+  // de sécurité pour ne jamais bloquer (vignette en échec, réseau lent…).
+  useEffect(() => {
+    if (!tilesReady || mapReady) return
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current)
+    }
+    settleTimerRef.current = window.setTimeout(() => setMapReady(true), 700)
+    return () => {
+      if (settleTimerRef.current !== null) {
+        window.clearTimeout(settleTimerRef.current)
+      }
+    }
+  }, [tilesReady, mapReady, framedThumbnails, videoPosters])
+
+  useEffect(() => {
+    if (!tilesReady) return
+    const cap = window.setTimeout(() => setMapReady(true), 8000)
+    return () => window.clearTimeout(cap)
+  }, [tilesReady])
   const mediaPoints = useMemo(() => {
     const filtered = points.filter(
       (point) =>
@@ -1574,7 +1601,7 @@ function App() {
               onCreatePoint={handleCreatePoint}
               onMarkerClick={handleMarkerClick}
               onOpenGroup={handleOpenGroup}
-              onReady={() => setMapReady(true)}
+              onReady={() => setTilesReady(true)}
               flat2D={flat2D}
             />
           )}
