@@ -239,8 +239,8 @@
 
 .terrain-badge {
   position: absolute;
-  top: 96px;
-  left: 350px;
+  top: 150px;
+  left: 16px;
   z-index: 9;
   min-height: 38px;
   padding: 0 11px;
