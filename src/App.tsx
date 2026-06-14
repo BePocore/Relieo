@@ -1413,6 +1413,10 @@ function App() {
     traces,
   ])
 
+  // Carte protégée : on saisit le code AVANT de charger la carte (Cesium est
+  // lourd, inutile de le charger pour quelqu'un qui n'a pas encore l'accès).
+  const needsAccess = !isStudioMode && Boolean(accessCode) && !accessGranted
+
   return (
     <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
       <header className="topbar">
@@ -1585,6 +1589,9 @@ function App() {
               <LoaderCircle aria-hidden="true" size={26} />
               <span>Chargement</span>
             </div>
+          ) : needsAccess ? (
+            // Carte non montée tant que le code n'est pas saisi (la porte couvre).
+            <div className="loading-state" />
           ) : (
             <TrailMap
               traces={traces}
@@ -1704,13 +1711,15 @@ function App() {
         />
       ) : null}
 
-      {!isStudioMode && !isLoading && accessCode && !accessGranted ? (
+      {!isLoading && needsAccess ? (
         <AccessGate onSubmit={handleGrantAccess} />
       ) : null}
 
       <div
-        className={mapReady ? 'app-loader app-loader--done' : 'app-loader'}
-        aria-hidden={mapReady}
+        className={
+          mapReady || needsAccess ? 'app-loader app-loader--done' : 'app-loader'
+        }
+        aria-hidden={mapReady || needsAccess}
         role="status"
       >
         <div className="app-loader-inner">
