@@ -363,6 +363,12 @@
   color: var(--accent);
 }
 
+.map-tool-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ── Banners & loading ──────────────────────────────────────── */
 
 .status-banner {

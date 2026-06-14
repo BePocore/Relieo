@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Minus,
   Mountain,
+  Play,
   Plus,
   RotateCcw,
   RotateCw,
@@ -58,6 +59,24 @@ export type LightboxMedia = {
   kind: MediaKind | '360'
   title?: string
 }
+
+// Construit la liste plein écran (photos / vidéos / 360) à partir de points.
+// Réutilisé pour le clic sur un groupe ET le diaporama de toute la page.
+const pointsToLightboxItems = (
+  points: TrailPoint[],
+  mediaLibrary: ImportedMedia[],
+): LightboxMedia[] =>
+  points
+    .map((point): LightboxMedia | null => {
+      const media = resolvePointMedia(point, mediaLibrary)
+      if (!media || (media.kind !== 'image' && media.kind !== 'video')) {
+        return null
+      }
+      const kind =
+        point.type === '360' && media.kind === 'image' ? '360' : media.kind
+      return { src: media.src, kind, title: point.title }
+    })
+    .filter((item): item is LightboxMedia => item !== null)
 
 const pointTypes: PointType[] = ['photo', 'video', '360', 'poi']
 const adminPasswordStorageKey = 'rando3d-admin-password'
@@ -632,22 +651,21 @@ function App() {
   // Clic sur un groupe de vignettes : galerie des photos/vidéos du groupe.
   const handleOpenGroup = useCallback(
     (groupPoints: TrailPoint[]) => {
-      const items = groupPoints
-        .map((point): LightboxMedia | null => {
-          const media = resolvePointMedia(point, mediaLibrary)
-          if (!media || (media.kind !== 'image' && media.kind !== 'video')) {
-            return null
-          }
-          const kind =
-            point.type === '360' && media.kind === 'image' ? '360' : media.kind
-          return { src: media.src, kind, title: point.title }
-        })
-        .filter((item): item is LightboxMedia => item !== null)
-
+      const items = pointsToLightboxItems(groupPoints, mediaLibrary)
       if (items.length > 0) setLightbox({ items, index: 0 })
     },
     [mediaLibrary],
   )
+
+  // Diaporama : tous les médias de la page (ordre le long du parcours), en plein
+  // écran, défilables à la flèche / au swipe comme une galerie unique.
+  const slideshowItems = useMemo(
+    () => pointsToLightboxItems(mediaPoints, mediaLibrary),
+    [mediaPoints, mediaLibrary],
+  )
+  const handleOpenSlideshow = useCallback(() => {
+    if (slideshowItems.length > 0) setLightbox({ items: slideshowItems, index: 0 })
+  }, [slideshowItems])
 
   const handleAdminPasswordChange = useCallback((password: string) => {
     setAdminPassword(password)
@@ -1398,6 +1416,17 @@ function App() {
             >
               <LocateFixed aria-hidden="true" size={18} />
               <span>Recentrer</span>
+            </button>
+            <button
+              aria-label="Lancer le diaporama de tous les médias"
+              className="map-tool-button"
+              title="Diaporama de tous les médias"
+              type="button"
+              onClick={handleOpenSlideshow}
+              disabled={slideshowItems.length === 0}
+            >
+              <Play aria-hidden="true" size={18} />
+              <span>Diaporama</span>
             </button>
             <button
               aria-label={isStudioMode ? 'Ouvrir le studio' : 'Voir le parcours'}
