@@ -3,9 +3,6 @@ import {
   hasR2Config,
   R2QuotaError,
   r2CopyObjects,
-  r2CopyPrefix,
-  r2DeleteObject,
-  r2DeletePrefix,
   r2GetText,
   r2KeyFromPublicUrl,
   r2PublicUrl,
@@ -18,6 +15,8 @@ import {
   trailLocation,
   type ActiveTrail,
 } from '../server/trailStorage.js'
+import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
+import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -178,7 +177,7 @@ const moveProjectMedia = async (
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!hasR2Config()) {
     return Response.json(
       { message: 'Cloudflare R2 n’est pas configuré.' },
@@ -187,7 +186,12 @@ export async function GET() {
   }
 
   try {
-    const body = await readPublishedProject()
+    // `?code=<code>` → cette randonnée précise. Sans code → la rando active
+    // (consultation publique inchangée).
+    const code = new URL(request.url).searchParams.get('code')?.trim()
+    const body = code
+      ? await r2GetText(trailLocation(code).projectKey)
+      : await readPublishedProject()
     if (!body) {
       return Response.json(
         { message: 'Aucune randonnée enregistrée dans Cloudflare R2.' },
@@ -216,17 +220,29 @@ export async function PUT(request: Request) {
       { status: 503, headers: jsonHeaders },
     )
   }
-  if (!hasAdminPassword()) {
-    return Response.json(
-      { message: 'RANDO3D_ADMIN_PASSWORD manque dans Vercel.' },
-      { status: 503, headers: jsonHeaders },
-    )
-  }
-  if (!isAdminRequest(request)) {
-    return Response.json(
-      { message: 'Mot de passe Studio incorrect.' },
-      { status: 401, headers: jsonHeaders },
-    )
+  // Auth : si Firebase est configuré, on exige un jeton Firebase valide (le
+  // propriétaire est alors PROUVÉ). Sinon, repli sur le mot de passe admin.
+  const authedUser = await verifyRequestUser(request)
+  if (hasFirebaseAdmin()) {
+    if (!authedUser) {
+      return Response.json(
+        { message: 'Connexion requise.' },
+        { status: 401, headers: jsonHeaders },
+      )
+    }
+  } else {
+    if (!hasAdminPassword()) {
+      return Response.json(
+        { message: 'RANDO3D_ADMIN_PASSWORD manque dans Vercel.' },
+        { status: 503, headers: jsonHeaders },
+      )
+    }
+    if (!isAdminRequest(request)) {
+      return Response.json(
+        { message: 'Mot de passe Studio incorrect.' },
+        { status: 401, headers: jsonHeaders },
+      )
+    }
   }
 
   try {
@@ -246,13 +262,22 @@ export async function PUT(request: Request) {
     }
 
     const target = trailLocation(code)
-    const previous = await readActiveTrail()
 
-    // Copie d'abord l'ancien dossier. Il n'est supprimé qu'après la publication.
-    if (previous && previous.prefix !== target.prefix) {
-      await r2CopyPrefix(`${previous.prefix}/`, `${target.prefix}/`)
+    // Garde de propriété : on ne peut pas écraser la rando d'un autre utilisateur.
+    const existing = (await readHikeIndex()).find(
+      (hike) => hike.folder === target.folder,
+    )
+    if (authedUser && existing?.ownerId && existing.ownerId !== authedUser.uid) {
+      return Response.json(
+        { message: 'Cette randonnée appartient à un autre utilisateur.' },
+        { status: 403, headers: jsonHeaders },
+      )
     }
 
+    // Multi-rando : chaque randonnée vit dans son propre dossier. On n'écrase et
+    // ne supprime JAMAIS les autres randos (Halsa et toute rando déjà publiée
+    // restent intactes). Les médias sont déjà rangés dans le dossier de la rando
+    // par l'upload ; moveProjectMedia ne fait que rapatrier d'éventuels restes.
     const migrated = await moveProjectMedia(payload, target)
     const body = JSON.stringify(migrated.project)
     if (body.length > 10_000_000) {
@@ -263,18 +288,34 @@ export async function PUT(request: Request) {
     }
 
     const url = await r2PutText(target.projectKey, body)
-    await r2PutText(activeTrailPath, JSON.stringify(target))
 
-    // Le nouveau projet et le pointeur existent : l'ancien emplacement peut partir.
-    if (previous && previous.prefix !== target.prefix) {
-      await r2DeletePrefix(`${previous.prefix}/`)
+    // Pointeur public : on l'initialise seulement s'il n'existe pas encore.
+    // S'il existe déjà (Halsa), on n'y touche pas → la rando publique ne change pas.
+    const active = await readActiveTrail()
+    if (!active) {
+      await r2PutText(activeTrailPath, JSON.stringify(target))
     }
-    for (const sourceKey of migrated.migratedSourceKeys) {
-      if (!sourceKey.startsWith(`${target.prefix}/`)) {
-        await r2DeleteObject(sourceKey)
-      }
-    }
-    await r2DeleteObject(legacyProjectPath)
+
+    // Registre des randos : insert/maj de cette entrée uniquement.
+    const meta = payload as Record<string, unknown>
+    const asNumber = (value: unknown): number | undefined =>
+      typeof value === 'number' && Number.isFinite(value) ? value : undefined
+    const asString = (value: unknown): string | undefined =>
+      typeof value === 'string' && value.trim() ? value.trim() : undefined
+    await upsertHikeIndex({
+      code: target.code,
+      folder: target.folder,
+      ownerId: authedUser?.uid ?? asString(meta.ownerId),
+      title: asString(meta.title) ?? target.code,
+      status: meta.hikeStatus === 'draft' ? 'draft' : 'published',
+      distanceKm: asNumber(meta.distanceKm),
+      elevationGain: asNumber(meta.elevationGain),
+      pointCount: asNumber(meta.pointCount) ?? migrated.project.points.length,
+      mediaCount:
+        asNumber(meta.mediaCount) ?? (migrated.project.mediaLibrary?.length ?? 0),
+      coverUrl: asString(meta.coverUrl),
+      updatedAt: target.updatedAt,
+    })
 
     return Response.json(
       {

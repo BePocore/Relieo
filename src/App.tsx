@@ -36,6 +36,7 @@ import type { CameraCommand } from './components/MapLibreTrailMap'
 import { computeTrailStats, distanceBetween } from './lib/geo'
 import { parseGpx } from './lib/gpx'
 import { fileFingerprint, uploadMedia } from './lib/cloudUpload'
+import { firebaseEnabled, getIdToken } from './portal/firebase'
 import {
   createImportedMedia,
   mediaKindFromFile,
@@ -156,6 +157,8 @@ const isStudioUrl = (): boolean => {
 const publicUrl = (): string => {
   const url = new URL(window.location.href)
   url.searchParams.delete('mode')
+  url.searchParams.delete('new')
+  url.searchParams.delete('code')
   url.hash = ''
   return `${url.pathname}${url.search}${url.hash}` || '/'
 }
@@ -166,6 +169,50 @@ const studioUrl = (): string => {
   url.hash = ''
   return url.toString()
 }
+
+// Propriétaire de la rando = l'utilisateur connecté au portail (même origine).
+const readPortalOwnerId = (): string => {
+  try {
+    const raw = window.localStorage.getItem('rando3d-portal-user')
+    return raw ? ((JSON.parse(raw) as { id?: string }).id ?? '') : ''
+  } catch {
+    return ''
+  }
+}
+
+// En-têtes d'auth pour écrire dans R2 : jeton Firebase prioritaire, sinon mot
+// de passe admin (compat). null si aucune auth disponible → on n'écrit pas.
+const saveAuthHeaders = async (
+  adminPassword: string,
+): Promise<Record<string, string> | null> => {
+  const token = await getIdToken()
+  if (token) {
+    return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+  }
+  if (adminPassword) {
+    return { 'Content-Type': 'application/json', 'x-admin-password': adminPassword }
+  }
+  return null
+}
+
+// Métadonnées jointes au PUT pour tenir à jour le registre des randos (api/hikes).
+const buildIndexMeta = (input: {
+  ownerId: string
+  title: string
+  code: string
+  distanceMeters: number
+  elevationGainMeters: number
+  pointCount: number
+  mediaCount: number
+}): Record<string, unknown> => ({
+  ownerId: input.ownerId,
+  title: input.title || input.code || 'Randonnée',
+  hikeStatus: 'published',
+  distanceKm: Math.round((input.distanceMeters / 1_000) * 10) / 10,
+  elevationGain: Math.round(input.elevationGainMeters),
+  pointCount: input.pointCount,
+  mediaCount: input.mediaCount,
+})
 
 // Accès Studio caché : appui long sur le logo (boussole).
 const studioLongPressMs = 1_500
@@ -304,6 +351,19 @@ const formatKilometers = (meters: number): string => {
 
 function App() {
   const [isStudioMode] = useState(() => isStudioUrl())
+  const [newTrailCode] = useState(() =>
+    new URLSearchParams(window.location.search).get('new')?.trim() ?? '',
+  )
+  // Rando ouverte depuis le dashboard : `?code=<code>` charge CETTE rando,
+  // `?title=` sert au registre. ownerId vient du compte portail (localStorage).
+  const [hikeCode] = useState(() =>
+    new URLSearchParams(window.location.search).get('code')?.trim() ?? '',
+  )
+  const [hikeTitle] = useState(() =>
+    new URLSearchParams(window.location.search).get('title')?.trim() ?? '',
+  )
+  const ownerId = useMemo(() => readPortalOwnerId(), [])
+  const isLocalBlankStudio = import.meta.env.DEV && Boolean(newTrailCode)
   const [isPanelOpen, setIsPanelOpen] = useState(() => isStudioUrl())
   const [traces, setTraces] = useState<Trace[]>([])
   const [points, setPoints] = useState<TrailPoint[]>([])
@@ -385,7 +445,25 @@ function App() {
         setIsLoading(true)
         setError(null)
 
-        const projectResponse = await fetch('/api/project', {
+        if (isLocalBlankStudio) {
+          setTraces([])
+          setPoints([])
+          setMediaLibrary([])
+          setPointsSourceName('Nouveau projet local')
+          setAccessCode(newTrailCode)
+          setAccessGranted(true)
+          setSelectedPoint(null)
+          return
+        }
+
+        // Avec un code → on charge CETTE rando via le backend local (/api).
+        // Sans code → rando active (en dev, lue depuis la prod via le proxy).
+        const projectEndpoint = hikeCode
+          ? `/api/project?code=${encodeURIComponent(hikeCode)}`
+          : import.meta.env.DEV
+            ? '/prototype-api/project'
+            : '/api/project'
+        const projectResponse = await fetch(projectEndpoint, {
           cache: 'no-store',
         }).catch(() => null)
 
@@ -423,7 +501,7 @@ function App() {
     }
 
     void loadTrail()
-  }, [applyProject, isStudioMode])
+  }, [applyProject, isLocalBlankStudio, newTrailCode, hikeCode])
 
   const combinedPoints = useMemo(
     () => traces.flatMap((trace) => trace.points),
@@ -506,6 +584,9 @@ function App() {
     accessCode,
     pointsSourceName,
     adminPassword,
+    stats,
+    ownerId,
+    hikeTitle,
   })
   useEffect(() => {
     latestProjectRef.current = {
@@ -515,12 +596,14 @@ function App() {
       accessCode,
       pointsSourceName,
       adminPassword,
+      stats,
+      ownerId,
+      hikeTitle,
     }
   })
 
   const saveProjectSilently = useCallback(async () => {
     const snapshot = latestProjectRef.current
-    if (!snapshot.adminPassword) return
 
     try {
       const project: TrailProject = {
@@ -535,14 +618,24 @@ function App() {
         savedAt: new Date().toISOString(),
       }
 
+      const headers = await saveAuthHeaders(snapshot.adminPassword)
+      if (!headers) return
       setSaveStatus('Sauvegarde automatique…')
       const response = await fetch('/api/project', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-password': snapshot.adminPassword,
-        },
-        body: JSON.stringify(project),
+        headers,
+        body: JSON.stringify({
+          ...project,
+          ...buildIndexMeta({
+            ownerId: snapshot.ownerId,
+            title: snapshot.hikeTitle,
+            code: snapshot.accessCode.trim(),
+            distanceMeters: snapshot.stats.distanceMeters,
+            elevationGainMeters: snapshot.stats.elevationGainMeters,
+            pointCount: snapshot.points.length,
+            mediaCount: snapshot.mediaLibrary.length,
+          }),
+        }),
       })
 
       if (!response.ok) {
@@ -566,7 +659,8 @@ function App() {
   // Publie en arrière-plan ~1,5 s après le dernier import (debounce), pour ne
   // plus perdre des médias déjà envoyés si la page se recharge.
   const scheduleAutosave = useCallback(() => {
-    if (!latestProjectRef.current.adminPassword) return
+    // Avec Firebase, l'auth vient du jeton (résolu dans saveProjectSilently).
+    if (!firebaseEnabled && !latestProjectRef.current.adminPassword) return
     if (autosaveTimerRef.current !== null) {
       window.clearTimeout(autosaveTimerRef.current)
     }
@@ -801,7 +895,7 @@ function App() {
   }, [])
 
   const handleImportMedia = useCallback(async (files: File[]) => {
-    if (!adminPassword) {
+    if (!firebaseEnabled && !adminPassword) {
       setSaveStatus('Saisis le mot de passe Studio avant un import media.')
       return
     }
@@ -855,6 +949,9 @@ function App() {
     setImportReport(null)
     setSaveStatus(`Envoi de ${uploadEntries.length} media(s) vers le stockage...`)
 
+    // Jeton Firebase (si connecté) pour authentifier les uploads.
+    const idToken = (await getIdToken()) ?? undefined
+
     // Progression globale basée sur les octets, robuste à la concurrence.
     const totalBytes = uploadEntries.reduce(
       (sum, entry) => sum + entry.file.size,
@@ -897,6 +994,7 @@ function App() {
             file,
             fingerprint,
             adminPassword,
+            idToken,
             trailCode: accessCode,
             onProgress: (loaded) => {
               loadedByIndex[index] = loaded
@@ -910,6 +1008,7 @@ function App() {
                 file: preview,
                 fingerprint,
                 adminPassword,
+                idToken,
                 trailCode: accessCode,
                 kind: 'preview',
               }).catch(() => null)
@@ -1041,16 +1140,17 @@ function App() {
   // immédiat comme média du point (photo du haut de la fiche).
   const handleAttachMedia = useCallback(
     async (pointId: string, file: File) => {
-      if (!adminPassword) {
-        setSaveStatus('Saisis le mot de passe Studio avant un import media.')
-        return
-      }
       if (!accessCode.trim()) {
         setSaveStatus('Renseigne le code de la randonnée avant un import média.')
         return
       }
       if (mediaKindFromFile(file) === null) {
         setSaveStatus('Format non reconnu : photo ou vidéo attendue.')
+        return
+      }
+      const idToken = (await getIdToken()) ?? undefined
+      if (!idToken && !adminPassword) {
+        setSaveStatus('Connecte-toi ou saisis le mot de passe Studio avant un import média.')
         return
       }
 
@@ -1073,6 +1173,7 @@ function App() {
               file,
               fingerprint,
               adminPassword,
+              idToken,
               trailCode: accessCode,
             })
         const preview = existing?.thumbnailUrl
@@ -1085,6 +1186,7 @@ function App() {
                 file: preview,
                 fingerprint,
                 adminPassword,
+                idToken,
                 trailCode: accessCode,
                 kind: 'preview',
               }).catch(() => null)
@@ -1231,12 +1333,19 @@ function App() {
   }, [points])
 
   const handleSaveProject = useCallback(async () => {
-    if (!adminPassword) {
-      setSaveStatus('Saisis le mot de passe Studio.')
+    if (isLocalBlankStudio) {
+      setSaveStatus(
+        'Prototype local : la publication Cloudflare sera branchée lors de l’assemblage final.',
+      )
       return
     }
     if (!accessCode.trim()) {
       setSaveStatus('Le code de la randonnée est obligatoire pour créer son dossier R2.')
+      return
+    }
+    const headers = await saveAuthHeaders(adminPassword)
+    if (!headers) {
+      setSaveStatus('Connecte-toi (Google / e-mail) ou saisis le mot de passe Studio.')
       return
     }
 
@@ -1258,11 +1367,19 @@ function App() {
 
       const response = await fetch('/api/project', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-password': adminPassword,
-        },
-        body: JSON.stringify(project),
+        headers,
+        body: JSON.stringify({
+          ...project,
+          ...buildIndexMeta({
+            ownerId,
+            title: hikeTitle,
+            code: accessCode.trim(),
+            distanceMeters: stats.distanceMeters,
+            elevationGainMeters: stats.elevationGainMeters,
+            pointCount: points.length,
+            mediaCount: mediaLibrary.length,
+          }),
+        }),
       })
 
       const result = (await response.json().catch(() => null)) as {
@@ -1292,6 +1409,7 @@ function App() {
       setIsSaving(false)
     }
   }, [
+    isLocalBlankStudio,
     accessCode,
     adminPassword,
     combinedPoints,
@@ -1299,6 +1417,9 @@ function App() {
     points,
     pointsSourceName,
     traces,
+    ownerId,
+    hikeTitle,
+    stats,
   ])
 
   // Carte protégée : on saisit le code avant de charger le moteur cartographique.

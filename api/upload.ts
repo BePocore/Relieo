@@ -1,6 +1,7 @@
 import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
 import { hasR2Config, R2QuotaError, r2PrepareUpload } from '../server/r2.js'
 import { cleanStorageName, trailLocation } from '../server/trailStorage.js'
+import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 
 const allowedContentTypes = [
   'application/octet-stream',
@@ -31,17 +32,24 @@ export async function POST(request: Request) {
       { status: 503 },
     )
   }
-  if (!hasAdminPassword()) {
-    return Response.json(
-      { message: 'RANDO3D_ADMIN_PASSWORD manque dans Vercel.' },
-      { status: 503 },
-    )
-  }
-  if (!isAdminRequest(request)) {
-    return Response.json(
-      { message: 'Mot de passe Studio incorrect.' },
-      { status: 401 },
-    )
+  // Auth : jeton Firebase si configuré, sinon mot de passe admin (compat).
+  if (hasFirebaseAdmin()) {
+    if (!(await verifyRequestUser(request))) {
+      return Response.json({ message: 'Connexion requise.' }, { status: 401 })
+    }
+  } else {
+    if (!hasAdminPassword()) {
+      return Response.json(
+        { message: 'RANDO3D_ADMIN_PASSWORD manque dans Vercel.' },
+        { status: 503 },
+      )
+    }
+    if (!isAdminRequest(request)) {
+      return Response.json(
+        { message: 'Mot de passe Studio incorrect.' },
+        { status: 401 },
+      )
+    }
   }
 
   try {

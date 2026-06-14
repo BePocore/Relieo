@@ -43,6 +43,7 @@ export const uploadMedia = async ({
   file,
   fingerprint,
   adminPassword,
+  idToken,
   trailCode,
   kind = 'media',
   onProgress,
@@ -50,6 +51,7 @@ export const uploadMedia = async ({
   file: File | Blob
   fingerprint: string
   adminPassword: string
+  idToken?: string
   trailCode: string
   kind?: 'media' | 'preview'
   onProgress?: UploadProgress
@@ -59,11 +61,15 @@ export const uploadMedia = async ({
   }
   const fileName = file instanceof File ? file.name : `${fingerprint}.jpg`
   const contentType = file.type || 'application/octet-stream'
+  // Jeton Firebase prioritaire ; repli sur le mot de passe admin (compat).
+  const authHeader: Record<string, string> = idToken
+    ? { Authorization: `Bearer ${idToken}` }
+    : { 'x-admin-password': adminPassword }
   const response = await fetch('/api/upload', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-admin-password': adminPassword,
+      ...authHeader,
     },
     body: JSON.stringify({
       type: 'rando3d.prepare-upload',
