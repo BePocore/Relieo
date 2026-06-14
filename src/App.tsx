@@ -459,28 +459,38 @@ function App() {
     [traces],
   )
   const stats = useMemo(() => combineStats(traces), [traces])
-  const videoPosters = useVideoPosters(points, mediaLibrary)
-  const framedThumbnails = useFramedThumbnails(points, mediaLibrary, videoPosters)
+  const { posters: videoPosters, ready: postersReady } = useVideoPosters(
+    points,
+    mediaLibrary,
+  )
+  const { thumbnails: framedThumbnails, ready: framedReady } =
+    useFramedThumbnails(points, mediaLibrary, videoPosters)
 
-  // Une fois les tuiles prêtes, on lève le voile quand les vignettes ont fini
-  // d'arriver (plus de nouvelle vignette pendant ~700 ms = « settle »). Plafond
-  // de sécurité pour ne jamais bloquer (vignette en échec, réseau lent…).
+  // On lève le voile seulement quand TOUT est réellement prêt : tuiles du globe
+  // + posters vidéo + vignettes encadrées (compte des terminées, pas une
+  // heuristique de « plus de changement »). Un court délai de stabilisation
+  // évite de lever pendant la transition posters→vignettes ; les deps incluent
+  // framedThumbnails pour ré-armer à chaque nouvelle vignette restante.
+  const assetsReady = postersReady && framedReady
   useEffect(() => {
     if (!tilesReady || mapReady) return
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current)
     }
-    settleTimerRef.current = window.setTimeout(() => setMapReady(true), 700)
+    if (!assetsReady) return
+    settleTimerRef.current = window.setTimeout(() => setMapReady(true), 300)
     return () => {
       if (settleTimerRef.current !== null) {
         window.clearTimeout(settleTimerRef.current)
       }
     }
-  }, [tilesReady, mapReady, framedThumbnails, videoPosters])
+  }, [tilesReady, mapReady, assetsReady, framedThumbnails, videoPosters])
 
+  // Plafond de sécurité : ne jamais bloquer indéfiniment (réseau très lent,
+  // génération coincée). Généreux car la voie normale est l'attente réelle.
   useEffect(() => {
     if (!tilesReady) return
-    const cap = window.setTimeout(() => setMapReady(true), 8000)
+    const cap = window.setTimeout(() => setMapReady(true), 20000)
     return () => window.clearTimeout(cap)
   }, [tilesReady])
   const mediaPoints = useMemo(() => {

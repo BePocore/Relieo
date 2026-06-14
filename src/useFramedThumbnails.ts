@@ -158,8 +158,10 @@ export function useFramedThumbnails(
   points: TrailPoint[],
   mediaLibrary: ImportedMedia[],
   videoPosters: Record<string, string>,
-): Record<string, string> {
+): { thumbnails: Record<string, string>; ready: boolean } {
   const [framed, setFramed] = useState<Record<string, string>>({})
+  // Progression réelle (résolu OU échoué) pour lever le voile au bon moment.
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
 
   useEffect(() => {
     const sources = new Set<string>()
@@ -171,7 +173,16 @@ export function useFramedThumbnails(
       }
     }
 
+    const total = sources.size
+    let done = 0
     let cancelled = false
+    setProgress({ done: 0, total })
+    const markDone = () => {
+      if (cancelled) return
+      done += 1
+      setProgress({ done, total })
+    }
+
     sources.forEach((src) => {
       if (cache.has(src)) {
         const cached = cache.get(src)
@@ -180,12 +191,15 @@ export function useFramedThumbnails(
             current[src] === cached ? current : { ...current, [src]: cached },
           )
         }
+        markDone()
         return
       }
       void scheduleFraming(src).then((dataUrl) => {
-        if (cancelled || !dataUrl) return
-        cache.set(src, dataUrl)
-        setFramed((current) => ({ ...current, [src]: dataUrl }))
+        if (!cancelled && dataUrl) {
+          cache.set(src, dataUrl)
+          setFramed((current) => ({ ...current, [src]: dataUrl }))
+        }
+        markDone()
       })
     })
 
@@ -194,5 +208,5 @@ export function useFramedThumbnails(
     }
   }, [points, mediaLibrary, videoPosters])
 
-  return framed
+  return { thumbnails: framed, ready: progress.done >= progress.total }
 }

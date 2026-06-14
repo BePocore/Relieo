@@ -160,8 +160,10 @@ const schedulePoster = (src: string): Promise<string | null> =>
 export function useVideoPosters(
   points: TrailPoint[],
   mediaLibrary: ImportedMedia[],
-): Record<string, string> {
+): { posters: Record<string, string>; ready: boolean } {
   const [posters, setPosters] = useState<Record<string, string>>({})
+  // Progression réelle (résolu OU échoué) pour savoir quand tout est traité.
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
 
   useEffect(() => {
     const sources = new Set<string>()
@@ -177,7 +179,16 @@ export function useVideoPosters(
       }
     }
 
+    const total = sources.size
+    let done = 0
     let cancelled = false
+    setProgress({ done: 0, total })
+    const markDone = () => {
+      if (cancelled) return
+      done += 1
+      setProgress({ done, total })
+    }
+
     sources.forEach((src) => {
       if (posterCache.has(src)) {
         const cached = posterCache.get(src)
@@ -186,12 +197,15 @@ export function useVideoPosters(
             current[src] === cached ? current : { ...current, [src]: cached },
           )
         }
+        markDone()
         return
       }
       void schedulePoster(src).then((dataUrl) => {
-        if (cancelled || !dataUrl) return
-        posterCache.set(src, dataUrl)
-        setPosters((current) => ({ ...current, [src]: dataUrl }))
+        if (!cancelled && dataUrl) {
+          posterCache.set(src, dataUrl)
+          setPosters((current) => ({ ...current, [src]: dataUrl }))
+        }
+        markDone()
       })
     })
 
@@ -200,5 +214,5 @@ export function useVideoPosters(
     }
   }, [points, mediaLibrary])
 
-  return posters
+  return { posters, ready: progress.done >= progress.total }
 }
