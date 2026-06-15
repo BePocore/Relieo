@@ -1,12 +1,52 @@
 import { cert, getApps, initializeApp, type App } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 
+const cleanEnv = (value: string | undefined): string | undefined => {
+  const cleaned = value?.replace(/^\uFEFF/, '').trim()
+  return cleaned || undefined
+}
+
+const cleanPrivateKey = (value: string | undefined): string | undefined => {
+  let cleaned = cleanEnv(value)
+  if (!cleaned) return undefined
+
+  if (cleaned.startsWith('{')) {
+    try {
+      const serviceAccount = JSON.parse(cleaned) as { private_key?: unknown }
+      if (typeof serviceAccount.private_key === 'string') {
+        cleaned = serviceAccount.private_key
+      }
+    } catch {
+      // L'extraction du bloc PEM ci-dessous gère aussi un JSON imparfait.
+    }
+  }
+
+  const quoted =
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  if (quoted) cleaned = cleaned.slice(1, -1)
+  cleaned = cleaned
+    .replace(/^\uFEFF/, '')
+    .replace(/\\\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+
+  const begin = '-----BEGIN PRIVATE KEY-----'
+  const end = '-----END PRIVATE KEY-----'
+  const beginIndex = cleaned.indexOf(begin)
+  const endIndex = cleaned.indexOf(end, beginIndex)
+  if (beginIndex >= 0 && endIndex >= 0) {
+    return cleaned.slice(beginIndex, endIndex + end.length)
+  }
+
+  return cleaned.trim()
+}
+
 // Identité serveur Firebase via clé de service (variables d'env secrètes).
 const config = () => ({
-  projectId: process.env.FIREBASE_PROJECT_ID?.trim(),
-  clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim(),
-  // La clé privée peut contenir des \n littéraux quand elle vient d'un .env.
-  privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  projectId: cleanEnv(process.env.FIREBASE_PROJECT_ID),
+  clientEmail: cleanEnv(process.env.FIREBASE_CLIENT_EMAIL),
+  privateKey: cleanPrivateKey(process.env.FIREBASE_PRIVATE_KEY),
 })
 
 export const hasFirebaseAdmin = (): boolean => {
@@ -44,7 +84,11 @@ export const verifyRequestUser = async (
   try {
     const decoded = await getAuth(adminApp()).verifyIdToken(match[1].trim())
     return { uid: decoded.uid, email: decoded.email ?? null }
-  } catch {
+  } catch (error) {
+    console.error(
+      'Firebase ID token verification failed:',
+      error instanceof Error ? error.message : 'Unknown Firebase Admin error',
+    )
     return null
   }
 }

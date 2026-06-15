@@ -144,6 +144,11 @@
   background: var(--surface-hover);
 }
 
+.mode-link:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
 .copy-link-button.copied {
   border-color: var(--accent-border);
   color: var(--accent);
@@ -1166,6 +1171,10 @@
   border-radius: 14px;
   background: var(--glass-strong);
   box-shadow: var(--shadow-soft);
+}
+
+.dashboard-confirm-card {
+  width: min(440px, 100%);
 }
 
 .confirm-card strong {
@@ -2335,13 +2344,22 @@
     width: 34px;
     padding: 0;
     overflow: hidden;
-    color: transparent;
+    color: var(--text);
   }
 
-  .mode-link::before {
+  .mode-link > span {
+    display: none;
+  }
+
+  .consultation-link::before,
+  .studio-return-link::before {
     content: '↗';
     color: var(--text);
     font-size: 1rem;
+  }
+
+  .dashboard-confirm-card .confirm-actions {
+    grid-template-columns: 1fr;
   }
 
   .stats-bar {

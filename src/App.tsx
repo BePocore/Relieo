@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Compass,
   Copy,
+  LayoutDashboard,
   List,
   LocateFixed,
   LoaderCircle,
@@ -92,16 +93,9 @@ const pointsToLightboxItems = (
     .filter((item): item is LightboxMedia => item !== null)
 
 const pointTypes: PointType[] = ['photo', 'video', '360', 'poi']
-const adminPasswordStorageKey = 'rando3d-admin-password'
 export const newPointTitle = 'Nouveau point'
-const accessGrantStorageKey = 'rando3d-access-granted'
 
 type PerfMode = 'auto' | 'force-2d' | 'force-3d'
-const perfModeStorageKey = 'rando3d-perf-mode'
-const readPerfMode = (): PerfMode => {
-  const stored = window.localStorage.getItem(perfModeStorageKey)
-  return stored === 'force-2d' || stored === 'force-3d' ? stored : 'auto'
-}
 
 let traceIdCounter = 0
 const createTraceId = (): string => {
@@ -154,11 +148,11 @@ const isStudioUrl = (): boolean => {
   return params.get('mode') === 'studio' || window.location.hash === '#studio'
 }
 
-const publicUrl = (): string => {
+const publicUrl = (code?: string): string => {
   const url = new URL(window.location.href)
   url.searchParams.delete('mode')
   url.searchParams.delete('new')
-  url.searchParams.delete('code')
+  if (code?.trim()) url.searchParams.set('code', code.trim())
   url.hash = ''
   return `${url.pathname}${url.search}${url.hash}` || '/'
 }
@@ -170,14 +164,33 @@ const studioUrl = (): string => {
   return url.toString()
 }
 
-// Propriétaire de la rando = l'utilisateur connecté au portail (même origine).
-const readPortalOwnerId = (): string => {
-  try {
-    const raw = window.localStorage.getItem('rando3d-portal-user')
-    return raw ? ((JSON.parse(raw) as { id?: string }).id ?? '') : ''
-  } catch {
-    return ''
+const studioReturnStateKey = 'rando3dStudioReturn'
+
+const studioReturnUrl = (): string | null => {
+  const state = window.history.state as Record<string, unknown> | null
+  const candidate = state?.[studioReturnStateKey]
+  if (typeof candidate !== 'string') return null
+
+  const url = new URL(candidate, window.location.origin)
+  if (
+    url.origin !== window.location.origin ||
+    url.searchParams.get('mode') !== 'studio'
+  ) {
+    return null
   }
+  return `${url.pathname}${url.search}${url.hash}`
+}
+
+const openConsultationFromStudio = (code: string): void => {
+  const currentState = window.history.state
+  const state =
+    currentState && typeof currentState === 'object' ? currentState : {}
+  window.history.pushState(
+    { ...state, [studioReturnStateKey]: studioUrl() },
+    '',
+    publicUrl(code),
+  )
+  window.location.reload()
 }
 
 // En-têtes d'auth pour écrire dans R2 : jeton Firebase prioritaire, sinon mot
@@ -197,7 +210,6 @@ const saveAuthHeaders = async (
 
 // Métadonnées jointes au PUT pour tenir à jour le registre des randos (api/hikes).
 const buildIndexMeta = (input: {
-  ownerId: string
   title: string
   code: string
   distanceMeters: number
@@ -205,7 +217,6 @@ const buildIndexMeta = (input: {
   pointCount: number
   mediaCount: number
 }): Record<string, unknown> => ({
-  ownerId: input.ownerId,
   title: input.title || input.code || 'Randonnée',
   hikeStatus: 'published',
   distanceKm: Math.round((input.distanceMeters / 1_000) * 10) / 10,
@@ -213,24 +224,6 @@ const buildIndexMeta = (input: {
   pointCount: input.pointCount,
   mediaCount: input.mediaCount,
 })
-
-// Accès Studio caché : appui long sur le logo (boussole).
-const studioLongPressMs = 1_500
-
-const storedBasemap = (): BasemapId => {
-  const stored = window.localStorage.getItem('trail-basemap')
-  if (stored === 'relief') return defaultBasemap
-
-  if (
-    stored === 'satellite' ||
-    stored === 'topo' ||
-    stored === 'streets'
-  ) {
-    return stored
-  }
-
-  return defaultBasemap
-}
 
 const normalizePoint = (point: TrailPoint, index: number): TrailPoint | null => {
   const lat = Number(point.lat)
@@ -275,6 +268,21 @@ const exportablePoints = (points: TrailPoint[]): TrailPoint[] => {
     return cleanPoint
   })
 }
+
+const projectSignature = (input: {
+  points: TrailPoint[]
+  traces: Trace[]
+  mediaLibrary: ImportedMedia[]
+  accessCode: string
+  pointsSourceName: string
+}): string =>
+  JSON.stringify({
+    points: exportablePoints(input.points),
+    traces: input.traces,
+    mediaLibrary: input.mediaLibrary,
+    accessCode: input.accessCode.trim(),
+    pointsSourceName: input.pointsSourceName,
+  })
 
 const normalizeProject = (
   candidate: Partial<TrailProject>,
@@ -351,24 +359,26 @@ const formatKilometers = (meters: number): string => {
 
 function App() {
   const [isStudioMode] = useState(() => isStudioUrl())
+  const [studioReturnHref] = useState(() =>
+    isStudioUrl() ? null : studioReturnUrl(),
+  )
   const [newTrailCode] = useState(() =>
     new URLSearchParams(window.location.search).get('new')?.trim() ?? '',
   )
-  // Rando ouverte depuis le dashboard : `?code=<code>` charge CETTE rando,
-  // `?title=` sert au registre. ownerId vient du compte portail (localStorage).
+  // Rando ouverte depuis le dashboard : `?code=<code>` charge CETTE rando.
+  // L'API déduit toujours le propriétaire du jeton Firebase.
   const [hikeCode] = useState(() =>
     new URLSearchParams(window.location.search).get('code')?.trim() ?? '',
   )
   const [hikeTitle] = useState(() =>
     new URLSearchParams(window.location.search).get('title')?.trim() ?? '',
   )
-  const ownerId = useMemo(() => readPortalOwnerId(), [])
   const isLocalBlankStudio = import.meta.env.DEV && Boolean(newTrailCode)
   const [isPanelOpen, setIsPanelOpen] = useState(() => isStudioUrl())
   const [traces, setTraces] = useState<Trace[]>([])
   const [points, setPoints] = useState<TrailPoint[]>([])
   const [mediaLibrary, setMediaLibrary] = useState<ImportedMedia[]>([])
-  const [basemap, setBasemap] = useState<BasemapId>(() => storedBasemap())
+  const [basemap, setBasemap] = useState<BasemapId>(defaultBasemap)
   const [selectedPoint, setSelectedPoint] = useState<TrailPoint | null>(null)
   const [recenterRequest, setRecenterRequest] = useState(0)
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
@@ -381,9 +391,10 @@ function App() {
   const [mapReady, setMapReady] = useState(false)
   const settleTimerRef = useRef<number | null>(null)
   // Le relief reste le mode principal, avec une vue 2D manuelle si nécessaire.
-  const [perfMode, setPerfMode] = useState<PerfMode>(() => readPerfMode())
+  const [perfMode, setPerfMode] = useState<PerfMode>('auto')
   const mapFlat2D = perfMode === 'force-2d'
   const [isSaving, setIsSaving] = useState(false)
+  const [isAutosaving, setIsAutosaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
     null,
@@ -395,18 +406,16 @@ function App() {
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
-  const [adminPassword, setAdminPassword] = useState(() =>
-    window.sessionStorage.getItem(adminPasswordStorageKey) ?? '',
-  )
+  const [adminPassword, setAdminPassword] = useState('')
   const [pointsSourceName, setPointsSourceName] = useState('/data/points.json')
   const [accessCode, setAccessCode] = useState('')
   const [accessGranted, setAccessGranted] = useState(false)
   const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    // Supprime l'ancien secours IndexedDB. R2 est désormais l'unique stockage.
-    if ('indexedDB' in window) indexedDB.deleteDatabase('rando3d-local')
-  }, [])
+  const [savedProjectSignature, setSavedProjectSignature] = useState<string | null>(
+    null,
+  )
+  const [hasPanelDraft, setHasPanelDraft] = useState(false)
+  const [showDashboardConfirm, setShowDashboardConfirm] = useState(false)
 
   const applyProject = useCallback((project: TrailProject) => {
     const loadedTraces =
@@ -421,23 +430,30 @@ function App() {
               points: project.track,
             },
           ]
+    const loadedPoints = project.points
+      .map((point, index) => normalizePoint(point, index))
+      .filter((point): point is TrailPoint => point !== null)
+    const loadedMediaLibrary = project.mediaLibrary ?? []
+    const loadedAccessCode = project.accessCode ?? ''
     setTraces(loadedTraces)
-    setPoints(
-      project.points
-        .map((point, index) => normalizePoint(point, index))
-        .filter((point): point is TrailPoint => point !== null),
-    )
-    setMediaLibrary(project.mediaLibrary ?? [])
+    setPoints(loadedPoints)
+    setMediaLibrary(loadedMediaLibrary)
     setPointsSourceName(project.pointsSourceName)
-    const code = project.accessCode ?? ''
-    setAccessCode(code)
+    setAccessCode(loadedAccessCode)
+    setSavedProjectSignature(
+      projectSignature({
+        points: loadedPoints,
+        traces: loadedTraces,
+        mediaLibrary: loadedMediaLibrary,
+        accessCode: loadedAccessCode,
+        pointsSourceName: project.pointsSourceName,
+      }),
+    )
     setAccessGranted(
-      isStudioMode ||
-        !code ||
-        window.sessionStorage.getItem(accessGrantStorageKey) === code,
+      isStudioMode || Boolean(studioReturnHref) || !loadedAccessCode,
     )
     setSelectedPoint(null)
-  }, [isStudioMode])
+  }, [isStudioMode, studioReturnHref])
 
   useEffect(() => {
     const loadTrail = async () => {
@@ -446,11 +462,24 @@ function App() {
         setError(null)
 
         if (isLocalBlankStudio) {
-          setTraces([])
-          setPoints([])
-          setMediaLibrary([])
-          setPointsSourceName('Nouveau projet local')
+          const blankPoints: TrailPoint[] = []
+          const blankTraces: Trace[] = []
+          const blankMediaLibrary: ImportedMedia[] = []
+          const blankPointsSourceName = 'Nouveau projet local'
+          setTraces(blankTraces)
+          setPoints(blankPoints)
+          setMediaLibrary(blankMediaLibrary)
+          setPointsSourceName(blankPointsSourceName)
           setAccessCode(newTrailCode)
+          setSavedProjectSignature(
+            projectSignature({
+              points: blankPoints,
+              traces: blankTraces,
+              mediaLibrary: blankMediaLibrary,
+              accessCode: newTrailCode,
+              pointsSourceName: blankPointsSourceName,
+            }),
+          )
           setAccessGranted(true)
           setSelectedPoint(null)
           return
@@ -508,6 +537,20 @@ function App() {
     [traces],
   )
   const stats = useMemo(() => combineStats(traces), [traces])
+  const currentProjectSignature = useMemo(
+    () =>
+      projectSignature({
+        points,
+        traces,
+        mediaLibrary,
+        accessCode,
+        pointsSourceName,
+      }),
+    [accessCode, mediaLibrary, points, pointsSourceName, traces],
+  )
+  const hasUnsavedProjectChanges =
+    savedProjectSignature !== null &&
+    currentProjectSignature !== savedProjectSignature
   const { posters: videoPosters, ready: postersReady } = useVideoPosters(
     points,
     mediaLibrary,
@@ -585,8 +628,8 @@ function App() {
     pointsSourceName,
     adminPassword,
     stats,
-    ownerId,
     hikeTitle,
+    signature: currentProjectSignature,
   })
   useEffect(() => {
     latestProjectRef.current = {
@@ -597,10 +640,20 @@ function App() {
       pointsSourceName,
       adminPassword,
       stats,
-      ownerId,
       hikeTitle,
+      signature: currentProjectSignature,
     }
-  })
+  }, [
+    accessCode,
+    adminPassword,
+    currentProjectSignature,
+    hikeTitle,
+    mediaLibrary,
+    points,
+    pointsSourceName,
+    stats,
+    traces,
+  ])
 
   const saveProjectSilently = useCallback(async () => {
     const snapshot = latestProjectRef.current
@@ -620,6 +673,7 @@ function App() {
 
       const headers = await saveAuthHeaders(snapshot.adminPassword)
       if (!headers) return
+      setIsAutosaving(true)
       setSaveStatus('Sauvegarde automatique…')
       const response = await fetch('/api/project', {
         method: 'PUT',
@@ -627,7 +681,6 @@ function App() {
         body: JSON.stringify({
           ...project,
           ...buildIndexMeta({
-            ownerId: snapshot.ownerId,
             title: snapshot.hikeTitle,
             code: snapshot.accessCode.trim(),
             distanceMeters: snapshot.stats.distanceMeters,
@@ -644,6 +697,7 @@ function App() {
         } | null
         throw new Error(result?.message ?? 'Sauvegarde auto impossible.')
       }
+      setSavedProjectSignature(snapshot.signature)
       setSaveStatus('Modifs sauvegardées automatiquement.')
     } catch (saveError) {
       const message =
@@ -653,6 +707,8 @@ function App() {
       setSaveStatus(
         `Sauvegarde R2 impossible : ${message}`,
       )
+    } finally {
+      setIsAutosaving(false)
     }
   }, [])
 
@@ -736,17 +792,11 @@ function App() {
 
   const handleAdminPasswordChange = useCallback((password: string) => {
     setAdminPassword(password)
-    if (password) {
-      window.sessionStorage.setItem(adminPasswordStorageKey, password)
-    } else {
-      window.sessionStorage.removeItem(adminPasswordStorageKey)
-    }
     setSaveStatus(null)
   }, [])
 
   const handleBasemapChange = useCallback((nextBasemap: BasemapId) => {
     setBasemap(nextBasemap)
-    window.localStorage.setItem('trail-basemap', nextBasemap)
   }, [])
 
   // Conserve le cycle existant : Auto → 2D → 3D → Auto.
@@ -758,7 +808,6 @@ function App() {
           : current === 'force-2d'
             ? 'force-3d'
             : 'auto'
-      window.localStorage.setItem(perfModeStorageKey, next)
       return next
     })
   }, [])
@@ -767,34 +816,33 @@ function App() {
     setRecenterRequest((current) => current + 1)
   }, [])
 
-  const logoPressTimer = useRef<number | null>(null)
-
-  const handleLogoPressStart = useCallback(() => {
-    if (logoPressTimer.current !== null) return
-    logoPressTimer.current = window.setTimeout(() => {
-      logoPressTimer.current = null
-      window.location.assign(studioUrl())
-    }, studioLongPressMs)
-  }, [])
-
-  const handleLogoPressEnd = useCallback(() => {
-    if (logoPressTimer.current !== null) {
-      window.clearTimeout(logoPressTimer.current)
-      logoPressTimer.current = null
-    }
-  }, [])
-
   const handleCopyLink = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(
-        window.location.origin + publicUrl(),
+        window.location.origin + publicUrl(accessCode),
       )
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     } catch {
       setError('Copie du lien impossible.')
     }
+  }, [accessCode])
+
+  const handleOpenConsultation = useCallback(() => {
+    openConsultationFromStudio(accessCode)
+  }, [accessCode])
+
+  const openDashboard = useCallback(() => {
+    window.location.assign('/dashboard')
   }, [])
+
+  const handleOpenDashboard = useCallback(() => {
+    if (hasUnsavedProjectChanges || hasPanelDraft) {
+      setShowDashboardConfirm(true)
+      return
+    }
+    openDashboard()
+  }, [hasPanelDraft, hasUnsavedProjectChanges, openDashboard])
 
   const sendCameraCommand = useCallback((type: CameraCommand['type']) => {
     setCameraCommand({ id: Date.now(), type })
@@ -862,7 +910,6 @@ function App() {
     (code: string): boolean => {
       const granted = code.trim() === accessCode.trim() && accessCode.trim() !== ''
       if (granted) {
-        window.sessionStorage.setItem(accessGrantStorageKey, accessCode)
         setAccessGranted(true)
       }
       return granted
@@ -1351,6 +1398,7 @@ function App() {
 
     setIsSaving(true)
     setSaveStatus('Publication en ligne...')
+    const submittedSignature = currentProjectSignature
 
     try {
       const project: TrailProject = {
@@ -1371,7 +1419,6 @@ function App() {
         body: JSON.stringify({
           ...project,
           ...buildIndexMeta({
-            ownerId,
             title: hikeTitle,
             code: accessCode.trim(),
             distanceMeters: stats.distanceMeters,
@@ -1395,6 +1442,7 @@ function App() {
         result && 'folder' in result && typeof result.folder === 'string'
           ? result.folder
           : accessCode.trim()
+      setSavedProjectSignature(submittedSignature)
       setSaveStatus(`Randonnée enregistrée dans Cloudflare R2 : ${folder}.`)
       setError(null)
     } catch (saveError) {
@@ -1413,11 +1461,11 @@ function App() {
     accessCode,
     adminPassword,
     combinedPoints,
+    currentProjectSignature,
     mediaLibrary,
     points,
     pointsSourceName,
     traces,
-    ownerId,
     hikeTitle,
     stats,
   ])
@@ -1429,13 +1477,7 @@ function App() {
     <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
       <header className="topbar">
         <div className="brand">
-          <span
-            className="brand-icon"
-            onPointerDown={handleLogoPressStart}
-            onPointerUp={handleLogoPressEnd}
-            onPointerLeave={handleLogoPressEnd}
-            onPointerCancel={handleLogoPressEnd}
-          >
+          <span className="brand-icon">
             <Compass aria-hidden="true" size={22} />
           </span>
           <div>
@@ -1445,24 +1487,48 @@ function App() {
         </div>
         <div className="topbar-tools">
           {isStudioMode ? (
-            <a className="mode-link" href={publicUrl()}>
-              Voir la consultation
-            </a>
+            <>
+              <button
+                aria-label="Retourner au dashboard"
+                className="mode-link dashboard-link"
+                disabled={isSaving || isAutosaving || isUploading}
+                title="Dashboard"
+                type="button"
+                onClick={handleOpenDashboard}
+              >
+                <LayoutDashboard aria-hidden="true" size={16} />
+                <span>Dashboard</span>
+              </button>
+              <button
+                className="mode-link consultation-link"
+                type="button"
+                onClick={handleOpenConsultation}
+              >
+                <span>Voir la consultation</span>
+              </button>
+            </>
           ) : (
-            <button
-              aria-label="Copier le lien de la carte"
-              className={copied ? 'copy-link-button copied' : 'copy-link-button'}
-              title="Copier le lien"
-              type="button"
-              onClick={() => void handleCopyLink()}
-            >
-              {copied ? (
-                <Check aria-hidden="true" size={16} />
-              ) : (
-                <Copy aria-hidden="true" size={16} />
-              )}
-              <span>{copied ? 'Copié !' : 'Lien'}</span>
-            </button>
+            <>
+              {studioReturnHref ? (
+                <a className="mode-link studio-return-link" href={studioReturnHref}>
+                  <span>Retour au Studio</span>
+                </a>
+              ) : null}
+              <button
+                aria-label="Copier le lien de la carte"
+                className={copied ? 'copy-link-button copied' : 'copy-link-button'}
+                title="Copier le lien"
+                type="button"
+                onClick={() => void handleCopyLink()}
+              >
+                {copied ? (
+                  <Check aria-hidden="true" size={16} />
+                ) : (
+                  <Copy aria-hidden="true" size={16} />
+                )}
+                <span>{copied ? 'Copié !' : 'Lien'}</span>
+              </button>
+            </>
           )}
           <StatsBar stats={stats} pointCount={points.length} />
         </div>
@@ -1691,6 +1757,7 @@ function App() {
                   importReport={importReport}
                   onDismissReport={handleDismissReport}
                   onAdminPasswordChange={handleAdminPasswordChange}
+                  onDraftDirtyChange={setHasPanelDraft}
                   saveStatus={saveStatus}
                 />
               ) : (
@@ -1720,6 +1787,39 @@ function App() {
 
       {!isLoading && needsAccess ? (
         <AccessGate onSubmit={handleGrantAccess} />
+      ) : null}
+
+      {showDashboardConfirm ? (
+        <div
+          aria-label="Quitter le Studio"
+          aria-modal="true"
+          className="confirm-overlay"
+          role="dialog"
+        >
+          <div className="confirm-card dashboard-confirm-card">
+            <strong>Quitter le Studio ?</strong>
+            <p>
+              Des modifications ne sont pas encore publiées. Elles seront
+              perdues si vous retournez au dashboard.
+            </p>
+            <div className="confirm-actions">
+              <button
+                className="secondary-action"
+                type="button"
+                onClick={() => setShowDashboardConfirm(false)}
+              >
+                Rester dans le Studio
+              </button>
+              <button
+                className="danger-action"
+                type="button"
+                onClick={openDashboard}
+              >
+                Quitter sans publier
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <div

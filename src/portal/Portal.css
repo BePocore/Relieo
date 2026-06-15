@@ -997,6 +997,69 @@
   color: #17201c;
 }
 
+.password-visibility {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  color: #6f7c75;
+  background: transparent;
+  cursor: pointer;
+}
+
+.password-visibility:hover,
+.password-visibility:focus-visible {
+  color: #176243;
+  background: #edf5f1;
+  outline: none;
+}
+
+.password-rules {
+  margin: -3px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  list-style: none;
+}
+
+.password-rules li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #89948e;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.password-rules li svg {
+  padding: 1px;
+  border-radius: 50%;
+  color: #fff;
+  background: #bdc6c1;
+}
+
+.password-rules li.valid {
+  color: #176243;
+}
+
+.password-rules li.valid svg {
+  background: #27825d;
+}
+
+.password-match {
+  color: #a23d35;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.password-match.valid {
+  color: #176243;
+}
+
 .auth-submit {
   width: 100%;
   margin-top: 5px;

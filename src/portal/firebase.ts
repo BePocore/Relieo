@@ -1,28 +1,45 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
 import {
+  browserPopupRedirectResolver,
+  browserSessionPersistence,
   GoogleAuthProvider,
-  getAuth,
+  initializeAuth,
   onAuthStateChanged,
   type Auth,
   type User,
 } from 'firebase/auth'
+import {
+  doc,
+  getDoc,
+  getFirestore,
+  serverTimestamp,
+  setDoc,
+  type Firestore,
+} from 'firebase/firestore'
+import type { ProfileExtras } from './portalStore'
 
-// Config web Firebase (valeurs publiques côté client).
-const config = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
+const cleanEnv = (value: string | undefined): string | undefined => {
+  const cleaned = value?.replace(/^\uFEFF/, '').trim()
+  return cleaned || undefined
 }
 
-// Firebase n'est actif que si la config est fournie. Sinon le portail retombe
-// sur l'authentification localStorage de prototype (pratique avant la config).
+// Config web Firebase (valeurs publiques côté client). Le nettoyage du BOM
+// protège notamment les valeurs collées ou importées dans Vercel.
+const config = {
+  apiKey: cleanEnv(import.meta.env.VITE_FIREBASE_API_KEY),
+  authDomain: cleanEnv(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
+  projectId: cleanEnv(import.meta.env.VITE_FIREBASE_PROJECT_ID),
+  appId: cleanEnv(import.meta.env.VITE_FIREBASE_APP_ID),
+}
+
+// Firebase est obligatoire pour le portail et le Studio authentifie.
 export const firebaseEnabled = Boolean(
   config.apiKey && config.authDomain && config.projectId && config.appId,
 )
 
 let app: FirebaseApp | undefined
 let authInstance: Auth | undefined
+let dbInstance: Firestore | undefined
 
 export const getFirebaseAuth = (): Auth | null => {
   if (!firebaseEnabled) return null
@@ -33,9 +50,60 @@ export const getFirebaseAuth = (): Auth | null => {
       projectId: config.projectId!,
       appId: config.appId!,
     })
-    authInstance = getAuth(app)
+    authInstance = initializeAuth(app, {
+      persistence: browserSessionPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver,
+    })
   }
   return authInstance
+}
+
+// Firestore : stockage des profils utilisateurs (nom/localisation/bio) par uid.
+// Initialise l'app au passage si besoin.
+export const getFirebaseDb = (): Firestore | null => {
+  if (!firebaseEnabled) return null
+  getFirebaseAuth()
+  if (!app) return null
+  if (!dbInstance) dbInstance = getFirestore(app)
+  return dbInstance
+}
+
+const profileDocument = (uid: string) => {
+  const db = getFirebaseDb()
+  return db ? doc(db, 'profiles', uid) : null
+}
+
+export const readUserProfile = async (
+  uid: string,
+): Promise<ProfileExtras> => {
+  const reference = profileDocument(uid)
+  if (!reference) throw new Error('Firestore n\u2019est pas configure.')
+  const snapshot = await getDoc(reference)
+  if (!snapshot.exists()) return {}
+  const data = snapshot.data()
+  return {
+    name: typeof data.name === 'string' ? data.name : undefined,
+    location: typeof data.location === 'string' ? data.location : undefined,
+    bio: typeof data.bio === 'string' ? data.bio : undefined,
+  }
+}
+
+export const saveUserProfile = async (
+  uid: string,
+  profile: ProfileExtras,
+): Promise<void> => {
+  const reference = profileDocument(uid)
+  if (!reference) throw new Error('Firestore n\u2019est pas configure.')
+  await setDoc(
+    reference,
+    {
+      name: profile.name?.trim() ?? '',
+      location: profile.location?.trim() ?? '',
+      bio: profile.bio?.trim() ?? '',
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  )
 }
 
 export const googleProvider = new GoogleAuthProvider()

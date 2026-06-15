@@ -1,11 +1,9 @@
 import { hasR2Config } from '../server/r2.js'
 import { readHikeIndex } from '../server/hikeIndex.js'
+import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
-// Liste les randonnées du registre. `?ownerId=<id>` filtre celles d'un
-// propriétaire (ce qu'affiche son dashboard). Métadonnées publiques : pas de
-// mot de passe requis pour lire la liste.
 export async function GET(request: Request) {
   if (!hasR2Config()) {
     return Response.json(
@@ -13,13 +11,24 @@ export async function GET(request: Request) {
       { status: 503, headers: jsonHeaders },
     )
   }
+  if (!hasFirebaseAdmin()) {
+    return Response.json(
+      { message: 'Firebase Admin n’est pas configuré.' },
+      { status: 503, headers: jsonHeaders },
+    )
+  }
+
+  const user = await verifyRequestUser(request)
+  if (!user) {
+    return Response.json(
+      { message: 'Connexion requise.' },
+      { status: 401, headers: jsonHeaders },
+    )
+  }
 
   try {
-    const ownerId = new URL(request.url).searchParams.get('ownerId')?.trim()
     const hikes = await readHikeIndex()
-    const filtered = ownerId
-      ? hikes.filter((hike) => hike.ownerId === ownerId)
-      : hikes
+    const filtered = hikes.filter((hike) => hike.ownerId === user.uid)
     return Response.json({ hikes: filtered }, { headers: jsonHeaders })
   } catch (error) {
     return Response.json(

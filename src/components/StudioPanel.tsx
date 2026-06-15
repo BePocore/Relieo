@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   Camera,
@@ -39,6 +39,7 @@ import { PointTypeIcon } from './PointTypeIcon'
 import { ColorSwatches } from './ColorSwatches'
 import { paletteColors, traceColor } from '../lib/mapStyles'
 import { newPointTitle } from '../App'
+import { firebaseEnabled } from '../portal/firebase'
 
 type StudioPanelProps = {
   selectedPoint: TrailPoint | null
@@ -73,6 +74,7 @@ type StudioPanelProps = {
   onDismissReport: () => void
   onAccessCodeChange: (code: string) => void
   onAdminPasswordChange: (password: string) => void
+  onDraftDirtyChange: (dirty: boolean) => void
   saveStatus: string | null
 }
 
@@ -232,6 +234,7 @@ type SelectedPointEditorProps = {
   onDeletePoint: (pointId: string) => void
   onToggleLock: (pointId: string) => void
   onSetPointColor: (pointId: string, color: string) => void
+  onDraftDirtyChange: (dirty: boolean) => void
 }
 
 function SelectedPointEditor({
@@ -245,11 +248,27 @@ function SelectedPointEditor({
   onDeletePoint,
   onToggleLock,
   onSetPointColor,
+  onDraftDirtyChange,
 }: SelectedPointEditorProps) {
-  const [editDraft, setEditDraft] = useState(() =>
-    draftFromPoint(selectedPoint, mediaLibrary),
+  const originalDraft = useMemo(
+    () => draftFromPoint(selectedPoint, mediaLibrary),
+    [mediaLibrary, selectedPoint],
   )
+  const [editDraft, setEditDraft] = useState(() => originalDraft)
   const [editError, setEditError] = useState<string | null>(null)
+
+  useEffect(() => {
+    onDraftDirtyChange(
+      JSON.stringify(editDraft) !== JSON.stringify(originalDraft),
+    )
+  }, [editDraft, onDraftDirtyChange, originalDraft])
+
+  useEffect(
+    () => () => {
+      onDraftDirtyChange(false)
+    },
+    [onDraftDirtyChange],
+  )
 
   const selectedEditMedia = useMemo(
     () => mediaLibrary.find((media) => media.id === editDraft.mediaId),
@@ -458,7 +477,7 @@ function SelectedPointEditor({
         {editError ? <p className="form-error">{editError}</p> : null}
 
         <button className="primary-action" type="submit">
-          Enregistrer
+          Appliquer les modifications
         </button>
       </form>
     </>
@@ -498,16 +517,33 @@ export function StudioPanel({
   importReport,
   onDismissReport,
   onAdminPasswordChange,
+  onDraftDirtyChange,
   saveStatus,
 }: StudioPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>('points')
   const [draft, setDraft] = useState<DraftPoint>(initialDraft)
   const [formError, setFormError] = useState<string | null>(null)
   const [paletteTraceId, setPaletteTraceId] = useState<string | null>(null)
+  const writeAuthReady = firebaseEnabled || Boolean(adminPassword)
 
   const selectedMedia = useMemo(
     () => mediaLibrary.find((media) => media.id === draft.mediaId),
     [draft.mediaId, mediaLibrary],
+  )
+  const addDraftIsDirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(initialDraft),
+    [draft],
+  )
+
+  useEffect(() => {
+    if (!selectedPoint) onDraftDirtyChange(addDraftIsDirty)
+  }, [addDraftIsDirty, onDraftDirtyChange, selectedPoint])
+
+  useEffect(
+    () => () => {
+      onDraftDirtyChange(false)
+    },
+    [onDraftDirtyChange],
   )
 
   const updateDraft = (field: keyof DraftPoint, value: string) => {
@@ -580,6 +616,7 @@ export function StudioPanel({
         onDeletePoint={onDeletePoint}
         onToggleLock={onToggleLock}
         onSetPointColor={onSetPointColor}
+        onDraftDirtyChange={onDraftDirtyChange}
       />
     )
   }
@@ -597,19 +634,28 @@ export function StudioPanel({
       <ElevationProfile traces={traces} stats={stats} />
 
       <div className="studio-actions">
-        <label className="studio-password">
-          <span>
-            <LockKeyhole aria-hidden="true" size={15} />
-            Mot de passe Studio
-          </span>
-          <input
-            autoComplete="current-password"
-            type="password"
-            value={adminPassword}
-            onChange={(event) => onAdminPasswordChange(event.target.value)}
-            placeholder="Mot de passe Studio"
-          />
-        </label>
+        {firebaseEnabled ? (
+          <div className="studio-password">
+            <span>
+              <LockKeyhole aria-hidden="true" size={15} />
+              Compte Firebase connecté
+            </span>
+          </div>
+        ) : (
+          <label className="studio-password">
+            <span>
+              <LockKeyhole aria-hidden="true" size={15} />
+              Mot de passe Studio
+            </span>
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={adminPassword}
+              onChange={(event) => onAdminPasswordChange(event.target.value)}
+              placeholder="Mot de passe Studio"
+            />
+          </label>
+        )}
         <label className="studio-password">
           <span>
             <KeyRound aria-hidden="true" size={15} />
@@ -625,7 +671,7 @@ export function StudioPanel({
         </label>
         <button
           className="primary-action"
-          disabled={!adminPassword || !accessCode.trim() || isSaving || isUploading}
+          disabled={!writeAuthReady || !accessCode.trim() || isSaving || isUploading}
           type="button"
           onClick={() => void onSaveProject()}
         >
@@ -818,15 +864,15 @@ export function StudioPanel({
               <small>
                 {isUploading
                   ? 'Envoi vers le stockage...'
-                  : adminPassword && accessCode.trim()
+                  : writeAuthReady && accessCode.trim()
                     ? `${mediaLibrary.length} média(s)`
-                    : 'Code randonnée et mot de passe requis'}
+                    : 'Connexion et code randonnée requis'}
               </small>
             </span>
             <input
               type="file"
               accept="image/*,video/*,.heic,.heif,.mp4,.mov,.m4v,image/heic,image/heif,video/mp4,video/quicktime"
-              disabled={!adminPassword || !accessCode.trim() || isUploading}
+              disabled={!writeAuthReady || !accessCode.trim() || isUploading}
               multiple
               onChange={(event) => {
                 void onImportMedia(Array.from(event.target.files ?? []))

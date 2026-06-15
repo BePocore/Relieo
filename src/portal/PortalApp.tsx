@@ -8,6 +8,8 @@ import {
   ChevronRight,
   CircleUserRound,
   Compass,
+  Eye,
+  EyeOff,
   FolderKanban,
   Gauge,
   Image,
@@ -36,27 +38,22 @@ import {
   updateProfile,
 } from 'firebase/auth'
 import {
-  endSession,
-  hashPassword,
-  hasSession,
-  readHikesForOwner,
-  readProfileExtras,
-  readUser,
-  resetHikes,
-  saveHikesForOwner,
-  saveProfileExtras,
-  saveUser,
-  startSession,
   type PortalHike,
   type PortalUser,
+  type ProfileExtras,
 } from './portalStore'
-import { firebaseEnabled, getFirebaseAuth, googleProvider } from './firebase'
+import {
+  getFirebaseAuth,
+  getIdToken,
+  googleProvider,
+  readUserProfile,
+  saveUserProfile,
+} from './firebase'
 import './Portal.css'
 
 type PortalView = 'dashboard' | 'hikes' | 'profile'
 
-// Entrée du registre serveur (api/hikes). Source de vérité pour l'existence et
-// les stats d'une rando ; fusionnée avec le cache localStorage.
+// Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
   code: string
   ownerId: string
@@ -70,22 +67,15 @@ type BackendHike = {
   updatedAt: string
 }
 
-// Fusionne les randos du backend (par code) dans la liste locale.
-const mergeBackendHikes = (
-  local: PortalHike[],
+const backendHikes = (
   backend: BackendHike[],
   ownerId: string,
 ): PortalHike[] => {
-  // `Map` est importé comme icône lucide → on vise explicitement le Map JS.
-  const byCode = new globalThis.Map<string, PortalHike>(
-    local.map((hike) => [hike.code, hike]),
-  )
-  for (const entry of backend) {
-    const existing = byCode.get(entry.code)
-    byCode.set(entry.code, {
-      id: existing?.id ?? entry.code,
+  return backend
+    .map((entry) => ({
+      id: entry.code,
       ownerId: entry.ownerId || ownerId,
-      title: entry.title || existing?.title || entry.code,
+      title: entry.title || entry.code,
       code: entry.code,
       status: entry.status,
       distanceKm: entry.distanceKm,
@@ -93,12 +83,12 @@ const mergeBackendHikes = (
       mediaCount: entry.mediaCount,
       pointCount: entry.pointCount,
       updatedAt: entry.updatedAt,
-      coverUrl: entry.coverUrl ?? existing?.coverUrl,
-    })
-  }
-  return Array.from(byCode.values()).sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-  )
+      coverUrl: entry.coverUrl,
+    }))
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )
 }
 
 const navigate = (path: string): void => {
@@ -125,134 +115,6 @@ const userInitials = (name: string): string =>
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('') || 'R3'
-
-function AuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
-  const [mode, setMode] = useState<'login' | 'signup'>(() =>
-    readUser() ? 'login' : 'signup',
-  )
-  const [name, setName] = useState('Quentin')
-  const [email, setEmail] = useState(() => readUser()?.email ?? '')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    setBusy(true)
-    setError(null)
-    try {
-      const normalizedEmail = email.trim().toLowerCase()
-      if (!normalizedEmail || password.length < 8) {
-        throw new Error('Utilise une adresse email et un mot de passe de 8 caractères minimum.')
-      }
-      const passwordHash = await hashPassword(password)
-      if (mode === 'signup') {
-        const user: PortalUser = {
-          id: crypto.randomUUID(),
-          name: name.trim() || 'Randonneur',
-          email: normalizedEmail,
-          passwordHash,
-          location: 'France',
-          bio: 'Je transforme mes randonnées en récits cartographiques 3D.',
-          createdAt: new Date().toISOString(),
-        }
-        resetHikes(user.id)
-        saveUser(user)
-        startSession(user)
-      } else {
-        const user = readUser()
-        if (
-          !user ||
-          user.email.toLowerCase() !== normalizedEmail ||
-          user.passwordHash !== passwordHash
-        ) {
-          throw new Error('Email ou mot de passe incorrect.')
-        }
-        startSession(user)
-      }
-      onAuthenticated()
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error ? submitError.message : 'Connexion impossible.',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <main className="portal-auth">
-      <section className="auth-visual" aria-label="Présentation Randonnée 3D">
-        <div className="auth-brand">
-          <span className="portal-logo"><Compass size={24} /></span>
-          <strong>Randonnée 3D</strong>
-        </div>
-        <div className="auth-visual-copy">
-          <p className="portal-kicker">Votre carnet cartographique</p>
-          <h1>Retrouvez chaque randonnée, chaque image, au bon endroit.</h1>
-          <div className="auth-proof">
-            <span><Mountain size={17} /> Relief 3D</span>
-            <span><Camera size={17} /> Médias géolocalisés</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="auth-panel">
-        <div className="auth-form-wrap">
-          <span className="prototype-label">Prototype local</span>
-          <h2>{mode === 'signup' ? 'Créer votre espace' : 'Bon retour parmi nous'}</h2>
-          <p>
-            {mode === 'signup'
-              ? 'Préparez votre bibliothèque de randonnées.'
-              : 'Connectez-vous à votre tableau de bord.'}
-          </p>
-          <div className="auth-switch" role="tablist" aria-label="Authentification">
-            <button
-              className={mode === 'login' ? 'active' : ''}
-              role="tab"
-              type="button"
-              onClick={() => setMode('login')}
-            >
-              Connexion
-            </button>
-            <button
-              className={mode === 'signup' ? 'active' : ''}
-              role="tab"
-              type="button"
-              onClick={() => setMode('signup')}
-            >
-              Inscription
-            </button>
-          </div>
-          <form className="auth-form" onSubmit={submit}>
-            {mode === 'signup' ? (
-              <label>
-                <span>Nom</span>
-                <div className="input-shell"><UserRound size={17} /><input value={name} onChange={(event) => setName(event.target.value)} /></div>
-              </label>
-            ) : null}
-            <label>
-              <span>Email</span>
-              <div className="input-shell"><CircleUserRound size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
-            </label>
-            <label>
-              <span>Mot de passe</span>
-              <div className="input-shell"><KeyRound size={17} /><input minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></div>
-            </label>
-            {error ? <p className="auth-error">{error}</p> : null}
-            <button className="portal-primary auth-submit" disabled={busy} type="submit">
-              {busy ? 'Vérification...' : mode === 'signup' ? 'Créer mon espace' : 'Se connecter'}
-              <ArrowRight size={17} />
-            </button>
-          </form>
-          <p className="auth-note">
-            Cette authentification fonctionne uniquement sur cet ordinateur pendant le prototype.
-          </p>
-        </div>
-      </section>
-    </main>
-  )
-}
 
 function CreateHikeDialog({
   onClose,
@@ -338,9 +200,37 @@ function HikeCard({ hike }: { hike: PortalHike }) {
   )
 }
 
-function ProfileView({ user, onSave }: { user: PortalUser; onSave: (user: PortalUser) => void }) {
+function ProfileView({
+  user,
+  onSave,
+}: {
+  user: PortalUser
+  onSave: (user: PortalUser) => Promise<void>
+}) {
   const [draft, setDraft] = useState(user)
   const [saved, setSaved] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setSaved(false)
+    setError(null)
+    try {
+      await onSave(draft)
+      setSaved(true)
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Enregistrement du profil impossible.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="profile-view">
       <header className="page-heading">
@@ -350,14 +240,15 @@ function ProfileView({ user, onSave }: { user: PortalUser; onSave: (user: Portal
         <div className="profile-identity">
           <span className="profile-avatar large">{userInitials(draft.name)}</span>
           <h2>{draft.name}</h2><p>{draft.email}</p>
-          <span className="profile-security"><ShieldCheck size={15} /> Profil local protégé</span>
+          <span className="profile-security"><ShieldCheck size={15} /> Profil Firestore protégé</span>
         </div>
-        <form className="profile-form" onSubmit={(event) => { event.preventDefault(); onSave(draft); setSaved(true) }}>
+        <form className="profile-form" onSubmit={submit}>
           <label><span>Nom complet</span><input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-          <label><span>Email</span><input type="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></label>
+          <label><span>Email Firebase</span><input readOnly type="email" value={draft.email} /></label>
           <label><span>Localisation</span><input value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} /></label>
           <label className="profile-bio"><span>Présentation</span><textarea rows={4} value={draft.bio} onChange={(event) => setDraft({ ...draft, bio: event.target.value })} /></label>
-          <button className="portal-primary" type="submit">{saved ? <Check size={17} /> : <UserRound size={17} />}{saved ? 'Profil enregistré' : 'Enregistrer le profil'}</button>
+          {error ? <p className="auth-error">{error}</p> : null}
+          <button className="portal-primary" disabled={busy} type="submit">{saved ? <Check size={17} /> : <UserRound size={17} />}{busy ? 'Enregistrement...' : saved ? 'Profil enregistré' : 'Enregistrer le profil'}</button>
         </form>
       </div>
     </section>
@@ -367,17 +258,15 @@ function ProfileView({ user, onSave }: { user: PortalUser; onSave: (user: Portal
 function DashboardShell({
   user,
   onLogout,
-  onSaveProfile = saveUser,
+  onSaveProfile,
 }: {
   user: PortalUser
   onLogout: () => void
-  onSaveProfile?: (user: PortalUser) => void
+  onSaveProfile: (user: PortalUser) => Promise<void>
 }) {
   const [view, setView] = useState<PortalView>(currentView)
-  // Le dashboard ne montre que les randos dont l'utilisateur est propriétaire.
-  const [hikes, setHikes] = useState<PortalHike[]>(() =>
-    readHikesForOwner(user.id),
-  )
+  const [hikes, setHikes] = useState<PortalHike[]>([])
+  const [hikesError, setHikesError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [mobileMenu, setMobileMenu] = useState(false)
@@ -389,25 +278,41 @@ function DashboardShell({
     return () => window.removeEventListener('popstate', syncView)
   }, [])
 
-  // Récupère les randos réelles du backend (api/hikes) et les fusionne dans le
-  // cache local. En l'absence de backend (vite seul) on garde le localStorage.
   useEffect(() => {
     let cancelled = false
     const controller = new AbortController()
-    fetch(`/api/hikes?ownerId=${encodeURIComponent(user.id)}`, {
-      cache: 'no-store',
-      signal: controller.signal,
-    })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { hikes?: BackendHike[] } | null) => {
-        if (cancelled || !data?.hikes?.length) return
-        setHikes((current) => {
-          const merged = mergeBackendHikes(current, data.hikes!, user.id)
-          saveHikesForOwner(user.id, merged)
-          return merged
+    void getIdToken()
+      .then((token) => {
+        if (!token) throw new Error('Connexion Firebase requise.')
+        return fetch('/api/hikes', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
         })
       })
-      .catch(() => {})
+      .then(async (response) => {
+        const data = (await response.json().catch(() => null)) as {
+          hikes?: BackendHike[]
+          message?: string
+        } | null
+        if (!response.ok) {
+          throw new Error(data?.message ?? 'Lecture des randonnées impossible.')
+        }
+        return data
+      })
+      .then((data) => {
+        if (cancelled) return
+        setHikes(backendHikes(data?.hikes ?? [], user.id))
+        setHikesError(null)
+      })
+      .catch((loadError: unknown) => {
+        if (cancelled || controller.signal.aborted) return
+        setHikesError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Lecture des randonnées impossible.',
+        )
+      })
     return () => {
       cancelled = true
       controller.abort()
@@ -437,28 +342,15 @@ function DashboardShell({
   )
 
   const createHike = (title: string, code: string) => {
-    const hike: PortalHike = {
-      id: crypto.randomUUID(),
-      ownerId: user.id,
-      title,
-      code,
-      status: 'draft',
-      distanceKm: 0,
-      elevationGain: 0,
-      mediaCount: 0,
-      pointCount: 0,
-      updatedAt: new Date().toISOString(),
-    }
-    const next = [hike, ...hikes]
-    setHikes(next)
-    saveHikesForOwner(user.id, next)
     setCreateOpen(false)
-    window.location.assign(`/?mode=studio&new=${encodeURIComponent(code)}`)
+    window.location.assign(
+      `/?mode=studio&new=${encodeURIComponent(code)}&title=${encodeURIComponent(title)}`,
+    )
   }
 
-  const saveProfile = (next: PortalUser) => {
+  const saveProfile = async (next: PortalUser) => {
+    await onSaveProfile(next)
     setProfile(next)
-    onSaveProfile(next)
   }
 
   return (
@@ -474,7 +366,7 @@ function DashboardShell({
           <button type="button"><BarChart3 size={18} /> Statistiques</button>
           <button type="button"><Settings size={18} /> Paramètres</button>
         </nav>
-        <div className="sidebar-status"><span><ShieldCheck size={16} /></span><div><strong>Prototype local</strong><small>Aucune donnée envoyée</small></div></div>
+        <div className="sidebar-status"><span><ShieldCheck size={16} /></span><div><strong>Cloud synchronisé</strong><small>Firebase + Cloudflare R2</small></div></div>
         <button className="logout-button" type="button" onClick={onLogout}><LogOut size={18} /> Déconnexion</button>
       </aside>
 
@@ -506,6 +398,7 @@ function DashboardShell({
 
               <section className="hikes-section">
                 <div className="section-heading"><div><h2>{view === 'hikes' ? 'Bibliothèque' : 'Randonnées récentes'}</h2><p>{filteredHikes.length} projet{filteredHikes.length > 1 ? 's' : ''}</p></div>{view === 'dashboard' ? <button type="button" onClick={() => setPortalView('hikes')}>Tout afficher <ChevronRight size={16} /></button> : null}</div>
+                {hikesError ? <p className="auth-error">{hikesError}</p> : null}
                 <div className="hikes-grid">
                   {filteredHikes.map((hike) => <HikeCard hike={hike} key={hike.id} />)}
                   <button className="new-hike-card" type="button" onClick={() => setCreateOpen(true)}><span><Plus size={23} /></span><strong>Créer une randonnée</strong><small>Commencer avec un Studio 3D vierge</small></button>
@@ -531,14 +424,12 @@ function DashboardShell({
 // ---------- Auth Firebase (Google + e-mail/mot de passe) ----------
 
 // Dérive un PortalUser depuis le compte Firebase. uid = identité/propriété.
-const toPortalUser = (fb: User): PortalUser => {
-  const extras = readProfileExtras(fb.uid)
+const toPortalUser = (fb: User, extras: ProfileExtras): PortalUser => {
   return {
     id: fb.uid,
     name:
       extras.name || fb.displayName || fb.email?.split('@')[0] || 'Randonneur',
     email: fb.email ?? '',
-    passwordHash: '',
     location: extras.location ?? 'France',
     bio:
       extras.bio ?? 'Je transforme mes randonnées en récits cartographiques 3D.',
@@ -559,7 +450,7 @@ const firebaseErrorMessage = (error: unknown): string => {
     case 'auth/email-already-in-use':
       return 'Un compte existe déjà avec cet email.'
     case 'auth/weak-password':
-      return 'Mot de passe trop faible (6 caractères minimum).'
+      return 'Le mot de passe ne respecte pas les règles de robustesse.'
     case 'auth/popup-closed-by-user':
       return 'Connexion Google annulée.'
     default:
@@ -567,13 +458,38 @@ const firebaseErrorMessage = (error: unknown): string => {
   }
 }
 
+const passwordChecks = (password: string) => [
+  { label: '12 caractères minimum', valid: password.length >= 12 },
+  { label: 'Une lettre minuscule', valid: /[a-z]/.test(password) },
+  { label: 'Une lettre majuscule', valid: /[A-Z]/.test(password) },
+  { label: 'Un chiffre', valid: /\d/.test(password) },
+  {
+    label: 'Un caractère spécial',
+    valid: /[^A-Za-z0-9\s]/.test(password),
+  },
+]
+
 function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth> }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirmation, setPasswordConfirmation] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const checks = passwordChecks(password)
+  const passwordIsStrong = checks.every((check) => check.valid)
+  const passwordsMatch = password === passwordConfirmation
+
+  const changeMode = (nextMode: 'login' | 'signup') => {
+    setMode(nextMode)
+    setError(null)
+    setPasswordConfirmation('')
+    setShowPassword(false)
+    setShowPasswordConfirmation(false)
+  }
 
   const run = async (action: () => Promise<unknown>) => {
     if (!auth) return
@@ -592,6 +508,14 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
   const submitEmail = (event: FormEvent) => {
     event.preventDefault()
     if (!auth) return
+    if (mode === 'signup' && !passwordIsStrong) {
+      setError('Respecte tous les critères de robustesse du mot de passe.')
+      return
+    }
+    if (mode === 'signup' && !passwordsMatch) {
+      setError('Les deux mots de passe doivent être identiques.')
+      return
+    }
     void run(async () => {
       if (mode === 'signup') {
         const credential = await createUserWithEmailAndPassword(
@@ -602,6 +526,11 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
         if (name.trim()) {
           await updateProfile(credential.user, { displayName: name.trim() })
         }
+        await saveUserProfile(credential.user.uid, {
+          name: name.trim() || 'Randonneur',
+          location: 'France',
+          bio: 'Je transforme mes randonnées en récits cartographiques 3D.',
+        })
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
       }
@@ -642,8 +571,8 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
           <div className="auth-divider"><span>ou</span></div>
 
           <div className="auth-switch" role="tablist" aria-label="Authentification">
-            <button className={mode === 'login' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('login')}>Connexion</button>
-            <button className={mode === 'signup' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('signup')}>Inscription</button>
+            <button className={mode === 'login' ? 'active' : ''} role="tab" type="button" onClick={() => changeMode('login')}>Connexion</button>
+            <button className={mode === 'signup' ? 'active' : ''} role="tab" type="button" onClick={() => changeMode('signup')}>Inscription</button>
           </div>
 
           <form className="auth-form" onSubmit={submitEmail}>
@@ -655,12 +584,70 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
             ) : null}
             <label>
               <span>Email</span>
-              <div className="input-shell"><CircleUserRound size={17} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+              <div className="input-shell"><CircleUserRound size={17} /><input autoComplete="email" required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
             </label>
             <label>
               <span>Mot de passe</span>
-              <div className="input-shell"><KeyRound size={17} /><input minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></div>
+              <div className="input-shell">
+                <KeyRound size={17} />
+                <input
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  minLength={mode === 'signup' ? 12 : 6}
+                  required
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <button
+                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  className="password-visibility"
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
             </label>
+            {mode === 'signup' ? (
+              <>
+                <ul className="password-rules" aria-label="Règles du mot de passe">
+                  {checks.map((check) => (
+                    <li className={check.valid ? 'valid' : ''} key={check.label}>
+                      <Check aria-hidden="true" size={13} />
+                      {check.label}
+                    </li>
+                  ))}
+                </ul>
+                <label>
+                  <span>Confirmer le mot de passe</span>
+                  <div className="input-shell">
+                    <KeyRound size={17} />
+                    <input
+                      aria-invalid={passwordConfirmation.length > 0 && !passwordsMatch}
+                      autoComplete="new-password"
+                      minLength={12}
+                      required
+                      type={showPasswordConfirmation ? 'text' : 'password'}
+                      value={passwordConfirmation}
+                      onChange={(event) => setPasswordConfirmation(event.target.value)}
+                    />
+                    <button
+                      aria-label={showPasswordConfirmation ? 'Masquer la confirmation' : 'Afficher la confirmation'}
+                      className="password-visibility"
+                      type="button"
+                      onClick={() => setShowPasswordConfirmation((visible) => !visible)}
+                    >
+                      {showPasswordConfirmation ? <EyeOff size={17} /> : <Eye size={17} />}
+                    </button>
+                  </div>
+                  {passwordConfirmation ? (
+                    <small className={passwordsMatch ? 'password-match valid' : 'password-match'}>
+                      {passwordsMatch ? 'Les mots de passe correspondent.' : 'Les mots de passe ne correspondent pas.'}
+                    </small>
+                  ) : null}
+                </label>
+              </>
+            ) : null}
             {error ? <p className="auth-error">{error}</p> : null}
             <button className="portal-primary auth-submit" disabled={busy} type="submit">
               {busy ? 'Vérification...' : mode === 'signup' ? 'Créer mon espace' : 'Se connecter'}
@@ -688,17 +675,42 @@ function GoogleGlyph() {
 function FirebasePortal() {
   const auth = getFirebaseAuth()
   const [ready, setReady] = useState(false)
-  const [fbUser, setFbUser] = useState<User | null>(null)
+  const [session, setSession] = useState<{
+    firebaseUser: User
+    portalUser: PortalUser
+  } | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
 
   useEffect(() => {
     document.body.classList.add('portal-active')
-    if (!auth) {
-      setReady(true)
-      return () => document.body.classList.remove('portal-active')
-    }
+    if (!auth) return () => document.body.classList.remove('portal-active')
     const unsubscribe = onAuthStateChanged(auth, (current) => {
-      setFbUser(current)
-      setReady(true)
+      if (!current) {
+        setSession(null)
+        setProfileError(null)
+        setReady(true)
+        return
+      }
+      void readUserProfile(current.uid)
+        .then((extras) => {
+          setSession({
+            firebaseUser: current,
+            portalUser: toPortalUser(current, extras),
+          })
+          setProfileError(null)
+        })
+        .catch((loadError: unknown) => {
+          setSession({
+            firebaseUser: current,
+            portalUser: toPortalUser(current, {}),
+          })
+          setProfileError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Lecture du profil Firestore impossible.',
+          )
+        })
+        .finally(() => setReady(true))
     })
     return () => {
       document.body.classList.remove('portal-active')
@@ -706,62 +718,46 @@ function FirebasePortal() {
     }
   }, [auth])
 
-  if (!ready) return null
-  if (!fbUser) return <FirebaseAuthScreen auth={auth} />
-
-  const portalUser = toPortalUser(fbUser)
-  return (
-    <DashboardShell
-      user={portalUser}
-      onLogout={() => {
-        if (auth) void signOut(auth)
-        navigate('/login')
-      }}
-      onSaveProfile={(next) =>
-        saveProfileExtras(fbUser.uid, {
-          name: next.name,
-          location: next.location,
-          bio: next.bio,
-        })
-      }
-    />
-  )
-}
-
-// Fallback prototype (auth localStorage) tant que Firebase n'est pas configuré.
-function LocalPortal() {
-  const [authenticated, setAuthenticated] = useState(hasSession)
-  const [user, setUser] = useState<PortalUser | null>(readUser)
-
-  useEffect(() => {
-    document.body.classList.add('portal-active')
-    return () => document.body.classList.remove('portal-active')
-  }, [])
-
-  if (!authenticated || !user) {
+  if (!auth) {
     return (
-      <AuthScreen
-        onAuthenticated={() => {
-          setUser(readUser())
-          setAuthenticated(true)
-          navigate('/dashboard')
-        }}
-      />
+      <main className="portal-auth">
+        <section className="auth-panel">
+          <div className="auth-form-wrap">
+            <h2>Firebase non configuré</h2>
+            <p>Les variables VITE_FIREBASE_* sont obligatoires.</p>
+          </div>
+        </section>
+      </main>
     )
   }
+  if (!ready) return null
+  if (!session) return <FirebaseAuthScreen auth={auth} />
 
   return (
-    <DashboardShell
-      user={user}
-      onLogout={() => {
-        endSession()
-        setAuthenticated(false)
-        navigate('/login')
-      }}
-    />
+    <>
+      {profileError ? <p className="auth-error">{profileError}</p> : null}
+      <DashboardShell
+        user={session.portalUser}
+        onLogout={() => {
+          void signOut(auth)
+          navigate('/login')
+        }}
+        onSaveProfile={async (next) => {
+          await saveUserProfile(session.firebaseUser.uid, {
+            name: next.name,
+            location: next.location,
+            bio: next.bio,
+          })
+          if (next.name !== session.firebaseUser.displayName) {
+            await updateProfile(session.firebaseUser, { displayName: next.name })
+          }
+          setProfileError(null)
+        }}
+      />
+    </>
   )
 }
 
 export default function PortalApp() {
-  return firebaseEnabled ? <FirebasePortal /> : <LocalPortal />
+  return <FirebasePortal />
 }
