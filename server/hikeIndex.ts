@@ -3,7 +3,7 @@ import { r2GetText, r2PutText } from './r2.js'
 // Registre central des randonnées : permet de lister plusieurs randos (et
 // plusieurs randos par propriétaire) sans dépendre du pointeur « active.json »
 // mono-rando. Chaque entrée est indépendante ; on n'écrase jamais les autres.
-export const hikeIndexPath = 'rando3d/index.json'
+export const hikeIndexPath = 'relieo/index.json'
 
 export type HikeIndexEntry = {
   code: string
@@ -34,14 +34,15 @@ export const readHikeIndex = async (): Promise<HikeIndexEntry[]> => {
   }
 }
 
-// Dossiers de randonnées appartenant à un utilisateur (clé du calcul de son
-// quota de stockage : son usage = somme des tailles de ces dossiers).
-export const foldersForOwner = async (ownerId: string): Promise<string[]> => {
-  if (!ownerId) return []
+// Propriétaire d'une rando à partir de son dossier (clé d'identité). Sert à
+// résoudre la clé de stockage `relieo/users/<ownerId>/...` lors d'une lecture
+// publique par `?code=`, où l'uid n'est pas connu côté requête.
+export const ownerForFolder = async (
+  folder: string,
+): Promise<string | null> => {
+  if (!folder) return null
   const hikes = await readHikeIndex()
-  return hikes
-    .filter((hike) => hike.ownerId === ownerId)
-    .map((hike) => hike.folder)
+  return hikes.find((hike) => hike.folder === folder)?.ownerId || null
 }
 
 const stripUndefined = <T extends object>(value: T): Partial<T> => {

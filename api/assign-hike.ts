@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const target = trailLocation(code)
+    const target = trailLocation(ownerId, code)
     const index = await upsertHikeIndex({
       code: target.code,
       folder: target.folder,

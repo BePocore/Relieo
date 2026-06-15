@@ -5,7 +5,7 @@ import {
   r2PrepareUpload,
   type StorageScope,
 } from '../server/r2.js'
-import { cleanStorageName, trailLocation } from '../server/trailStorage.js'
+import { cleanStorageName, STUDIO_OWNER, trailLocation } from '../server/trailStorage.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
@@ -71,7 +71,11 @@ export async function POST(request: Request) {
     const fingerprint = body.fingerprint?.replace(/[^a-f0-9]/gi, '')
     const contentType = body.contentType?.trim() || 'application/octet-stream'
     const size = Number(body.size)
-    const location = trailLocation(body.trailCode ?? '')
+    // Le dossier de la rando est rangé sous le préfixe du propriétaire prouvé
+    // (uid Firebase), ou sous le namespace `_studio` pour le repli mot de passe
+    // admin. Impossible donc d'écrire dans le dossier d'un autre utilisateur.
+    const owner = uid ?? STUDIO_OWNER
+    const location = trailLocation(owner, body.trailCode ?? '')
 
     if (!fingerprint || fingerprint.length < 16) {
       return Response.json({ message: 'Empreinte de fichier invalide.' }, { status: 400 })
@@ -88,7 +92,7 @@ export async function POST(request: Request) {
     const suffix = body.kind === 'preview' ? `${fingerprint}.jpg` : `${fingerprint}-${fileName}`
     // Quota par utilisateur (5 Go) si on connaît son uid ; sinon repli global.
     const scope: StorageScope | undefined = uid
-      ? await userStorageScope(uid, location.folder)
+      ? userStorageScope(uid)
       : undefined
     const prepared = await r2PrepareUpload({
       key: `${location.prefix}/${folder}/${suffix}`,

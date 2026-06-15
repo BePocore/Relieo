@@ -40,7 +40,9 @@ export async function GET(request: Request) {
       .filter((hike) => !hike.coverUrl && hike.status === 'published')
       .slice(0, 12)
     for (const hike of missing) {
-      const body = await r2GetText(trailLocation(hike.code).projectKey)
+      const body = await r2GetText(
+        trailLocation(hike.ownerId, hike.code).projectKey,
+      )
       const coverUrl = pickCoverFromProjectJson(body)
       if (coverUrl) {
         hike.coverUrl = coverUrl

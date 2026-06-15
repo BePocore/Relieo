@@ -1,5 +1,14 @@
-export const activeTrailPath = 'rando3d/active.json'
-export const legacyProjectPath = 'rando3d/project.json'
+export const activeTrailPath = 'relieo/active.json'
+export const legacyProjectPath = 'relieo/project.json'
+
+// Racine de stockage par utilisateur. Chaque rando vit sous le préfixe de son
+// propriétaire : `relieo/users/<uid>/randonnees/<folder>/`. Tout ce qu'un
+// utilisateur stocke (publié ou non) tombe ainsi sous `userStorageRoot(uid)`,
+// ce qui rend son quota exact et empêche d'écrire dans le dossier d'un autre.
+export const STUDIO_OWNER = '_studio'
+
+export const userStorageRoot = (uid: string): string =>
+  `relieo/users/${uid || STUDIO_OWNER}/`
 
 export type ActiveTrail = {
   code: string
@@ -20,9 +29,9 @@ export const trailFolder = (code: string): string => {
   return folder.slice(0, 80)
 }
 
-export const trailLocation = (code: string): ActiveTrail => {
+export const trailLocation = (uid: string, code: string): ActiveTrail => {
   const folder = trailFolder(code)
-  const prefix = `rando3d/randonnees/${folder}`
+  const prefix = `${userStorageRoot(uid)}randonnees/${folder}`
   return {
     code: code.trim(),
     folder,

@@ -217,6 +217,10 @@ export const r2CopyObject = async (
 
 export const r2CopyObjects = async (
   objects: Array<{ sourceKey: string; destinationKey: string }>,
+  // `skipQuota` n'est utilisé que par la migration d'administration : une copie
+  // interne double temporairement le stockage sans être une vraie croissance,
+  // donc le plafond global ne doit pas la bloquer.
+  options?: { skipQuota?: boolean },
 ): Promise<void> => {
   const { bucket } = config()
   const unique = Array.from(
@@ -239,7 +243,9 @@ export const r2CopyObjects = async (
   const missing = pending.find((item) => item.sourceSize <= 0)
   if (missing) throw new Error(`Fichier R2 introuvable : ${missing.sourceKey}`)
   const incomingBytes = pending.reduce((sum, item) => sum + item.sourceSize, 0)
-  if (incomingBytes > 0) await assertStorageCapacity({ incomingBytes })
+  if (incomingBytes > 0 && !options?.skipQuota) {
+    await assertStorageCapacity({ incomingBytes })
+  }
 
   for (const { sourceKey, destinationKey } of pending) {
     await client().send(
@@ -284,14 +290,17 @@ export const r2ListKeys = async (prefix: string): Promise<string[]> => {
 export const r2CopyPrefix = async (
   sourcePrefix: string,
   destinationPrefix: string,
-): Promise<void> => {
+  options?: { skipQuota?: boolean },
+): Promise<number> => {
   const keys = await r2ListKeys(sourcePrefix)
   await r2CopyObjects(
     keys.map((sourceKey) => ({
       sourceKey,
       destinationKey: `${destinationPrefix}${sourceKey.slice(sourcePrefix.length)}`,
     })),
+    options,
   )
+  return keys.length
 }
 
 export const r2DeletePrefix = async (prefix: string): Promise<void> => {
@@ -328,11 +337,14 @@ export const r2PutText = async (
   key: string,
   value: string,
   scope?: StorageScope,
+  options?: { skipQuota?: boolean },
 ): Promise<string> => {
   const { bucket } = config()
-  const incomingBytes = new TextEncoder().encode(value).byteLength
-  const replacedBytes = await objectSize(key)
-  await assertStorageCapacity({ incomingBytes, replacedBytes, scope })
+  if (!options?.skipQuota) {
+    const incomingBytes = new TextEncoder().encode(value).byteLength
+    const replacedBytes = await objectSize(key)
+    await assertStorageCapacity({ incomingBytes, replacedBytes, scope })
+  }
   await client().send(
     new PutObjectCommand({
       Bucket: bucket,

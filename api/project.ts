@@ -12,10 +12,16 @@ import {
   activeTrailPath,
   cleanStorageName,
   legacyProjectPath,
+  STUDIO_OWNER,
+  trailFolder,
   trailLocation,
   type ActiveTrail,
 } from '../server/trailStorage.js'
-import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
+import {
+  ownerForFolder,
+  readHikeIndex,
+  upsertHikeIndex,
+} from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
@@ -190,11 +196,16 @@ export async function GET(request: Request) {
 
   try {
     // `?code=<code>` → cette randonnée précise. Sans code → la rando active
-    // (consultation publique inchangée).
+    // (consultation publique inchangée). La clé de stockage étant désormais
+    // rangée sous le préfixe du propriétaire, on résout son uid via l'index.
     const code = new URL(request.url).searchParams.get('code')?.trim()
-    const body = code
-      ? await r2GetText(trailLocation(code).projectKey)
-      : await readPublishedProject()
+    const owner = code ? await ownerForFolder(trailFolder(code)) : null
+    const body =
+      code && owner
+        ? await r2GetText(trailLocation(owner, code).projectKey)
+        : code
+          ? null
+          : await readPublishedProject()
     if (!body) {
       return Response.json(
         { message: 'Aucune randonnée enregistrée dans Cloudflare R2.' },
@@ -264,7 +275,9 @@ export async function PUT(request: Request) {
       )
     }
 
-    const target = trailLocation(code)
+    // Propriétaire prouvé (uid Firebase) ou repli `_studio` (mode admin dev).
+    const owner = authedUser?.uid ?? STUDIO_OWNER
+    const target = trailLocation(owner, code)
 
     // Garde de propriété : on ne peut pas écraser la rando d'un autre utilisateur.
     const existing = (await readHikeIndex()).find(
@@ -292,9 +305,7 @@ export async function PUT(request: Request) {
 
     // La fiche project.json est rangée dans le dossier de la rando : elle compte
     // dans le quota du propriétaire (5 Go) quand on connaît son uid.
-    const scope = authedUser
-      ? await userStorageScope(authedUser.uid, target.folder)
-      : undefined
+    const scope = authedUser ? userStorageScope(authedUser.uid) : undefined
     const url = await r2PutText(target.projectKey, body, scope)
 
     // Pointeur public : on l'initialise seulement s'il n'existe pas encore.
