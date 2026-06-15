@@ -19,6 +19,7 @@ import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
+import { pickRandomCoverUrl } from '../server/cover.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -320,7 +321,8 @@ export async function PUT(request: Request) {
       pointCount: asNumber(meta.pointCount) ?? migrated.project.points.length,
       mediaCount:
         asNumber(meta.mediaCount) ?? (migrated.project.mediaLibrary?.length ?? 0),
-      coverUrl: asString(meta.coverUrl),
+      // Cover : celle fournie, sinon une image au hasard de la carte.
+      coverUrl: asString(meta.coverUrl) ?? pickRandomCoverUrl(migrated.project),
       updatedAt: target.updatedAt,
     })
 
