@@ -16,7 +16,7 @@ const allowedContentTypes = [
 ]
 
 type PrepareUploadBody = {
-  type: 'rando3d.prepare-upload'
+  type: 'relieo.prepare-upload'
   fileName?: string
   contentType?: string
   fingerprint?: string
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as PrepareUploadBody
-    if (body.type !== 'rando3d.prepare-upload') {
+    if (body.type !== 'relieo.prepare-upload') {
       return Response.json({ message: 'Requête d’envoi invalide.' }, { status: 400 })
     }
 

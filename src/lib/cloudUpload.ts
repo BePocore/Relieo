@@ -72,7 +72,7 @@ export const uploadMedia = async ({
       ...authHeader,
     },
     body: JSON.stringify({
-      type: 'rando3d.prepare-upload',
+      type: 'relieo.prepare-upload',
       fileName,
       contentType,
       fingerprint,

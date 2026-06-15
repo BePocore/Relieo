@@ -51,11 +51,11 @@ type MapMetrics = {
   thumbnails: number
 }
 
-const terrainSourceId = 'rando-terrain'
-const routeSourceId = 'rando-routes'
-const pointSourceId = 'rando-points'
-const pointLayerId = 'rando-point-symbols'
-const clusterLayerId = 'rando-point-clusters'
+const terrainSourceId = 'relieo-terrain'
+const routeSourceId = 'relieo-routes'
+const pointSourceId = 'relieo-points'
+const pointLayerId = 'relieo-point-symbols'
+const clusterLayerId = 'relieo-point-clusters'
 const baseLayerIds = {
   satellite: 'base-satellite',
   topo: 'base-topo',

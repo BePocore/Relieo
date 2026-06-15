@@ -164,7 +164,7 @@ const studioUrl = (): string => {
   return url.toString()
 }
 
-const studioReturnStateKey = 'rando3dStudioReturn'
+const studioReturnStateKey = 'relieoStudioReturn'
 
 const studioReturnUrl = (): string | null => {
   const state = window.history.state as Record<string, unknown> | null
