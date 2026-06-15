@@ -356,7 +356,7 @@ function DashboardShell({
   return (
     <div className="portal-shell">
       <aside className={mobileMenu ? 'portal-sidebar open' : 'portal-sidebar'}>
-        <div className="sidebar-brand"><span className="portal-logo"><Compass size={22} /></span><strong>Randonnée 3D</strong></div>
+        <div className="sidebar-brand"><span className="portal-logo"><Compass size={22} /></span><strong>Relieo</strong></div>
         <nav aria-label="Navigation principale">
           <p>ESPACE</p>
           <button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setPortalView('dashboard')}><LayoutDashboard size={18} /> Vue d’ensemble</button>
@@ -539,10 +539,10 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
 
   return (
     <main className="portal-auth">
-      <section className="auth-visual" aria-label="Présentation Randonnée 3D">
+      <section className="auth-visual" aria-label="Présentation Relieo">
         <div className="auth-brand">
           <span className="portal-logo"><Compass size={24} /></span>
-          <strong>Randonnée 3D</strong>
+          <strong>Relieo</strong>
         </div>
         <div className="auth-visual-copy">
           <p className="portal-kicker">Votre carnet cartographique</p>

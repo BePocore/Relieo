@@ -1,6 +1,6 @@
 {
-  "name": "Randonnée 3D",
-  "short_name": "Rando 3D",
+  "name": "Relieo",
+  "short_name": "Relieo",
   "description": "Carte interactive 3D avec trace GPX, photos, vidéos et panoramas 360.",
   "start_url": "/",
   "scope": "/",

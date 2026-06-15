@@ -1482,7 +1482,7 @@ function App() {
           </span>
           <div>
             <p className="eyebrow">Carnet de randonnée</p>
-            <h1 className="brand-title">Randonnée 3D</h1>
+            <h1 className="brand-title">Relieo</h1>
           </div>
         </div>
         <div className="topbar-tools">
@@ -1833,7 +1833,7 @@ function App() {
           <span className="app-loader-logo">
             <Compass aria-hidden="true" size={34} />
           </span>
-          <span className="app-loader-title">Randonnée 3D</span>
+          <span className="app-loader-title">Relieo</span>
           <span className="app-loader-bar">
             <span />
           </span>

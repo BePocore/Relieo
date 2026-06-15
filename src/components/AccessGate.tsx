@@ -22,7 +22,7 @@ export function AccessGate({ onSubmit }: AccessGateProps) {
         <span className="access-icon">
           <Compass aria-hidden="true" size={26} />
         </span>
-        <h2>Randonnée 3D</h2>
+        <h2>Relieo</h2>
         <p>Cette carte est protégée. Saisis le code d’accès pour la consulter.</p>
 
         <label className="access-field">
