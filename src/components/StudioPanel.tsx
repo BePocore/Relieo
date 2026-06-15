@@ -626,7 +626,7 @@ export function StudioPanel({
       <div className="panel-heading studio-heading">
         <div>
           <span className="studio-badge">Studio</span>
-          <h2>Préparer la randonnée</h2>
+          <h2>Préparer la carte</h2>
         </div>
         <Mountain aria-hidden="true" size={22} />
       </div>
@@ -659,7 +659,7 @@ export function StudioPanel({
         <label className="studio-password">
           <span>
             <KeyRound aria-hidden="true" size={15} />
-            Code randonnée / accès visiteurs
+            Code carte / accès visiteurs
           </span>
           <input
             autoComplete="off"
@@ -866,7 +866,7 @@ export function StudioPanel({
                   ? 'Envoi vers le stockage...'
                   : writeAuthReady && accessCode.trim()
                     ? `${mediaLibrary.length} média(s)`
-                    : 'Connexion et code randonnée requis'}
+                    : 'Connexion et code carte requis'}
               </small>
             </span>
             <input

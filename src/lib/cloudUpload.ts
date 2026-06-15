@@ -57,7 +57,7 @@ export const uploadMedia = async ({
   onProgress?: UploadProgress
 }): Promise<{ url: string; alreadyExists: boolean }> => {
   if (!trailCode.trim()) {
-    throw new Error('Renseigne le code de la randonnée avant l’import.')
+    throw new Error('Renseigne le code de la carte avant l’import.')
   }
   const fileName = file instanceof File ? file.name : `${fingerprint}.jpg`
   const contentType = file.type || 'application/octet-stream'

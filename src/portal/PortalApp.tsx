@@ -150,10 +150,10 @@ function CreateHikeDialog({
       >
         <button aria-label="Fermer" className="icon-button modal-close" type="button" onClick={onClose}><X size={18} /></button>
         <span className="modal-icon"><Mountain size={22} /></span>
-        <h2 id="create-hike-title">Nouvelle randonnée</h2>
+        <h2 id="create-hike-title">Nouvelle carte</h2>
         <p>Un Studio 3D vierge sera préparé avec ce code.</p>
         <label>
-          <span>Nom de la randonnée</span>
+          <span>Nom de la carte</span>
           <input autoFocus placeholder="Tour du Mont Blanc" value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
         <label>
@@ -166,7 +166,7 @@ function CreateHikeDialog({
           type="button"
           onClick={() => onCreate(title.trim(), code.trim())}
         >
-          <Plus size={17} /> Créer la randonnée
+          <Plus size={17} /> Créer la carte
         </button>
       </section>
     </div>
@@ -247,7 +247,7 @@ function ProfileView({
   return (
     <section className="profile-view">
       <header className="page-heading">
-        <div><p className="portal-kicker">Compte</p><h1>Votre profil</h1><p>Les informations qui accompagneront vos randonnées.</p></div>
+        <div><p className="portal-kicker">Compte</p><h1>Votre profil</h1><p>Les informations qui accompagneront vos cartes.</p></div>
       </header>
       <div className="profile-layout">
         <div className="profile-identity">
@@ -466,7 +466,7 @@ function DashboardShell({
           message?: string
         } | null
         if (!response.ok) {
-          throw new Error(data?.message ?? 'Lecture des randonnées impossible.')
+          throw new Error(data?.message ?? 'Lecture des cartes impossible.')
         }
         return data
       })
@@ -480,7 +480,7 @@ function DashboardShell({
         setHikesError(
           loadError instanceof Error
             ? loadError.message
-            : 'Lecture des randonnées impossible.',
+            : 'Lecture des cartes impossible.',
         )
       })
     return () => {
@@ -530,7 +530,7 @@ function DashboardShell({
         <nav aria-label="Navigation principale">
           <p>ESPACE</p>
           <button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setPortalView('dashboard')}><LayoutDashboard size={18} /> Vue d’ensemble</button>
-          <button className={view === 'hikes' ? 'active' : ''} type="button" onClick={() => setPortalView('hikes')}><Map size={18} /> Mes randonnées <span>{hikes.length}</span></button>
+          <button className={view === 'hikes' ? 'active' : ''} type="button" onClick={() => setPortalView('hikes')}><Map size={18} /> Mes cartes <span>{hikes.length}</span></button>
           <button className={view === 'profile' ? 'active' : ''} type="button" onClick={() => setPortalView('profile')}><UserRound size={18} /> Mon profil</button>
           <button className={view === 'plans' ? 'active' : ''} type="button" onClick={() => setPortalView('plans')}><Wallet size={18} /> Forfait</button>
           <p>OUTILS</p>
@@ -544,7 +544,7 @@ function DashboardShell({
       <main className="portal-main">
         <header className="portal-topbar">
           <button aria-label="Menu" className="icon-button mobile-menu-button" type="button" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={20} /></button>
-          <label className="portal-search"><Search size={18} /><input placeholder="Rechercher une randonnée" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+          <label className="portal-search"><Search size={18} /><input placeholder="Rechercher une carte" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
           <div className="topbar-actions"><button aria-label="Notifications" className="icon-button" type="button"><Bell size={19} /></button><button className="profile-button" type="button" onClick={() => setPortalView('profile')}><span className="profile-avatar">{userInitials(profile.name)}</span><span><strong>{profile.name}</strong><small>{profile.email}</small></span></button></div>
         </header>
 
@@ -556,13 +556,13 @@ function DashboardShell({
           ) : (
             <>
               <header className="page-heading">
-                <div><p className="portal-kicker">{view === 'hikes' ? 'Bibliothèque' : 'Tableau de bord'}</p><h1>{view === 'hikes' ? 'Toutes vos randonnées' : `Bonjour ${profile.name.split(' ')[0]}`}</h1><p>{view === 'hikes' ? 'Retrouvez les projets publiés et les brouillons.' : 'Votre espace personnel pour créer et raconter vos parcours.'}</p></div>
-                <button className="portal-primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> Nouvelle randonnée</button>
+                <div><p className="portal-kicker">{view === 'hikes' ? 'Bibliothèque' : 'Tableau de bord'}</p><h1>{view === 'hikes' ? 'Toutes vos cartes' : `Bonjour ${profile.name.split(' ')[0]}`}</h1><p>{view === 'hikes' ? 'Retrouvez les projets publiés et les brouillons.' : 'Votre espace personnel pour créer et raconter vos aventures.'}</p></div>
+                <button className="portal-primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> Nouvelle carte</button>
               </header>
 
               {view === 'dashboard' ? (
                 <section className="summary-grid" aria-label="Résumé">
-                  <article className="summary-card featured"><span><FolderKanban size={19} /></span><p>Randonnées</p><strong>{hikes.length}</strong><small>{hikes.filter((hike) => hike.status === 'published').length} publiée</small></article>
+                  <article className="summary-card featured"><span><FolderKanban size={19} /></span><p>Cartes</p><strong>{hikes.length}</strong><small>{hikes.filter((hike) => hike.status === 'published').length} publiée</small></article>
                   <article className="summary-card"><span><Route size={19} /></span><p>Distance totale</p><strong>{totals.distance.toLocaleString('fr-FR')} km</strong><small>sur tous vos parcours</small></article>
                   <article className="summary-card"><span><Gauge size={19} /></span><p>Dénivelé cumulé</p><strong>{totals.gain.toLocaleString('fr-FR')} m</strong><small>de montée enregistrée</small></article>
                   <article className="summary-card"><span><Image size={19} /></span><p>Médias</p><strong>{totals.media}</strong><small>photos et vidéos</small></article>
@@ -570,11 +570,11 @@ function DashboardShell({
               ) : null}
 
               <section className="hikes-section">
-                <div className="section-heading"><div><h2>{view === 'hikes' ? 'Bibliothèque' : 'Randonnées récentes'}</h2><p>{filteredHikes.length} projet{filteredHikes.length > 1 ? 's' : ''}</p></div>{view === 'dashboard' ? <button type="button" onClick={() => setPortalView('hikes')}>Tout afficher <ChevronRight size={16} /></button> : null}</div>
+                <div className="section-heading"><div><h2>{view === 'hikes' ? 'Bibliothèque' : 'Cartes récentes'}</h2><p>{filteredHikes.length} projet{filteredHikes.length > 1 ? 's' : ''}</p></div>{view === 'dashboard' ? <button type="button" onClick={() => setPortalView('hikes')}>Tout afficher <ChevronRight size={16} /></button> : null}</div>
                 {hikesError ? <p className="auth-error">{hikesError}</p> : null}
                 <div className="hikes-grid">
                   {filteredHikes.map((hike) => <HikeCard hike={hike} key={hike.id} />)}
-                  <button className="new-hike-card" type="button" onClick={() => setCreateOpen(true)}><span><Plus size={23} /></span><strong>Créer une randonnée</strong><small>Commencer avec un Studio 3D vierge</small></button>
+                  <button className="new-hike-card" type="button" onClick={() => setCreateOpen(true)}><span><Plus size={23} /></span><strong>Créer une carte</strong><small>Commencer avec un Studio 3D vierge</small></button>
                 </div>
               </section>
 
@@ -618,11 +618,11 @@ const toPortalUser = (fb: User, extras: ProfileExtras): PortalUser => {
   return {
     id: fb.uid,
     name:
-      extras.name || fb.displayName || fb.email?.split('@')[0] || 'Randonneur',
+      extras.name || fb.displayName || fb.email?.split('@')[0] || 'Voyageur',
     email: fb.email ?? '',
     location: extras.location ?? 'France',
     bio:
-      extras.bio ?? 'Je transforme mes randonnées en récits cartographiques 3D.',
+      extras.bio ?? 'Je transforme mes aventures en récits cartographiques 3D.',
     createdAt: fb.metadata.creationTime ?? new Date().toISOString(),
     plan: extras.plan,
   }
@@ -718,9 +718,9 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
           await updateProfile(credential.user, { displayName: name.trim() })
         }
         await saveUserProfile(credential.user.uid, {
-          name: name.trim() || 'Randonneur',
+          name: name.trim() || 'Voyageur',
           location: 'France',
-          bio: 'Je transforme mes randonnées en récits cartographiques 3D.',
+          bio: 'Je transforme mes aventures en récits cartographiques 3D.',
         })
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
@@ -737,7 +737,7 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
         </div>
         <div className="auth-visual-copy">
           <p className="portal-kicker">Votre carnet cartographique</p>
-          <h1>Retrouvez chaque randonnée, chaque image, au bon endroit.</h1>
+          <h1>Retrouvez chaque carte, chaque image, au bon endroit.</h1>
           <div className="auth-proof">
             <span><Mountain size={17} /> Relief 3D</span>
             <span><Camera size={17} /> Médias géolocalisés</span>
@@ -748,7 +748,7 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
       <section className="auth-panel">
         <div className="auth-form-wrap">
           <h2>{mode === 'signup' ? 'Créer votre espace' : 'Bon retour parmi nous'}</h2>
-          <p>Connectez-vous pour retrouver vos randonnées 3D.</p>
+          <p>Connectez-vous pour retrouver vos cartes 3D.</p>
 
           <button
             className="google-btn"

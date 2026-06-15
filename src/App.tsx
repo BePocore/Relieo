@@ -217,7 +217,7 @@ const buildIndexMeta = (input: {
   pointCount: number
   mediaCount: number
 }): Record<string, unknown> => ({
-  title: input.title || input.code || 'Randonnée',
+  title: input.title || input.code || 'Carte',
   hikeStatus: 'published',
   distanceKm: Math.round((input.distanceMeters / 1_000) * 10) / 10,
   elevationGain: Math.round(input.elevationGainMeters),
@@ -515,7 +515,7 @@ function App() {
         }
 
         if (!onlineProject) {
-          throw new Error(onlineError ?? 'Aucune randonnée disponible dans Cloudflare R2.')
+          throw new Error(onlineError ?? 'Aucune carte disponible dans Cloudflare R2.')
         }
         applyProject(onlineProject)
       } catch (loadError) {
@@ -947,7 +947,7 @@ function App() {
       return
     }
     if (!accessCode.trim()) {
-      setSaveStatus('Renseigne le code de la randonnée avant un import média.')
+      setSaveStatus('Renseigne le code de la carte avant un import média.')
       return
     }
 
@@ -1188,7 +1188,7 @@ function App() {
   const handleAttachMedia = useCallback(
     async (pointId: string, file: File) => {
       if (!accessCode.trim()) {
-        setSaveStatus('Renseigne le code de la randonnée avant un import média.')
+        setSaveStatus('Renseigne le code de la carte avant un import média.')
         return
       }
       if (mediaKindFromFile(file) === null) {
@@ -1387,7 +1387,7 @@ function App() {
       return
     }
     if (!accessCode.trim()) {
-      setSaveStatus('Le code de la randonnée est obligatoire pour créer son dossier R2.')
+      setSaveStatus('Le code de la carte est obligatoire pour créer son dossier R2.')
       return
     }
     const headers = await saveAuthHeaders(adminPassword)
@@ -1443,7 +1443,7 @@ function App() {
           ? result.folder
           : accessCode.trim()
       setSavedProjectSignature(submittedSignature)
-      setSaveStatus(`Randonnée enregistrée dans Cloudflare R2 : ${folder}.`)
+      setSaveStatus(`Carte enregistrée dans Cloudflare R2 : ${folder}.`)
       setError(null)
     } catch (saveError) {
       const message =
@@ -1481,7 +1481,7 @@ function App() {
             <Compass aria-hidden="true" size={22} />
           </span>
           <div>
-            <p className="eyebrow">Carnet de randonnée</p>
+            <p className="eyebrow">Carnet cartographique</p>
             <h1 className="brand-title">Relieo</h1>
           </div>
         </div>

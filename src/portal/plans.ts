@@ -29,8 +29,8 @@ export const PLANS: PortalPlan[] = [
     priceSuffix: 'pour toujours',
     storageLabel: '5 Go de stockage',
     features: [
-      '5 Go de médias (toutes randonnées confondues)',
-      'Randonnées illimitées',
+      '5 Go de médias (toutes cartes confondues)',
+      'Cartes illimitées',
       'Relief 3D et médias géolocalisés',
       'Partage par lien',
     ],
