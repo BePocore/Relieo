@@ -83,6 +83,11 @@ export const verifyRequestUser = async (
   if (!match) return null
   try {
     const decoded = await getAuth(adminApp()).verifyIdToken(match[1].trim())
+    // Le contrôle d'email vérifié est appliqué côté serveur : un compte
+    // mot de passe non vérifié ne doit pas pouvoir agir via un appel direct
+    // aux API en contournant l'écran de blocage du portail. Les comptes
+    // Google portent toujours `email_verified: true`.
+    if (decoded.email_verified !== true) return null
     return { uid: decoded.uid, email: decoded.email ?? null }
   } catch (error) {
     console.error(
