@@ -1596,3 +1596,80 @@
   accent-color: var(--portal-green, #126b47);
   cursor: pointer;
 }
+
+/* ---------- Écran de vérification email ---------- */
+
+.verify-screen {
+  grid-template-columns: 1fr;
+  place-items: center;
+  padding: 24px;
+}
+
+.verify-screen .auth-panel {
+  width: 100%;
+  max-width: 460px;
+  min-height: auto;
+}
+
+.verify-wrap {
+  text-align: center;
+}
+
+.verify-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  color: var(--portal-green, #126b47);
+  background: var(--portal-mint, #dff3e9);
+}
+
+.verify-wrap .portal-primary {
+  width: 100%;
+  margin-top: 22px;
+}
+
+.verify-secondary {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 16px;
+  border-radius: 13px;
+  border: 1px solid #cfd8d3;
+  background: #fff;
+  color: #2a352f;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.verify-secondary:hover:not(:disabled) {
+  border-color: var(--portal-green, #126b47);
+  color: var(--portal-green, #126b47);
+}
+
+.verify-link {
+  margin-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: #76817b;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.verify-link:hover {
+  color: #2a352f;
+}
+
+.verify-success {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--portal-green, #126b47);
+  font-size: 13px;
+  font-weight: 700;
+}

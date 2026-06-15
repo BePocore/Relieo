@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
+  MailCheck,
   Map,
   Menu,
   Mountain,
@@ -47,6 +48,7 @@ import {
   type User,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -957,6 +959,9 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
           location: 'France',
           bio: 'Je transforme mes aventures en récits cartographiques 3D.',
         })
+        // Envoi du lien de vérification : l'accès au compte reste bloqué tant
+        // que l'email n'est pas validé (géré dans FirebasePortal).
+        await sendEmailVerification(credential.user)
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
       }
@@ -1098,6 +1103,81 @@ function GoogleGlyph() {
   )
 }
 
+// Écran bloquant tant que l'email n'est pas validé. L'utilisateur clique le
+// lien reçu (qui ouvre la page Firebase), puis revient confirmer ici.
+function VerifyEmailScreen({
+  user,
+  onRecheck,
+  onResend,
+  onLogout,
+}: {
+  user: User
+  onRecheck: () => Promise<boolean>
+  onResend: () => Promise<void>
+  onLogout: () => void
+}) {
+  const [status, setStatus] = useState<string | null>(null)
+  const [resent, setResent] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const recheck = () => {
+    setBusy(true)
+    setStatus(null)
+    setResent(false)
+    onRecheck()
+      .then((verified) => {
+        if (!verified) {
+          setStatus(
+            'Email pas encore validé. Clique le lien reçu, puis réessaie.',
+          )
+        }
+      })
+      .catch(() => setStatus('Vérification impossible. Réessaie.'))
+      .finally(() => setBusy(false))
+  }
+
+  const resend = () => {
+    setBusy(true)
+    setStatus(null)
+    onResend()
+      .then(() => setResent(true))
+      .catch(() =>
+        setStatus('Envoi impossible. Patiente un instant avant de réessayer.'),
+      )
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <main className="portal-auth verify-screen">
+      <section className="auth-panel">
+        <div className="auth-form-wrap verify-wrap">
+          <span className="verify-icon"><MailCheck size={26} /></span>
+          <h2>Validez votre adresse email</h2>
+          <p>
+            Un lien de vérification a été envoyé à{' '}
+            <strong>{user.email}</strong>. Cliquez dessus pour activer votre
+            compte, puis revenez confirmer ici.
+          </p>
+          {status ? <p className="auth-error">{status}</p> : null}
+          {resent ? (
+            <p className="verify-success"><Check size={15} /> Email renvoyé.</p>
+          ) : null}
+          <button className="portal-primary" disabled={busy} type="button" onClick={recheck}>
+            {busy ? 'Vérification...' : 'J’ai validé mon email'}
+            <ArrowRight size={17} />
+          </button>
+          <button className="verify-secondary" disabled={busy} type="button" onClick={resend}>
+            Renvoyer l’email
+          </button>
+          <button className="verify-link" type="button" onClick={onLogout}>
+            <LogOut size={15} /> Se déconnecter
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
 function FirebasePortal() {
   const auth = getFirebaseAuth()
   const [ready, setReady] = useState(false)
@@ -1105,6 +1185,7 @@ function FirebasePortal() {
     firebaseUser: User
     portalUser: PortalUser
   } | null>(null)
+  const [emailVerified, setEmailVerified] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -1113,10 +1194,12 @@ function FirebasePortal() {
     const unsubscribe = onAuthStateChanged(auth, (current) => {
       if (!current) {
         setSession(null)
+        setEmailVerified(false)
         setProfileError(null)
         setReady(true)
         return
       }
+      setEmailVerified(current.emailVerified)
       void readUserProfile(current.uid)
         .then((extras) => {
           setSession({
@@ -1158,6 +1241,29 @@ function FirebasePortal() {
   }
   if (!ready) return null
   if (!session) return <FirebaseAuthScreen auth={auth} />
+
+  // Vérification email : accès bloqué tant que l'adresse n'est pas validée.
+  // Les comptes Google arrivent déjà vérifiés et passent directement.
+  if (!emailVerified) {
+    return (
+      <VerifyEmailScreen
+        user={session.firebaseUser}
+        onLogout={() => {
+          void signOut(auth)
+          navigate('/login')
+        }}
+        onRecheck={async () => {
+          await session.firebaseUser.reload()
+          const verified = auth.currentUser?.emailVerified ?? false
+          setEmailVerified(verified)
+          return verified
+        }}
+        onResend={async () => {
+          await sendEmailVerification(session.firebaseUser)
+        }}
+      />
+    )
+  }
 
   // Étape post-inscription : tant qu'aucun forfait n'est choisi, on affiche
   // l'écran de sélection avant de donner accès au dashboard.
