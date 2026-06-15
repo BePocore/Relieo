@@ -85,6 +85,7 @@ export const readUserProfile = async (
     name: typeof data.name === 'string' ? data.name : undefined,
     location: typeof data.location === 'string' ? data.location : undefined,
     bio: typeof data.bio === 'string' ? data.bio : undefined,
+    plan: typeof data.plan === 'string' && data.plan ? data.plan : undefined,
   }
 }
 
@@ -102,6 +103,20 @@ export const saveUserProfile = async (
       bio: profile.bio?.trim() ?? '',
       updatedAt: serverTimestamp(),
     },
+    { merge: true },
+  )
+}
+
+// Enregistre uniquement le forfait choisi (sans toucher au reste du profil).
+export const saveUserPlan = async (
+  uid: string,
+  plan: string,
+): Promise<void> => {
+  const reference = profileDocument(uid)
+  if (!reference) throw new Error('Firestore n’est pas configure.')
+  await setDoc(
+    reference,
+    { plan, updatedAt: serverTimestamp() },
     { merge: true },
   )
 }

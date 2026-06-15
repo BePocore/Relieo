@@ -17,6 +17,8 @@ import {
 } from '../server/trailStorage.js'
 import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
+import { userStorageScope } from '../server/userStorage.js'
+import { formatBytes } from '../server/format.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -287,7 +289,12 @@ export async function PUT(request: Request) {
       )
     }
 
-    const url = await r2PutText(target.projectKey, body)
+    // La fiche project.json est rangée dans le dossier de la rando : elle compte
+    // dans le quota du propriétaire (5 Go) quand on connaît son uid.
+    const scope = authedUser
+      ? await userStorageScope(authedUser.uid, target.folder)
+      : undefined
+    const url = await r2PutText(target.projectKey, body, scope)
 
     // Pointeur public : on l'initialise seulement s'il n'existe pas encore.
     // S'il existe déjà (Halsa), on n'y touche pas → la rando publique ne change pas.
@@ -329,7 +336,10 @@ export async function PUT(request: Request) {
   } catch (error) {
     if (error instanceof R2QuotaError) {
       return Response.json(
-        { code: error.code, message: 'Limite de 9,99 Go atteinte dans Cloudflare R2.' },
+        {
+          code: error.code,
+          message: `Limite de ${formatBytes(error.limitBytes)} atteinte pour votre forfait.`,
+        },
         { status: 413, headers: jsonHeaders },
       )
     }

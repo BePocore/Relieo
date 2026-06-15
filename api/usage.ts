@@ -1,0 +1,51 @@
+import { hasR2Config } from '../server/r2.js'
+import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
+import { userStorageUsage } from '../server/userStorage.js'
+import { DEFAULT_PLAN_ID, FREE_STORAGE_LIMIT_BYTES } from '../server/plans.js'
+
+const jsonHeaders = { 'Cache-Control': 'no-store' }
+
+// Usage de stockage de l'utilisateur connecté : octets consommés (toutes ses
+// randonnées cumulées) + limite de son forfait. Alimente la jauge du dashboard.
+export async function GET(request: Request) {
+  if (!hasR2Config()) {
+    return Response.json(
+      { message: 'Cloudflare R2 n’est pas configuré.' },
+      { status: 503, headers: jsonHeaders },
+    )
+  }
+  if (!hasFirebaseAdmin()) {
+    return Response.json(
+      { message: 'Firebase Admin n’est pas configuré.' },
+      { status: 503, headers: jsonHeaders },
+    )
+  }
+
+  const user = await verifyRequestUser(request)
+  if (!user) {
+    return Response.json(
+      { message: 'Connexion requise.' },
+      { status: 401, headers: jsonHeaders },
+    )
+  }
+
+  try {
+    const usedBytes = await userStorageUsage(user.uid)
+    return Response.json(
+      {
+        usedBytes,
+        limitBytes: FREE_STORAGE_LIMIT_BYTES,
+        planId: DEFAULT_PLAN_ID,
+      },
+      { headers: jsonHeaders },
+    )
+  } catch (error) {
+    return Response.json(
+      {
+        code: 'STORAGE_READ_FAILED',
+        message: error instanceof Error ? error.message : 'Lecture R2 impossible.',
+      },
+      { status: 500, headers: jsonHeaders },
+    )
+  }
+}

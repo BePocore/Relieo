@@ -34,6 +34,16 @@ export const readHikeIndex = async (): Promise<HikeIndexEntry[]> => {
   }
 }
 
+// Dossiers de randonnées appartenant à un utilisateur (clé du calcul de son
+// quota de stockage : son usage = somme des tailles de ces dossiers).
+export const foldersForOwner = async (ownerId: string): Promise<string[]> => {
+  if (!ownerId) return []
+  const hikes = await readHikeIndex()
+  return hikes
+    .filter((hike) => hike.ownerId === ownerId)
+    .map((hike) => hike.folder)
+}
+
 const stripUndefined = <T extends object>(value: T): Partial<T> => {
   return Object.fromEntries(
     Object.entries(value).filter(([, entryValue]) => entryValue !== undefined),

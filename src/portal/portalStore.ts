@@ -5,6 +5,9 @@ export type PortalUser = {
   location: string
   bio: string
   createdAt: string
+  // Forfait choisi (undefined tant que l'utilisateur n'a pas validé l'étape
+  // de choix après inscription).
+  plan?: string
 }
 
 export type PortalHike = {
@@ -25,4 +28,5 @@ export type ProfileExtras = {
   name?: string
   location?: string
   bio?: string
+  plan?: string
 }

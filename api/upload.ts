@@ -1,7 +1,14 @@
 import { hasAdminPassword, isAdminRequest } from '../server/auth.js'
-import { hasR2Config, R2QuotaError, r2PrepareUpload } from '../server/r2.js'
+import {
+  hasR2Config,
+  R2QuotaError,
+  r2PrepareUpload,
+  type StorageScope,
+} from '../server/r2.js'
 import { cleanStorageName, trailLocation } from '../server/trailStorage.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
+import { userStorageScope } from '../server/userStorage.js'
+import { formatBytes } from '../server/format.js'
 
 const allowedContentTypes = [
   'application/octet-stream',
@@ -33,10 +40,13 @@ export async function POST(request: Request) {
     )
   }
   // Auth : jeton Firebase si configuré, sinon mot de passe admin (compat).
+  let uid: string | null = null
   if (hasFirebaseAdmin()) {
-    if (!(await verifyRequestUser(request))) {
+    const user = await verifyRequestUser(request)
+    if (!user) {
       return Response.json({ message: 'Connexion requise.' }, { status: 401 })
     }
+    uid = user.uid
   } else {
     if (!hasAdminPassword()) {
       return Response.json(
@@ -76,10 +86,15 @@ export async function POST(request: Request) {
     const folder = body.kind === 'preview' ? 'previews' : 'media'
     const fileName = cleanStorageName(body.fileName ?? 'media')
     const suffix = body.kind === 'preview' ? `${fingerprint}.jpg` : `${fingerprint}-${fileName}`
+    // Quota par utilisateur (5 Go) si on connaît son uid ; sinon repli global.
+    const scope: StorageScope | undefined = uid
+      ? await userStorageScope(uid, location.folder)
+      : undefined
     const prepared = await r2PrepareUpload({
       key: `${location.prefix}/${folder}/${suffix}`,
       contentType,
       size,
+      scope,
     })
     return Response.json({ provider: 'r2', folder: location.folder, ...prepared })
   } catch (error) {
@@ -90,7 +105,7 @@ export async function POST(request: Request) {
           limitBytes: error.limitBytes,
           requestedBytes: error.requestedBytes,
           usedBytes: error.usedBytes,
-          message: 'Limite de 9,99 Go atteinte. Le fichier n’a pas été enregistré.',
+          message: `Limite de ${formatBytes(error.limitBytes)} atteinte pour votre forfait. Le fichier n’a pas été enregistré.`,
         },
         { status: 413 },
       )

@@ -18,20 +18,35 @@ const requiredKeys = [
   'R2_PUBLIC_BASE_URL',
 ] as const
 
+// Plafond global du bucket (filet de sécurité Cloudflare). Les quotas réels
+// sont appliqués par utilisateur via un `StorageScope` (voir plus bas) ; ce
+// plafond reste le garde-fou ultime du bucket entier.
 export const R2_STORAGE_LIMIT_BYTES = 9_990_000_000
+
+// Portée d'un contrôle de quota :
+// - `limitBytes` : la limite à ne pas dépasser.
+// - `usagePrefixes` : si défini, l'usage est calculé en sommant ces préfixes
+//   (quota par utilisateur). Sinon, l'usage est celui du bucket entier (global).
+export type StorageScope = {
+  limitBytes: number
+  usagePrefixes?: string[]
+}
+
+const GLOBAL_SCOPE: StorageScope = { limitBytes: R2_STORAGE_LIMIT_BYTES }
 
 export class R2QuotaError extends Error {
   readonly code = 'R2_QUOTA_EXCEEDED'
-  readonly limitBytes = R2_STORAGE_LIMIT_BYTES
+  readonly limitBytes: number
   readonly requestedBytes: number
   readonly usedBytes: number
 
-  constructor(usedBytes: number, requestedBytes: number) {
-    const remainingBytes = Math.max(R2_STORAGE_LIMIT_BYTES - usedBytes, 0)
+  constructor(usedBytes: number, requestedBytes: number, limitBytes: number) {
+    const remainingBytes = Math.max(limitBytes - usedBytes, 0)
     super(
-      `Limite Cloudflare atteinte : ${remainingBytes} octets disponibles, ${requestedBytes} octets demandes.`,
+      `Limite de stockage atteinte : ${remainingBytes} octets disponibles, ${requestedBytes} octets demandes.`,
     )
     this.name = 'R2QuotaError'
+    this.limitBytes = limitBytes
     this.usedBytes = usedBytes
     this.requestedBytes = requestedBytes
   }
@@ -106,19 +121,66 @@ export const r2StorageUsage = async (): Promise<number> => {
   return totalBytes
 }
 
+// Octets utilisés sous un ou plusieurs préfixes (quota par utilisateur =
+// l'ensemble de ses dossiers de randonnées). Les préfixes en double sont
+// dédupliqués pour ne pas compter deux fois le même dossier.
+export const r2UsageForPrefixes = async (
+  prefixes: string[],
+): Promise<number> => {
+  const unique = Array.from(new Set(prefixes.filter(Boolean)))
+  if (unique.length === 0) return 0
+  const sizes = await Promise.all(
+    unique.map(async (prefix) => {
+      const { bucket } = config()
+      let continuationToken: string | undefined
+      let total = 0
+      do {
+        const page = await client().send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix,
+            ContinuationToken: continuationToken,
+          }),
+        )
+        total += (page.Contents ?? []).reduce(
+          (sum, object) => sum + (object.Size ?? 0),
+          0,
+        )
+        continuationToken = page.IsTruncated
+          ? page.NextContinuationToken
+          : undefined
+      } while (continuationToken)
+      return total
+    }),
+  )
+  return sizes.reduce((sum, size) => sum + size, 0)
+}
+
+const usageForScope = async (scope: StorageScope): Promise<number> => {
+  return scope.usagePrefixes
+    ? r2UsageForPrefixes(scope.usagePrefixes)
+    : r2StorageUsage()
+}
+
 const assertStorageCapacity = async ({
   incomingBytes,
   replacedBytes = 0,
+  scope = GLOBAL_SCOPE,
 }: {
   incomingBytes: number
   replacedBytes?: number
+  scope?: StorageScope
 }): Promise<{ limitBytes: number; usedBytes: number }> => {
-  const usedBytes = await r2StorageUsage()
+  const usedBytes = await usageForScope(scope)
   const projectedBytes = usedBytes - replacedBytes + incomingBytes
-  if (projectedBytes > R2_STORAGE_LIMIT_BYTES) {
-    throw new R2QuotaError(Math.max(usedBytes - replacedBytes, 0), incomingBytes)
+  if (projectedBytes > scope.limitBytes) {
+    throw new R2QuotaError(
+      Math.max(usedBytes - replacedBytes, 0),
+      incomingBytes,
+      scope.limitBytes,
+    )
   }
-  return { limitBytes: R2_STORAGE_LIMIT_BYTES, usedBytes }
+  return { limitBytes: scope.limitBytes, usedBytes }
 }
 
 export const r2PublicUrl = (key: string): string => {
@@ -265,11 +327,12 @@ export const r2GetText = async (key: string): Promise<string | null> => {
 export const r2PutText = async (
   key: string,
   value: string,
+  scope?: StorageScope,
 ): Promise<string> => {
   const { bucket } = config()
   const incomingBytes = new TextEncoder().encode(value).byteLength
   const replacedBytes = await objectSize(key)
-  await assertStorageCapacity({ incomingBytes, replacedBytes })
+  await assertStorageCapacity({ incomingBytes, replacedBytes, scope })
   await client().send(
     new PutObjectCommand({
       Bucket: bucket,
@@ -286,10 +349,12 @@ export const r2PrepareUpload = async ({
   key,
   contentType,
   size,
+  scope,
 }: {
   key: string
   contentType: string
   size: number
+  scope?: StorageScope
 }): Promise<{
   alreadyExists: boolean
   limitBytes: number
@@ -302,16 +367,16 @@ export const r2PrepareUpload = async ({
   const alreadyExists = existingSize > 0
 
   if (alreadyExists) {
-    const usedBytes = await r2StorageUsage()
+    const usedBytes = await usageForScope(scope ?? GLOBAL_SCOPE)
     return {
       alreadyExists: true,
-      limitBytes: R2_STORAGE_LIMIT_BYTES,
+      limitBytes: scope?.limitBytes ?? R2_STORAGE_LIMIT_BYTES,
       url: r2PublicUrl(key),
       usedBytes,
     }
   }
 
-  const quota = await assertStorageCapacity({ incomingBytes: size })
+  const quota = await assertStorageCapacity({ incomingBytes: size, scope })
 
   const uploadUrl = await getSignedUrl(
     client(),

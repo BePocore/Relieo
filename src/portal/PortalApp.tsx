@@ -12,9 +12,11 @@ import {
   EyeOff,
   FolderKanban,
   Gauge,
+  HardDrive,
   Image,
   KeyRound,
   LayoutDashboard,
+  Lock,
   LogOut,
   Map,
   Menu,
@@ -25,7 +27,9 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   UserRound,
+  Wallet,
   X,
 } from 'lucide-react'
 import {
@@ -47,11 +51,19 @@ import {
   getIdToken,
   googleProvider,
   readUserProfile,
+  saveUserPlan,
   saveUserProfile,
 } from './firebase'
+import {
+  DEFAULT_PLAN_ID,
+  PLANS,
+  planById,
+  formatBytes,
+  type PlanId,
+} from './plans'
 import './Portal.css'
 
-type PortalView = 'dashboard' | 'hikes' | 'profile'
+type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans'
 
 // Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
@@ -99,6 +111,7 @@ const navigate = (path: string): void => {
 const currentView = (): PortalView => {
   if (window.location.pathname.endsWith('/profile')) return 'profile'
   if (window.location.pathname.endsWith('/hikes')) return 'hikes'
+  if (window.location.pathname.endsWith('/plans')) return 'plans'
   return 'dashboard'
 }
 
@@ -255,6 +268,132 @@ function ProfileView({
   )
 }
 
+type StorageUsage = { usedBytes: number; limitBytes: number }
+
+// Grille des cartes de forfait, partagée par l'onboarding (post-inscription) et
+// l'onglet « Forfait ». `currentPlanId` marque le forfait actif ; `onChoose`
+// n'est branché que sur les forfaits réellement disponibles.
+function PlanCards({
+  currentPlanId,
+  onChoose,
+  choosing,
+}: {
+  currentPlanId?: string
+  onChoose?: (planId: PlanId) => void
+  choosing?: PlanId | null
+}) {
+  return (
+    <div className="plan-grid">
+      {PLANS.map((plan) => {
+        const isCurrent = plan.id === currentPlanId
+        const busy = choosing === plan.id
+        return (
+          <article
+            className={`plan-card${plan.highlight ? ' featured' : ''}${isCurrent ? ' current' : ''}`}
+            key={plan.id}
+          >
+            {plan.highlight ? (
+              <span className="plan-badge"><Sparkles size={13} /> Recommandé</span>
+            ) : null}
+            <header className="plan-card-head">
+              <h3>{plan.name}</h3>
+              <p>{plan.tagline}</p>
+            </header>
+            <p className="plan-price">
+              <strong>{plan.priceLabel}</strong>
+              <span>{plan.priceSuffix}</span>
+            </p>
+            <p className="plan-storage"><HardDrive size={15} /> {plan.storageLabel}</p>
+            <ul className="plan-features">
+              {plan.features.map((feature) => (
+                <li key={feature}><Check size={14} /> {feature}</li>
+              ))}
+            </ul>
+            {isCurrent ? (
+              <button className="plan-cta current" disabled type="button">
+                <Check size={16} /> Plan actuel
+              </button>
+            ) : !plan.available ? (
+              <button className="plan-cta soon" disabled type="button">
+                <Lock size={15} /> Bientôt disponible
+              </button>
+            ) : (
+              <button
+                className="plan-cta portal-primary"
+                disabled={busy || !onChoose}
+                type="button"
+                onClick={() => onChoose?.(plan.id)}
+              >
+                {busy ? 'Activation...' : (
+                  <>
+                    {plan.priceLabel === 'Gratuit' ? 'Commencer gratuitement' : 'Choisir ce forfait'}
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+            )}
+          </article>
+        )
+      })}
+    </div>
+  )
+}
+
+function PlansView({ currentPlanId }: { currentPlanId?: string }) {
+  const plan = planById(currentPlanId)
+  return (
+    <section className="plans-view">
+      <header className="page-heading">
+        <div>
+          <p className="portal-kicker">Abonnement</p>
+          <h1>Votre forfait</h1>
+          <p>Forfait actuel : <strong>{plan.name}</strong>. Les offres payantes arrivent bientôt.</p>
+        </div>
+      </header>
+      <PlanCards currentPlanId={currentPlanId ?? DEFAULT_PLAN_ID} />
+    </section>
+  )
+}
+
+// Écran plein affiché juste après l'inscription : l'utilisateur choisit son
+// forfait avant d'entrer dans le dashboard.
+function PlanOnboarding({
+  user,
+  onChoose,
+}: {
+  user: PortalUser
+  onChoose: (planId: PlanId) => Promise<void>
+}) {
+  const [choosing, setChoosing] = useState<PlanId | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const choose = (planId: PlanId) => {
+    setChoosing(planId)
+    setError(null)
+    onChoose(planId).catch((chooseError: unknown) => {
+      setError(
+        chooseError instanceof Error
+          ? chooseError.message
+          : 'Impossible d’enregistrer le forfait.',
+      )
+      setChoosing(null)
+    })
+  }
+
+  return (
+    <main className="plan-onboarding">
+      <header className="plan-onboarding-head">
+        <span className="portal-logo"><Compass size={24} /></span>
+        <p className="portal-kicker">Bienvenue {user.name.split(' ')[0]}</p>
+        <h1>Choisissez votre forfait</h1>
+        <p>Commencez gratuitement avec 5 Go de stockage. Vous pourrez changer à tout moment.</p>
+      </header>
+      {error ? <p className="auth-error">{error}</p> : null}
+      <PlanCards choosing={choosing} onChoose={choose} />
+    </main>
+  )
+}
+
 function DashboardShell({
   user,
   onLogout,
@@ -271,12 +410,43 @@ function DashboardShell({
   const [createOpen, setCreateOpen] = useState(false)
   const [mobileMenu, setMobileMenu] = useState(false)
   const [profile, setProfile] = useState(user)
+  const [usage, setUsage] = useState<StorageUsage | null>(null)
 
   useEffect(() => {
     const syncView = () => setView(currentView())
     window.addEventListener('popstate', syncView)
     return () => window.removeEventListener('popstate', syncView)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    void getIdToken()
+      .then((token) => {
+        if (!token) return null
+        return fetch('/api/usage', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        })
+      })
+      .then(async (response) => {
+        if (!response || !response.ok) return
+        const data = (await response.json().catch(() => null)) as
+          | StorageUsage
+          | null
+        if (!cancelled && data && typeof data.usedBytes === 'number') {
+          setUsage({ usedBytes: data.usedBytes, limitBytes: data.limitBytes })
+        }
+      })
+      .catch(() => {
+        // Jauge purement informative : on ignore les erreurs silencieusement.
+      })
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [user.id])
 
   useEffect(() => {
     let cancelled = false
@@ -362,6 +532,7 @@ function DashboardShell({
           <button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setPortalView('dashboard')}><LayoutDashboard size={18} /> Vue d’ensemble</button>
           <button className={view === 'hikes' ? 'active' : ''} type="button" onClick={() => setPortalView('hikes')}><Map size={18} /> Mes randonnées <span>{hikes.length}</span></button>
           <button className={view === 'profile' ? 'active' : ''} type="button" onClick={() => setPortalView('profile')}><UserRound size={18} /> Mon profil</button>
+          <button className={view === 'plans' ? 'active' : ''} type="button" onClick={() => setPortalView('plans')}><Wallet size={18} /> Forfait</button>
           <p>OUTILS</p>
           <button type="button"><BarChart3 size={18} /> Statistiques</button>
           <button type="button"><Settings size={18} /> Paramètres</button>
@@ -380,6 +551,8 @@ function DashboardShell({
         <div className="portal-content">
           {view === 'profile' ? (
             <ProfileView user={profile} onSave={saveProfile} />
+          ) : view === 'plans' ? (
+            <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
           ) : (
             <>
               <header className="page-heading">
@@ -408,7 +581,24 @@ function DashboardShell({
               {view === 'dashboard' ? (
                 <section className="dashboard-bottom-grid">
                   <article className="activity-panel"><div className="section-heading"><div><h2>Activité récente</h2><p>Votre dernier projet</p></div></div><div className="activity-line"><span className="activity-icon"><Mountain size={19} /></span><div><strong>Halsa a été publiée</strong><p>70 points et 66 médias synchronisés</p></div><time>{formatDate(hikes.find((hike) => hike.id === 'halsa')?.updatedAt ?? new Date().toISOString())}</time></div></article>
-                  <article className="storage-panel"><div><p className="portal-kicker">Stockage média</p><h2>Cloudflare R2</h2><p>Vos originaux restent centralisés et accessibles en qualité maximale.</p></div><div className="storage-meter"><span style={{ width: '26%' }} /></div><div className="storage-legend"><strong>2,55 Go utilisés</strong><span>Limite 9,99 Go</span></div></article>
+                  <article className="storage-panel">
+                    <div>
+                      <p className="portal-kicker">Stockage média</p>
+                      <h2>Forfait {planById(profile.plan).name}</h2>
+                      <p>Vos originaux restent centralisés et accessibles en qualité maximale.</p>
+                    </div>
+                    <div className="storage-meter">
+                      <span
+                        style={{
+                          width: `${usage && usage.limitBytes > 0 ? Math.min(100, Math.round((usage.usedBytes / usage.limitBytes) * 100)) : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="storage-legend">
+                      <strong>{usage ? `${formatBytes(usage.usedBytes)} utilisés` : 'Calcul en cours...'}</strong>
+                      <span>Limite {formatBytes(usage?.limitBytes ?? 5_000_000_000)}</span>
+                    </div>
+                  </article>
                 </section>
               ) : null}
             </>
@@ -434,6 +624,7 @@ const toPortalUser = (fb: User, extras: ProfileExtras): PortalUser => {
     bio:
       extras.bio ?? 'Je transforme mes randonnées en récits cartographiques 3D.',
     createdAt: fb.metadata.creationTime ?? new Date().toISOString(),
+    plan: extras.plan,
   }
 }
 
@@ -732,6 +923,27 @@ function FirebasePortal() {
   }
   if (!ready) return null
   if (!session) return <FirebaseAuthScreen auth={auth} />
+
+  // Étape post-inscription : tant qu'aucun forfait n'est choisi, on affiche
+  // l'écran de sélection avant de donner accès au dashboard.
+  if (!session.portalUser.plan) {
+    return (
+      <>
+        {profileError ? <p className="auth-error">{profileError}</p> : null}
+        <PlanOnboarding
+          user={session.portalUser}
+          onChoose={async (planId) => {
+            await saveUserPlan(session.firebaseUser.uid, planId)
+            setSession({
+              firebaseUser: session.firebaseUser,
+              portalUser: { ...session.portalUser, plan: planId },
+            })
+            navigate('/dashboard')
+          }}
+        />
+      </>
+    )
+  }
 
   return (
     <>
