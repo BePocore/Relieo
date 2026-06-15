@@ -86,6 +86,10 @@ export const readUserProfile = async (
     location: typeof data.location === 'string' ? data.location : undefined,
     bio: typeof data.bio === 'string' ? data.bio : undefined,
     plan: typeof data.plan === 'string' && data.plan ? data.plan : undefined,
+    photoURL:
+      typeof data.photoURL === 'string' && data.photoURL
+        ? data.photoURL
+        : undefined,
   }
 }
 
@@ -101,8 +105,24 @@ export const saveUserProfile = async (
       name: profile.name?.trim() ?? '',
       location: profile.location?.trim() ?? '',
       bio: profile.bio?.trim() ?? '',
+      photoURL: profile.photoURL ?? '',
       updatedAt: serverTimestamp(),
     },
+    { merge: true },
+  )
+}
+
+// Enregistre uniquement la photo de profil (vignette data URL), sans toucher
+// au reste du profil. Chaîne vide = retour aux initiales.
+export const saveUserPhoto = async (
+  uid: string,
+  photoURL: string,
+): Promise<void> => {
+  const reference = profileDocument(uid)
+  if (!reference) throw new Error('Firestore n’est pas configure.')
+  await setDoc(
+    reference,
+    { photoURL, updatedAt: serverTimestamp() },
     { merge: true },
   )
 }

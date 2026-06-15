@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import {
   ArrowRight,
   BarChart3,
@@ -31,6 +40,8 @@ import {
   UserRound,
   Wallet,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import {
   type User,
@@ -51,6 +62,7 @@ import {
   getIdToken,
   googleProvider,
   readUserProfile,
+  saveUserPhoto,
   saveUserPlan,
   saveUserProfile,
 } from './firebase'
@@ -128,6 +140,159 @@ const userInitials = (name: string): string =>
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('') || 'R3'
+
+// Style d'avatar : photo en fond si disponible, sinon initiales colorées.
+const avatarStyle = (photoURL?: string): CSSProperties | undefined =>
+  photoURL
+    ? {
+        backgroundImage: `url(${photoURL})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        color: 'transparent',
+      }
+    : undefined
+
+// Modale de recadrage de la photo de profil : on déplace (glisser) et on zoome
+// (curseur) l'image dans un cadre circulaire, puis « Valider » génère la
+// vignette 256px recadrée exactement comme à l'écran et l'enregistre direct.
+const CROP_VIEW = 264 // taille du cadre à l'écran (px)
+const CROP_OUT = 256 // taille de la vignette générée (px)
+
+function AvatarCropDialog({
+  file,
+  onCancel,
+  onValidate,
+}: {
+  file: File
+  onCancel: () => void
+  onValidate: (photoURL: string) => void
+}) {
+  const [image, setImage] = useState<HTMLImageElement | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [error, setError] = useState<string | null>(null)
+  const dragRef = useRef<
+    { px: number; py: number; ox: number; oy: number } | null
+  >(null)
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file)
+    const img = new window.Image()
+    img.onload = () => {
+      setImage(img)
+      setZoom(1)
+      setOffset({ x: 0, y: 0 })
+    }
+    img.onerror = () => setError('Image illisible.')
+    img.src = url
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  const baseScale = image
+    ? Math.max(CROP_VIEW / image.naturalWidth, CROP_VIEW / image.naturalHeight)
+    : 1
+  const scale = baseScale * zoom
+  const drawW = image ? image.naturalWidth * scale : 0
+  const drawH = image ? image.naturalHeight * scale : 0
+  const maxOffsetX = Math.max((drawW - CROP_VIEW) / 2, 0)
+  const maxOffsetY = Math.max((drawH - CROP_VIEW) / 2, 0)
+  const clamp = (value: number, max: number): number =>
+    Math.min(max, Math.max(-max, value))
+  const posX = (CROP_VIEW - drawW) / 2 + clamp(offset.x, maxOffsetX)
+  const posY = (CROP_VIEW - drawH) / 2 + clamp(offset.y, maxOffsetY)
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      px: event.clientX,
+      py: event.clientY,
+      ox: clamp(offset.x, maxOffsetX),
+      oy: clamp(offset.y, maxOffsetY),
+    }
+  }
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return
+    setOffset({
+      x: clamp(dragRef.current.ox + (event.clientX - dragRef.current.px), maxOffsetX),
+      y: clamp(dragRef.current.oy + (event.clientY - dragRef.current.py), maxOffsetY),
+    })
+  }
+  const endDrag = () => {
+    dragRef.current = null
+  }
+
+  const validate = () => {
+    if (!image) return
+    const canvas = document.createElement('canvas')
+    canvas.width = CROP_OUT
+    canvas.height = CROP_OUT
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setError('Canvas indisponible.')
+      return
+    }
+    const ratio = CROP_OUT / CROP_VIEW
+    context.drawImage(
+      image,
+      posX * ratio,
+      posY * ratio,
+      drawW * ratio,
+      drawH * ratio,
+    )
+    onValidate(canvas.toDataURL('image/jpeg', 0.85))
+  }
+
+  return (
+    <div className="portal-modal-backdrop" role="presentation" onMouseDown={onCancel}>
+      <section
+        aria-labelledby="crop-title"
+        aria-modal="true"
+        className="portal-modal avatar-crop-modal"
+        role="dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button aria-label="Fermer" className="icon-button modal-close" type="button" onClick={onCancel}><X size={18} /></button>
+        <span className="modal-icon"><Camera size={22} /></span>
+        <h2 id="crop-title">Cadrer la photo</h2>
+        <p>Glissez pour déplacer, utilisez le curseur pour zoomer.</p>
+        <div
+          className="avatar-crop-stage"
+          style={{ width: CROP_VIEW, height: CROP_VIEW }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          {image ? (
+            <img
+              alt=""
+              className="avatar-crop-image"
+              draggable={false}
+              src={image.src}
+              style={{ left: posX, top: posY, width: drawW, height: drawH }}
+            />
+          ) : null}
+        </div>
+        <label className="avatar-crop-zoom">
+          <ZoomOut size={17} />
+          <input
+            max={4}
+            min={1}
+            step={0.01}
+            type="range"
+            value={zoom}
+            onChange={(event) => setZoom(Number(event.target.value))}
+          />
+          <ZoomIn size={17} />
+        </label>
+        {error ? <p className="auth-error">{error}</p> : null}
+        <button className="portal-primary" disabled={!image} type="button" onClick={validate}>
+          <Check size={17} /> Valider la photo
+        </button>
+      </section>
+    </div>
+  )
+}
 
 function CreateHikeDialog({
   onClose,
@@ -216,14 +381,48 @@ function HikeCard({ hike }: { hike: PortalHike }) {
 function ProfileView({
   user,
   onSave,
+  onSavePhoto,
 }: {
   user: PortalUser
   onSave: (user: PortalUser) => Promise<void>
+  onSavePhoto: (photoURL: string) => Promise<void>
 }) {
   const [draft, setDraft] = useState(user)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cropFile, setCropFile] = useState<File | null>(null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+
+  const pickPhoto = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setError(null)
+    setSaved(false)
+    setCropFile(file)
+  }
+
+  // Validation du recadrage : enregistre la photo immédiatement (pas besoin du
+  // bouton « Enregistrer le profil »).
+  const applyPhoto = async (photoURL: string) => {
+    setCropFile(null)
+    setPhotoBusy(true)
+    setError(null)
+    try {
+      await onSavePhoto(photoURL)
+      setDraft((current) => ({ ...current, photoURL }))
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : 'Enregistrement de la photo impossible.',
+      )
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -251,7 +450,35 @@ function ProfileView({
       </header>
       <div className="profile-layout">
         <div className="profile-identity">
-          <span className="profile-avatar large">{userInitials(draft.name)}</span>
+          <div className="profile-avatar-edit">
+            <span className="profile-avatar large" style={avatarStyle(draft.photoURL)}>
+              {draft.photoURL ? '' : userInitials(draft.name)}
+            </span>
+            <button
+              aria-label="Modifier la photo de profil"
+              className="avatar-edit-button"
+              disabled={photoBusy}
+              title="Modifier la photo de profil"
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+            >
+              <Pencil size={17} />
+            </button>
+            <input
+              accept="image/*"
+              hidden
+              ref={photoInputRef}
+              type="file"
+              onChange={pickPhoto}
+            />
+          </div>
+          {cropFile ? (
+            <AvatarCropDialog
+              file={cropFile}
+              onCancel={() => setCropFile(null)}
+              onValidate={applyPhoto}
+            />
+          ) : null}
           <h2>{draft.name}</h2><p>{draft.email}</p>
           <span className="profile-security"><ShieldCheck size={15} /> Profil Firestore protégé</span>
         </div>
@@ -398,10 +625,12 @@ function DashboardShell({
   user,
   onLogout,
   onSaveProfile,
+  onSavePhoto,
 }: {
   user: PortalUser
   onLogout: () => void
   onSaveProfile: (user: PortalUser) => Promise<void>
+  onSavePhoto: (photoURL: string) => Promise<void>
 }) {
   const [view, setView] = useState<PortalView>(currentView)
   const [hikes, setHikes] = useState<PortalHike[]>([])
@@ -523,6 +752,11 @@ function DashboardShell({
     setProfile(next)
   }
 
+  const savePhoto = async (photoURL: string) => {
+    await onSavePhoto(photoURL)
+    setProfile((current) => ({ ...current, photoURL }))
+  }
+
   return (
     <div className="portal-shell">
       <aside className={mobileMenu ? 'portal-sidebar open' : 'portal-sidebar'}>
@@ -545,12 +779,12 @@ function DashboardShell({
         <header className="portal-topbar">
           <button aria-label="Menu" className="icon-button mobile-menu-button" type="button" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={20} /></button>
           <label className="portal-search"><Search size={18} /><input placeholder="Rechercher une carte" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
-          <div className="topbar-actions"><button aria-label="Notifications" className="icon-button" type="button"><Bell size={19} /></button><button className="profile-button" type="button" onClick={() => setPortalView('profile')}><span className="profile-avatar">{userInitials(profile.name)}</span><span><strong>{profile.name}</strong><small>{profile.email}</small></span></button></div>
+          <div className="topbar-actions"><button aria-label="Notifications" className="icon-button" type="button"><Bell size={19} /></button><button className="profile-button" type="button" onClick={() => setPortalView('profile')}><span className="profile-avatar" style={avatarStyle(profile.photoURL)}>{profile.photoURL ? '' : userInitials(profile.name)}</span><span><strong>{profile.name}</strong><small>{profile.email}</small></span></button></div>
         </header>
 
         <div className="portal-content">
           {view === 'profile' ? (
-            <ProfileView user={profile} onSave={saveProfile} />
+            <ProfileView user={profile} onSave={saveProfile} onSavePhoto={savePhoto} />
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
           ) : (
@@ -625,6 +859,7 @@ const toPortalUser = (fb: User, extras: ProfileExtras): PortalUser => {
       extras.bio ?? 'Je transforme mes aventures en récits cartographiques 3D.',
     createdAt: fb.metadata.creationTime ?? new Date().toISOString(),
     plan: extras.plan,
+    photoURL: extras.photoURL ?? fb.photoURL ?? undefined,
   }
 }
 
@@ -959,11 +1194,19 @@ function FirebasePortal() {
             name: next.name,
             location: next.location,
             bio: next.bio,
+            photoURL: next.photoURL,
           })
           if (next.name !== session.firebaseUser.displayName) {
             await updateProfile(session.firebaseUser, { displayName: next.name })
           }
           setProfileError(null)
+        }}
+        onSavePhoto={async (photoURL) => {
+          await saveUserPhoto(session.firebaseUser.uid, photoURL)
+          setSession({
+            firebaseUser: session.firebaseUser,
+            portalUser: { ...session.portalUser, photoURL },
+          })
         }}
       />
     </>

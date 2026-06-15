@@ -8,6 +8,8 @@ export type PortalUser = {
   // Forfait choisi (undefined tant que l'utilisateur n'a pas validé l'étape
   // de choix après inscription).
   plan?: string
+  // Photo de profil : vignette JPEG (data URL) stockée dans Firestore.
+  photoURL?: string
 }
 
 export type PortalHike = {
@@ -29,4 +31,5 @@ export type ProfileExtras = {
   location?: string
   bio?: string
   plan?: string
+  photoURL?: string
 }
