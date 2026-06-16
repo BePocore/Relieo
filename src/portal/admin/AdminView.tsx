@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   Database,
   ExternalLink,
   EyeOff,
   HardDrive,
+  LayoutDashboard,
+  LogOut,
   Map as MapIcon,
   RefreshCw,
   ShieldCheck,
   Trash2,
   Users,
 } from 'lucide-react'
+import type { PortalUser } from '../portalStore'
 import { getIdToken } from '../firebase'
 import { PLANS, formatBytes, type PlanId } from '../plans'
 import './Admin.css'
@@ -52,7 +55,14 @@ type Overview = {
   monthlyCostEur: number
 }
 
-type AdminTab = 'users' | 'maps' | 'storage'
+type AdminSection = 'overview' | 'users' | 'maps' | 'storage'
+
+const SECTION_TITLES: Record<AdminSection, string> = {
+  overview: 'Vue d’ensemble',
+  users: 'Utilisateurs',
+  maps: 'Cartes',
+  storage: 'Stockage R2',
+}
 
 const formatEur = (value: number): string =>
   `${value.toLocaleString('fr-FR', {
@@ -69,6 +79,13 @@ const formatDate = (value: string | null): string =>
       }).format(new Date(value))
     : '—'
 
+const initials = (name: string): string =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'A'
+
 const authFetch = async (
   input: string,
   init?: RequestInit,
@@ -78,15 +95,18 @@ const authFetch = async (
   return fetch(input, {
     ...init,
     cache: 'no-store',
-    headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { ...(init?.headers ?? {}), Authorization: `Bearer ${token}` },
   })
 }
 
-export function AdminView() {
-  const [tab, setTab] = useState<AdminTab>('users')
+export function AdminApp({
+  user,
+  onLogout,
+}: {
+  user: PortalUser
+  onLogout: () => void
+}) {
+  const [section, setSection] = useState<AdminSection>('overview')
   const [overview, setOverview] = useState<Overview | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [maps, setMaps] = useState<AdminMap[]>([])
@@ -96,8 +116,6 @@ export function AdminView() {
 
   const load = useCallback(async () => {
     try {
-      // Premier await en tête : évite un setState synchrone dans l'effet de
-      // montage (l'état `loading` est déjà à true par défaut).
       const token = await getIdToken()
       if (!token) throw new Error('Connexion requise.')
       setLoading(true)
@@ -115,12 +133,9 @@ export function AdminView() {
           | null
         throw new Error(data?.message ?? 'Lecture admin impossible.')
       }
-      const overviewData = (await overviewRes.json()) as Overview
-      const usersData = (await usersRes.json()) as { users: AdminUser[] }
-      const mapsData = (await mapsRes.json()) as { maps: AdminMap[] }
-      setOverview(overviewData)
-      setUsers(usersData.users)
-      setMaps(mapsData.maps)
+      setOverview((await overviewRes.json()) as Overview)
+      setUsers(((await usersRes.json()) as { users: AdminUser[] }).users)
+      setMaps(((await mapsRes.json()) as { maps: AdminMap[] }).maps)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -133,8 +148,7 @@ export function AdminView() {
   }, [])
 
   useEffect(() => {
-    // load() est async : les setState surviennent après des await (pas de rendu
-    // en cascade synchrone). Chargement au montage.
+    // load() est async : setState après await (pas de rendu en cascade).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
@@ -149,7 +163,7 @@ export function AdminView() {
       })
       if (!response.ok) throw new Error()
       setUsers((current) =>
-        current.map((user) => (user.uid === uid ? { ...user, plan } : user)),
+        current.map((u) => (u.uid === uid ? { ...u, plan } : u)),
       )
     } catch {
       setError('Changement de forfait impossible.')
@@ -158,11 +172,11 @@ export function AdminView() {
     }
   }
 
-  const mapAction = async (
-    code: string,
-    action: 'unpublish' | 'delete',
-  ) => {
-    if (action === 'delete' && !window.confirm(`Supprimer définitivement la carte « ${code} » et ses médias ?`)) {
+  const mapAction = async (code: string, action: 'unpublish' | 'delete') => {
+    if (
+      action === 'delete' &&
+      !window.confirm(`Supprimer définitivement la carte « ${code} » et ses médias ?`)
+    ) {
       return
     }
     setBusyAction(`map-${code}`)
@@ -174,12 +188,10 @@ export function AdminView() {
       })
       if (!response.ok) throw new Error()
       if (action === 'delete') {
-        setMaps((current) => current.filter((map) => map.code !== code))
+        setMaps((current) => current.filter((m) => m.code !== code))
       } else {
         setMaps((current) =>
-          current.map((map) =>
-            map.code === code ? { ...map, status: 'draft' } : map,
-          ),
+          current.map((m) => (m.code === code ? { ...m, status: 'draft' } : m)),
         )
       }
     } catch {
@@ -189,209 +201,253 @@ export function AdminView() {
     }
   }
 
-  return (
-    <section className="admin-view">
-      <header className="page-heading">
-        <div>
-          <p className="portal-kicker">
-            <ShieldCheck size={13} /> Administration
-          </p>
-          <h1>Console admin</h1>
-          <p>Pilotage complet du site : utilisateurs, cartes et stockage.</p>
-        </div>
-        <button
-          className="admin-refresh"
-          disabled={loading}
-          type="button"
-          onClick={() => void load()}
-        >
-          <RefreshCw size={16} /> Actualiser
-        </button>
-      </header>
+  const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode }> = [
+    { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
+    { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
+    { id: 'maps', label: 'Cartes', icon: <MapIcon size={18} /> },
+    { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
+  ]
 
-      <section className="admin-stats" aria-label="Synthèse">
-        <article className="admin-stat-card featured">
-          <span><Users size={18} /></span>
-          <p>Utilisateurs</p>
-          <strong>{overview?.userCount ?? '—'}</strong>
-        </article>
-        <article className="admin-stat-card">
-          <span><MapIcon size={18} /></span>
-          <p>Cartes</p>
-          <strong>{overview?.hikeCount ?? '—'}</strong>
-          <small>{overview?.publishedCount ?? 0} publiées · {overview?.draftCount ?? 0} brouillons</small>
-        </article>
-        <article className="admin-stat-card">
-          <span><HardDrive size={18} /></span>
-          <p>Stockage total</p>
-          <strong>{overview ? formatBytes(overview.totalBytes) : '—'}</strong>
-          <small>dont {overview ? formatBytes(overview.freeBytes) : '—'} gratuits</small>
-        </article>
-        <article className="admin-stat-card">
-          <span><Database size={18} /></span>
-          <p>Coût R2 / mois</p>
-          <strong>{overview ? formatEur(overview.monthlyCostEur) : '—'}</strong>
-          <small>facturé sur {overview ? formatBytes(overview.billableBytes) : '—'}</small>
-        </article>
-      </section>
-
-      <nav className="admin-tabs" aria-label="Sections admin">
-        <button className={tab === 'users' ? 'active' : ''} type="button" onClick={() => setTab('users')}><Users size={16} /> Utilisateurs</button>
-        <button className={tab === 'maps' ? 'active' : ''} type="button" onClick={() => setTab('maps')}><MapIcon size={16} /> Cartes</button>
-        <button className={tab === 'storage' ? 'active' : ''} type="button" onClick={() => setTab('storage')}><HardDrive size={16} /> Stockage R2</button>
-      </nav>
-
-      {error ? (
-        <p className="admin-error"><AlertTriangle size={15} /> {error}</p>
-      ) : null}
-
-      {loading ? (
-        <p className="admin-loading">Chargement des données…</p>
-      ) : tab === 'users' ? (
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Utilisateur</th>
-                <th>Forfait</th>
-                <th>Cartes</th>
-                <th>Médias</th>
-                <th>Stockage</th>
-                <th>Coût R2/mois</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.uid}>
-                  <td>
-                    <div className="admin-user-cell">
-                      <strong>{user.name || user.email || user.uid}</strong>
-                      <small>{user.email ?? '—'}{user.emailVerified ? '' : ' · non vérifié'}</small>
-                    </div>
-                  </td>
-                  <td>
-                    <select
-                      className="admin-plan-select"
-                      disabled={busyAction === `plan-${user.uid}`}
-                      value={user.plan}
-                      onChange={(event) => void changePlan(user.uid, event.target.value as PlanId)}
-                    >
-                      {PLANS.map((plan) => (
-                        <option key={plan.id} value={plan.id}>{plan.name}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>{user.hikeCount} <small>({user.publishedCount} pub.)</small></td>
-                  <td>{user.mediaCount}</td>
-                  <td>{formatBytes(user.usedBytes)}</td>
-                  <td>{formatEur(user.monthlyCostEur)}</td>
-                </tr>
-              ))}
-              {users.length === 0 ? (
-                <tr><td colSpan={6} className="admin-empty">Aucun utilisateur.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      ) : tab === 'maps' ? (
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Carte</th>
-                <th>Propriétaire</th>
-                <th>Statut</th>
-                <th>Médias</th>
-                <th>Modifiée</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {maps.map((map) => (
-                <tr key={map.folder}>
-                  <td>
-                    <div className="admin-user-cell">
-                      <strong>{map.title}</strong>
-                      <small>{map.code}</small>
-                    </div>
-                  </td>
-                  <td>{map.ownerEmail ?? map.ownerId}</td>
-                  <td>
-                    <span className={`admin-status ${map.status}`}>
-                      {map.status === 'published' ? 'Publiée' : 'Brouillon'}
-                    </span>
-                  </td>
-                  <td>{map.mediaCount}</td>
-                  <td>{formatDate(map.updatedAt)}</td>
-                  <td>
-                    <div className="admin-actions">
-                      <a
-                        className="admin-action"
-                        href={`/?mode=studio&code=${encodeURIComponent(map.code)}&title=${encodeURIComponent(map.title)}`}
-                        title="Ouvrir dans le Studio (accès Dieu)"
-                      >
-                        <ExternalLink size={15} /> Ouvrir
-                      </a>
-                      {map.status === 'published' ? (
-                        <button
-                          className="admin-action"
-                          disabled={busyAction === `map-${map.code}`}
-                          type="button"
-                          onClick={() => void mapAction(map.code, 'unpublish')}
-                          title="Repasser en brouillon (retire du public)"
-                        >
-                          <EyeOff size={15} /> Dépublier
-                        </button>
-                      ) : null}
-                      <button
-                        className="admin-action danger"
-                        disabled={busyAction === `map-${map.code}`}
-                        type="button"
-                        onClick={() => void mapAction(map.code, 'delete')}
-                        title="Supprimer définitivement"
-                      >
-                        <Trash2 size={15} /> Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {maps.length === 0 ? (
-                <tr><td colSpan={6} className="admin-empty">Aucune carte.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="admin-storage">
-          <article className="admin-storage-card">
-            <h2>Cloudflare R2</h2>
-            <dl>
-              <div><dt>Stockage total</dt><dd>{overview ? formatBytes(overview.totalBytes) : '—'}</dd></div>
-              <div><dt>Palier gratuit</dt><dd>{overview ? formatBytes(overview.freeBytes) : '—'}</dd></div>
-              <div><dt>Volume facturé</dt><dd>{overview ? formatBytes(overview.billableBytes) : '—'}</dd></div>
-              <div><dt>Coût mensuel réel</dt><dd className="admin-cost">{overview ? formatEur(overview.monthlyCostEur) : '—'}</dd></div>
-            </dl>
-            <p className="admin-note">
-              R2 facture le stockage à l'usage : les 10 premiers Go par mois sont
-              gratuits, puis ~0,015 €/Go/mois (sortie de données gratuite).
-            </p>
-          </article>
-          <article className="admin-storage-card">
-            <h2>Top consommateurs</h2>
-            <ul className="admin-top-users">
-              {users.slice(0, 8).map((user) => (
-                <li key={user.uid}>
-                  <span>{user.name || user.email || user.uid}</span>
-                  <strong>{formatBytes(user.usedBytes)}</strong>
-                  <small>{formatEur(user.monthlyCostEur)}/mois</small>
-                </li>
-              ))}
-              {users.length === 0 ? <li className="admin-empty">Aucun utilisateur.</li> : null}
-            </ul>
-          </article>
-        </div>
-      )}
+  const statCards = (
+    <section className="admin-stats" aria-label="Synthèse">
+      <article className="admin-stat-card featured">
+        <span><Users size={18} /></span>
+        <p>Utilisateurs</p>
+        <strong>{overview?.userCount ?? '—'}</strong>
+      </article>
+      <article className="admin-stat-card">
+        <span><MapIcon size={18} /></span>
+        <p>Cartes</p>
+        <strong>{overview?.hikeCount ?? '—'}</strong>
+        <small>{overview?.publishedCount ?? 0} publiées · {overview?.draftCount ?? 0} brouillons</small>
+      </article>
+      <article className="admin-stat-card">
+        <span><HardDrive size={18} /></span>
+        <p>Stockage total</p>
+        <strong>{overview ? formatBytes(overview.totalBytes) : '—'}</strong>
+        <small>dont {overview ? formatBytes(overview.freeBytes) : '—'} gratuits</small>
+      </article>
+      <article className="admin-stat-card">
+        <span><Database size={18} /></span>
+        <p>Coût R2 / mois</p>
+        <strong>{overview ? formatEur(overview.monthlyCostEur) : '—'}</strong>
+        <small>facturé sur {overview ? formatBytes(overview.billableBytes) : '—'}</small>
+      </article>
     </section>
+  )
+
+  const usersTable = (
+    <div className="admin-table-wrap">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Utilisateur</th>
+            <th>Forfait</th>
+            <th>Cartes</th>
+            <th>Médias</th>
+            <th>Stockage</th>
+            <th>Coût R2/mois</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr key={u.uid}>
+              <td>
+                <div className="admin-user-cell">
+                  <strong>{u.name || u.email || u.uid}</strong>
+                  <small>{u.email ?? '—'}{u.emailVerified ? '' : ' · non vérifié'}</small>
+                </div>
+              </td>
+              <td>
+                <select
+                  className="admin-plan-select"
+                  disabled={busyAction === `plan-${u.uid}`}
+                  value={u.plan}
+                  onChange={(event) => void changePlan(u.uid, event.target.value as PlanId)}
+                >
+                  {PLANS.map((plan) => (
+                    <option key={plan.id} value={plan.id}>{plan.name}</option>
+                  ))}
+                </select>
+              </td>
+              <td>{u.hikeCount} <small>({u.publishedCount} pub.)</small></td>
+              <td>{u.mediaCount}</td>
+              <td>{formatBytes(u.usedBytes)}</td>
+              <td>{formatEur(u.monthlyCostEur)}</td>
+            </tr>
+          ))}
+          {users.length === 0 ? (
+            <tr><td className="admin-empty" colSpan={6}>Aucun utilisateur.</td></tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const mapsTable = (
+    <div className="admin-table-wrap">
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Carte</th>
+            <th>Propriétaire</th>
+            <th>Statut</th>
+            <th>Médias</th>
+            <th>Modifiée</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {maps.map((m) => (
+            <tr key={m.folder}>
+              <td>
+                <div className="admin-user-cell">
+                  <strong>{m.title}</strong>
+                  <small>{m.code}</small>
+                </div>
+              </td>
+              <td>{m.ownerEmail ?? m.ownerId}</td>
+              <td><span className={`admin-status ${m.status}`}>{m.status === 'published' ? 'Publiée' : 'Brouillon'}</span></td>
+              <td>{m.mediaCount}</td>
+              <td>{formatDate(m.updatedAt)}</td>
+              <td>
+                <div className="admin-actions">
+                  <a
+                    className="admin-action"
+                    href={`/?mode=studio&code=${encodeURIComponent(m.code)}&title=${encodeURIComponent(m.title)}`}
+                    title="Ouvrir dans le Studio (accès Dieu)"
+                  >
+                    <ExternalLink size={15} /> Ouvrir
+                  </a>
+                  {m.status === 'published' ? (
+                    <button
+                      className="admin-action"
+                      disabled={busyAction === `map-${m.code}`}
+                      type="button"
+                      onClick={() => void mapAction(m.code, 'unpublish')}
+                      title="Repasser en brouillon"
+                    >
+                      <EyeOff size={15} /> Dépublier
+                    </button>
+                  ) : null}
+                  <button
+                    className="admin-action danger"
+                    disabled={busyAction === `map-${m.code}`}
+                    type="button"
+                    onClick={() => void mapAction(m.code, 'delete')}
+                    title="Supprimer définitivement"
+                  >
+                    <Trash2 size={15} /> Supprimer
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {maps.length === 0 ? (
+            <tr><td className="admin-empty" colSpan={6}>Aucune carte.</td></tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const storagePanels = (
+    <div className="admin-storage">
+      <article className="admin-storage-card">
+        <h2>Cloudflare R2</h2>
+        <dl>
+          <div><dt>Stockage total</dt><dd>{overview ? formatBytes(overview.totalBytes) : '—'}</dd></div>
+          <div><dt>Palier gratuit</dt><dd>{overview ? formatBytes(overview.freeBytes) : '—'}</dd></div>
+          <div><dt>Volume facturé</dt><dd>{overview ? formatBytes(overview.billableBytes) : '—'}</dd></div>
+          <div><dt>Coût mensuel réel</dt><dd className="admin-cost">{overview ? formatEur(overview.monthlyCostEur) : '—'}</dd></div>
+        </dl>
+        <p className="admin-note">
+          R2 facture le stockage à l'usage : les 10 premiers Go par mois sont
+          gratuits, puis ~0,015 €/Go/mois (sortie de données gratuite).
+        </p>
+      </article>
+      <article className="admin-storage-card">
+        <h2>Top consommateurs</h2>
+        <ul className="admin-top-users">
+          {users.slice(0, 8).map((u) => (
+            <li key={u.uid}>
+              <span>{u.name || u.email || u.uid}</span>
+              <strong>{formatBytes(u.usedBytes)}</strong>
+              <small>{formatEur(u.monthlyCostEur)}/mois</small>
+            </li>
+          ))}
+          {users.length === 0 ? <li className="admin-empty">Aucun utilisateur.</li> : null}
+        </ul>
+      </article>
+    </div>
+  )
+
+  return (
+    <div className="admin-shell">
+      <aside className="admin-sidebar">
+        <div className="admin-brand">
+          <span className="admin-logo"><ShieldCheck size={20} /></span>
+          <div>
+            <strong>Relieo</strong>
+            <span className="admin-badge">Admin</span>
+          </div>
+        </div>
+        <nav aria-label="Navigation admin">
+          <p>GESTION</p>
+          {navItems.map((item) => (
+            <button
+              className={section === item.id ? 'active' : ''}
+              key={item.id}
+              type="button"
+              onClick={() => setSection(item.id)}
+            >
+              {item.icon} {item.label}
+            </button>
+          ))}
+        </nav>
+        <button className="admin-logout" type="button" onClick={onLogout}>
+          <LogOut size={18} /> Déconnexion
+        </button>
+      </aside>
+
+      <main className="admin-main">
+        <header className="admin-topbar">
+          <div>
+            <p className="admin-kicker"><ShieldCheck size={13} /> Console d’administration</p>
+            <h1>{SECTION_TITLES[section]}</h1>
+          </div>
+          <div className="admin-topbar-right">
+            <button className="admin-refresh" disabled={loading} type="button" onClick={() => void load()}>
+              <RefreshCw size={16} /> Actualiser
+            </button>
+            <div className="admin-identity">
+              <span className="admin-avatar">{initials(user.name)}</span>
+              <span><strong>{user.name}</strong><small>{user.email}</small></span>
+            </div>
+          </div>
+        </header>
+
+        <div className="admin-content">
+          {error ? (
+            <p className="admin-error"><AlertTriangle size={15} /> {error}</p>
+          ) : null}
+
+          {loading ? (
+            <p className="admin-loading">Chargement des données…</p>
+          ) : section === 'overview' ? (
+            <>
+              {statCards}
+              {storagePanels}
+            </>
+          ) : section === 'users' ? (
+            usersTable
+          ) : section === 'maps' ? (
+            mapsTable
+          ) : (
+            storagePanels
+          )}
+        </div>
+      </main>
+    </div>
   )
 }

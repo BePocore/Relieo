@@ -75,7 +75,7 @@ import {
   formatBytes,
   type PlanId,
 } from './plans'
-import { AdminView } from './admin/AdminView'
+import { AdminApp } from './admin/AdminView'
 import './Portal.css'
 
 type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'admin'
@@ -626,13 +626,11 @@ function PlanOnboarding({
 
 function DashboardShell({
   user,
-  isAdmin,
   onLogout,
   onSaveProfile,
   onSavePhoto,
 }: {
   user: PortalUser
-  isAdmin: boolean
   onLogout: () => void
   onSaveProfile: (user: PortalUser) => Promise<void>
   onSavePhoto: (photoURL: string) => Promise<void>
@@ -775,18 +773,6 @@ function DashboardShell({
           <p>OUTILS</p>
           <button type="button"><BarChart3 size={18} /> Statistiques</button>
           <button type="button"><Settings size={18} /> Paramètres</button>
-          {isAdmin ? (
-            <>
-              <p>ADMINISTRATION</p>
-              <button
-                className={view === 'admin' ? 'active admin-nav' : 'admin-nav'}
-                type="button"
-                onClick={() => setPortalView('admin')}
-              >
-                <ShieldCheck size={18} /> Admin
-              </button>
-            </>
-          ) : null}
         </nav>
         <div className="sidebar-status"><span><ShieldCheck size={16} /></span><div><strong>Cloud synchronisé</strong><small>Firebase + Cloudflare R2</small></div></div>
         <button className="logout-button" type="button" onClick={onLogout}><LogOut size={18} /> Déconnexion</button>
@@ -800,9 +786,7 @@ function DashboardShell({
         </header>
 
         <div className="portal-content">
-          {view === 'admin' && isAdmin ? (
-            <AdminView />
-          ) : view === 'profile' ? (
+          {view === 'profile' ? (
             <ProfileView user={profile} onSave={saveProfile} onSavePhoto={savePhoto} />
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
@@ -1317,12 +1301,28 @@ function FirebasePortal() {
     )
   }
 
+  // On attend la fin de la détection admin avant de router : un admin doit
+  // atterrir sur sa console dédiée, jamais (même brièvement) sur le dashboard
+  // utilisateur classique.
+  if (!admin.checked) return null
+
+  // Admin : écran d'administration plein et totalement séparé. Pas de dashboard
+  // utilisateur, pas de choix de forfait (le Dieu n'a pas de forfait).
+  if (admin.isAdmin) {
+    return (
+      <AdminApp
+        user={session.portalUser}
+        onLogout={() => {
+          void signOut(auth)
+          navigate('/login')
+        }}
+      />
+    )
+  }
+
   // Étape post-inscription : tant qu'aucun forfait n'est choisi, on affiche
-  // l'écran de sélection avant de donner accès au dashboard. L'admin (Dieu) en
-  // est exempté ; on attend la fin de la détection admin pour ne pas faire
-  // clignoter l'écran de forfait avant de l'identifier.
-  if (!session.portalUser.plan && !admin.isAdmin) {
-    if (!admin.checked) return null
+  // l'écran de sélection avant de donner accès au dashboard.
+  if (!session.portalUser.plan) {
     return (
       <>
         {profileError ? <p className="auth-error">{profileError}</p> : null}
@@ -1346,7 +1346,6 @@ function FirebasePortal() {
       {profileError ? <p className="auth-error">{profileError}</p> : null}
       <DashboardShell
         user={session.portalUser}
-        isAdmin={admin.isAdmin}
         onLogout={() => {
           void signOut(auth)
           navigate('/login')
