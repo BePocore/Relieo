@@ -55,7 +55,9 @@ export const hasFirebaseAdmin = (): boolean => {
 }
 
 let app: App | undefined
-const adminApp = (): App => {
+// App Firebase Admin partagée (Auth + Firestore admin). Exportée pour permettre
+// l'accès Firestore côté serveur (server/firestoreAdmin.ts).
+export const adminApp = (): App => {
   if (app) return app
   const current = config()
   app =

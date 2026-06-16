@@ -1,0 +1,230 @@
+/* Console admin : reprend la charte verte Relieo (--portal-green) avec une mise
+   en page type dashboard (bandeau de stats, onglets, tableaux). */
+
+.admin-view {
+  --admin-green: #126b47;
+  --admin-green-soft: #dff3e9;
+  --admin-ink: #14201b;
+  --admin-muted: #64706a;
+  --admin-line: #e2e8e4;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.admin-view .portal-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--admin-green);
+}
+
+.admin-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--admin-ink);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+.admin-refresh:hover:not(:disabled) { background: var(--admin-green-soft); }
+.admin-refresh:disabled { opacity: 0.5; cursor: default; }
+
+/* Bandeau de statistiques */
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.admin-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--admin-line);
+  border-radius: 18px;
+  background: #fff;
+}
+.admin-stat-card.featured {
+  background: linear-gradient(155deg, #0b4a32, #126b47);
+  border-color: transparent;
+  color: #fff;
+}
+.admin-stat-card.featured p,
+.admin-stat-card.featured small { color: rgba(255, 255, 255, 0.78); }
+.admin-stat-card > span {
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--admin-green-soft);
+  color: var(--admin-green);
+}
+.admin-stat-card.featured > span {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.admin-stat-card p { margin: 4px 0 0; font-size: 13px; color: var(--admin-muted); }
+.admin-stat-card strong { font-size: 26px; font-weight: 700; }
+.admin-stat-card small { font-size: 12px; color: var(--admin-muted); }
+
+/* Onglets */
+.admin-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--admin-line);
+}
+.admin-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--admin-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-tabs button.active {
+  color: var(--admin-green);
+  border-bottom-color: var(--admin-green);
+}
+
+.admin-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fdecec;
+  color: #a3261f;
+  font-size: 14px;
+}
+.admin-loading { color: var(--admin-muted); padding: 20px 0; }
+
+/* Tableaux */
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--admin-line);
+  border-radius: 18px;
+  background: #fff;
+}
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.admin-table th {
+  text-align: left;
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--admin-muted);
+  border-bottom: 1px solid var(--admin-line);
+}
+.admin-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--admin-line);
+  vertical-align: middle;
+  color: var(--admin-ink);
+}
+.admin-table tr:last-child td { border-bottom: 0; }
+.admin-table td small { color: var(--admin-muted); }
+
+.admin-user-cell { display: flex; flex-direction: column; }
+.admin-user-cell strong { font-weight: 600; }
+.admin-user-cell small { font-size: 12px; }
+
+.admin-plan-select {
+  padding: 7px 10px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--admin-ink);
+  cursor: pointer;
+}
+
+.admin-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-status.published { background: var(--admin-green-soft); color: var(--admin-green); }
+.admin-status.draft { background: #fdf0d8; color: #9a6b12; }
+
+.admin-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--admin-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.admin-action:hover:not(:disabled) { background: var(--admin-green-soft); }
+.admin-action.danger { color: #a3261f; }
+.admin-action.danger:hover:not(:disabled) { background: #fdecec; }
+.admin-action:disabled { opacity: 0.5; cursor: default; }
+
+.admin-empty { text-align: center; color: var(--admin-muted); padding: 24px; }
+
+/* Stockage */
+.admin-storage {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.admin-storage-card {
+  padding: 22px;
+  border: 1px solid var(--admin-line);
+  border-radius: 18px;
+  background: #fff;
+}
+.admin-storage-card h2 { margin: 0 0 16px; font-size: 17px; }
+.admin-storage-card dl { display: grid; gap: 12px; margin: 0; }
+.admin-storage-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.admin-storage-card dt { color: var(--admin-muted); font-size: 14px; }
+.admin-storage-card dd { margin: 0; font-weight: 600; }
+.admin-storage-card dd.admin-cost { color: var(--admin-green); font-size: 18px; }
+.admin-note { margin: 16px 0 0; font-size: 12.5px; color: var(--admin-muted); line-height: 1.5; }
+
+.admin-top-users { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.admin-top-users li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: baseline;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--admin-line);
+}
+.admin-top-users li:last-child { border-bottom: 0; }
+.admin-top-users span { color: var(--admin-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-top-users strong { font-weight: 600; }
+.admin-top-users small { color: var(--admin-muted); font-size: 12px; }
+
+/* Entrée de menu admin dans la sidebar du portail */
+.admin-nav { color: var(--admin-green) !important; }
+.admin-nav.active { background: var(--admin-green-soft) !important; }
+
+@media (max-width: 900px) {
+  .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-storage { grid-template-columns: 1fr; }
+}

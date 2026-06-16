@@ -216,9 +216,10 @@ const buildIndexMeta = (input: {
   elevationGainMeters: number
   pointCount: number
   mediaCount: number
+  status: 'draft' | 'published'
 }): Record<string, unknown> => ({
   title: input.title || input.code || 'Carte',
-  hikeStatus: 'published',
+  hikeStatus: input.status,
   distanceKm: Math.round((input.distanceMeters / 1_000) * 10) / 10,
   elevationGain: Math.round(input.elevationGainMeters),
   pointCount: input.pointCount,
@@ -394,6 +395,10 @@ function App() {
   const [perfMode, setPerfMode] = useState<PerfMode>('auto')
   const mapFlat2D = perfMode === 'force-2d'
   const [isSaving, setIsSaving] = useState(false)
+  // Statut de publication de la carte courante : une carte reste un brouillon
+  // (autosave en draft) jusqu'à publication explicite. Une carte chargée déjà
+  // publiée le reste.
+  const [isPublished, setIsPublished] = useState(false)
   const [isAutosaving, setIsAutosaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
@@ -482,6 +487,7 @@ function App() {
           )
           setAccessGranted(true)
           setSelectedPoint(null)
+          setIsPublished(false)
           return
         }
 
@@ -504,9 +510,13 @@ function App() {
           projectResponse?.ok &&
           projectContentType?.includes('application/json')
         ) {
-          onlineProject = normalizeProject(
-            (await projectResponse.json()) as Partial<TrailProject>,
-          )
+          const raw = (await projectResponse.json()) as Partial<TrailProject> & {
+            hikeStatus?: string
+          }
+          // Une carte déjà chargée est considérée publiée sauf statut draft
+          // explicite (les cartes historiques sans statut restent publiées).
+          setIsPublished(raw.hikeStatus !== 'draft')
+          onlineProject = normalizeProject(raw)
         } else if (projectResponse) {
           const result = (await projectResponse.json().catch(() => null)) as {
             message?: string
@@ -629,6 +639,7 @@ function App() {
     adminPassword,
     stats,
     hikeTitle,
+    isPublished,
     signature: currentProjectSignature,
   })
   useEffect(() => {
@@ -641,6 +652,7 @@ function App() {
       adminPassword,
       stats,
       hikeTitle,
+      isPublished,
       signature: currentProjectSignature,
     }
   }, [
@@ -648,6 +660,7 @@ function App() {
     adminPassword,
     currentProjectSignature,
     hikeTitle,
+    isPublished,
     mediaLibrary,
     points,
     pointsSourceName,
@@ -687,6 +700,9 @@ function App() {
             elevationGainMeters: snapshot.stats.elevationGainMeters,
             pointCount: snapshot.points.length,
             mediaCount: snapshot.mediaLibrary.length,
+            // L'autosave conserve le statut courant : un brouillon reste un
+            // brouillon, une carte publiée reste publiée.
+            status: snapshot.isPublished ? 'published' : 'draft',
           }),
         }),
       })
@@ -1425,6 +1441,8 @@ function App() {
             elevationGainMeters: stats.elevationGainMeters,
             pointCount: points.length,
             mediaCount: mediaLibrary.length,
+            // Le bouton de publication rend la carte publique.
+            status: 'published',
           }),
         }),
       })
@@ -1442,8 +1460,9 @@ function App() {
         result && 'folder' in result && typeof result.folder === 'string'
           ? result.folder
           : accessCode.trim()
+      setIsPublished(true)
       setSavedProjectSignature(submittedSignature)
-      setSaveStatus(`Carte enregistrée dans Cloudflare R2 : ${folder}.`)
+      setSaveStatus(`Carte publiée dans Cloudflare R2 : ${folder}.`)
       setError(null)
     } catch (saveError) {
       const message =

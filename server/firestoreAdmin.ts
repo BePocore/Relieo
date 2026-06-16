@@ -1,0 +1,46 @@
+import { getFirestore } from 'firebase-admin/firestore'
+import { adminApp } from './firebaseAdmin.js'
+
+// Profil utilisateur tel que stocké dans Firestore (collection `profiles/<uid>`).
+// Côté admin on lit TOUS les profils via l'Admin SDK, ce qui contourne les
+// règles de sécurité Firestore (réservées au propriétaire).
+export type StoredProfile = {
+  uid: string
+  name?: string
+  location?: string
+  bio?: string
+  plan?: string
+}
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined
+
+// Tous les profils, indexés par uid. Une seule lecture de collection.
+export const readAllProfiles = async (): Promise<Map<string, StoredProfile>> => {
+  const db = getFirestore(adminApp())
+  const snapshot = await db.collection('profiles').get()
+  const profiles = new Map<string, StoredProfile>()
+  for (const document of snapshot.docs) {
+    const data = document.data()
+    profiles.set(document.id, {
+      uid: document.id,
+      name: asString(data.name),
+      location: asString(data.location),
+      bio: asString(data.bio),
+      plan: asString(data.plan),
+    })
+  }
+  return profiles
+}
+
+// Écrit le forfait d'un utilisateur (override admin), sans toucher au reste.
+export const setUserPlan = async (
+  uid: string,
+  plan: string,
+): Promise<void> => {
+  const db = getFirestore(adminApp())
+  await db
+    .collection('profiles')
+    .doc(uid)
+    .set({ plan, updatedAt: new Date().toISOString() }, { merge: true })
+}

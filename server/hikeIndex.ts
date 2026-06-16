@@ -80,3 +80,16 @@ export const upsertHikeIndex = async (
   await r2PutText(hikeIndexPath, JSON.stringify({ hikes: next }))
   return next
 }
+
+// Retire l'entrée d'une rando du registre (clé = folder). Les autres entrées
+// sont conservées. Utilisé par la suppression admin d'une carte.
+export const removeHikeIndex = async (
+  folder: string,
+): Promise<HikeIndexEntry[]> => {
+  const hikes = await readHikeIndex()
+  const next = hikes.filter((hike) => hike.folder !== folder)
+  if (next.length !== hikes.length) {
+    await r2PutText(hikeIndexPath, JSON.stringify({ hikes: next }))
+  }
+  return next
+}

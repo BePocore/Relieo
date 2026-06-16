@@ -17,12 +17,9 @@ import {
   trailLocation,
   type ActiveTrail,
 } from '../server/trailStorage.js'
-import {
-  ownerForFolder,
-  readHikeIndex,
-  upsertHikeIndex,
-} from '../server/hikeIndex.js'
+import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
+import { isAdminUser } from '../server/admin.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
 import { pickRandomCoverUrl } from '../server/cover.js'
@@ -199,13 +196,43 @@ export async function GET(request: Request) {
     // (consultation publique inchangée). La clé de stockage étant désormais
     // rangée sous le préfixe du propriétaire, on résout son uid via l'index.
     const code = new URL(request.url).searchParams.get('code')?.trim()
-    const owner = code ? await ownerForFolder(trailFolder(code)) : null
-    const body =
-      code && owner
-        ? await r2GetText(trailLocation(owner, code).projectKey)
-        : code
-          ? null
-          : await readPublishedProject()
+    if (code) {
+      const folder = trailFolder(code)
+      const entry = (await readHikeIndex()).find(
+        (hike) => hike.folder === folder,
+      )
+      if (!entry) {
+        return Response.json(
+          { message: 'Aucune carte enregistrée pour ce code.' },
+          { status: 404, headers: jsonHeaders },
+        )
+      }
+      // Brouillon : consultation réservée au propriétaire et à l'admin. On
+      // renvoie 404 (et pas 403) pour ne pas révéler l'existence du brouillon.
+      if (entry.status === 'draft') {
+        const user = await verifyRequestUser(request)
+        const allowed =
+          user && (user.uid === entry.ownerId || isAdminUser(user))
+        if (!allowed) {
+          return Response.json(
+            { message: 'Aucune carte enregistrée pour ce code.' },
+            { status: 404, headers: jsonHeaders },
+          )
+        }
+      }
+      const body = await r2GetText(trailLocation(entry.ownerId, code).projectKey)
+      if (!body) {
+        return Response.json(
+          { message: 'Aucune randonnée enregistrée dans Cloudflare R2.' },
+          { status: 404, headers: jsonHeaders },
+        )
+      }
+      return new Response(body, {
+        headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const body = await readPublishedProject()
     if (!body) {
       return Response.json(
         { message: 'Aucune randonnée enregistrée dans Cloudflare R2.' },
@@ -275,20 +302,40 @@ export async function PUT(request: Request) {
       )
     }
 
-    // Propriétaire prouvé (uid Firebase) ou repli `_studio` (mode admin dev).
-    const owner = authedUser?.uid ?? STUDIO_OWNER
+    // Entrée existante (le folder ne dépend que du code, pas du propriétaire).
+    const existing = (await readHikeIndex()).find(
+      (hike) => hike.folder === trailFolder(code),
+    )
+
+    // Accès Dieu : un admin édite « à la place » du vrai propriétaire. L'écriture
+    // se fait alors sous le préfixe du propriétaire d'origine (la propriété ne
+    // change pas). Sinon, propriétaire = l'appelant (ou `_studio` en repli).
+    const isAdmin = isAdminUser(authedUser)
+    const owner =
+      isAdmin && existing?.ownerId
+        ? existing.ownerId
+        : authedUser?.uid ?? STUDIO_OWNER
     const target = trailLocation(owner, code)
 
-    // Garde de propriété : on ne peut pas écraser la rando d'un autre utilisateur.
-    const existing = (await readHikeIndex()).find(
-      (hike) => hike.folder === target.folder,
-    )
-    if (authedUser && existing?.ownerId && existing.ownerId !== authedUser.uid) {
+    // Garde de propriété (levée pour l'admin) : on ne peut pas écraser la rando
+    // d'un autre utilisateur.
+    if (
+      !isAdmin &&
+      authedUser &&
+      existing?.ownerId &&
+      existing.ownerId !== authedUser.uid
+    ) {
       return Response.json(
         { message: 'Cette randonnée appartient à un autre utilisateur.' },
         { status: 403, headers: jsonHeaders },
       )
     }
+
+    // Statut : brouillon ou publiée (par défaut publiée pour compat ascendante).
+    const status: 'draft' | 'published' =
+      (payload as Record<string, unknown>).hikeStatus === 'draft'
+        ? 'draft'
+        : 'published'
 
     // Multi-rando : chaque randonnée vit dans son propre dossier. On n'écrase et
     // ne supprime JAMAIS les autres randos (Halsa et toute rando déjà publiée
@@ -304,15 +351,19 @@ export async function PUT(request: Request) {
     }
 
     // La fiche project.json est rangée dans le dossier de la rando : elle compte
-    // dans le quota du propriétaire (5 Go) quand on connaît son uid.
-    const scope = authedUser ? userStorageScope(authedUser.uid) : undefined
+    // dans le quota du PROPRIÉTAIRE (même quand un admin édite à sa place).
+    const scope =
+      owner === STUDIO_OWNER ? undefined : userStorageScope(owner)
     const url = await r2PutText(target.projectKey, body, scope)
 
-    // Pointeur public : on l'initialise seulement s'il n'existe pas encore.
-    // S'il existe déjà (Halsa), on n'y touche pas → la rando publique ne change pas.
-    const active = await readActiveTrail()
-    if (!active) {
-      await r2PutText(activeTrailPath, JSON.stringify(target))
+    // Pointeur public : uniquement pour une carte PUBLIÉE (un brouillon ne doit
+    // jamais devenir la carte publique par défaut). On ne l'initialise que s'il
+    // n'existe pas encore ; s'il existe déjà (Halsa), on n'y touche pas.
+    if (status === 'published') {
+      const active = await readActiveTrail()
+      if (!active) {
+        await r2PutText(activeTrailPath, JSON.stringify(target))
+      }
     }
 
     // Registre des randos : insert/maj de cette entrée uniquement.
@@ -324,9 +375,11 @@ export async function PUT(request: Request) {
     await upsertHikeIndex({
       code: target.code,
       folder: target.folder,
-      ownerId: authedUser?.uid ?? asString(meta.ownerId),
+      // Propriété préservée : l'ownerId reste celui du propriétaire d'origine
+      // (jamais l'admin), ou l'appelant pour une nouvelle carte.
+      ownerId: owner !== STUDIO_OWNER ? owner : asString(meta.ownerId),
       title: asString(meta.title) ?? target.code,
-      status: meta.hikeStatus === 'draft' ? 'draft' : 'published',
+      status,
       distanceKm: asNumber(meta.distanceKm),
       elevationGain: asNumber(meta.elevationGain),
       pointCount: asNumber(meta.pointCount) ?? migrated.project.points.length,

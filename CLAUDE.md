@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 There is no test suite.
 
-Env vars: server-side **Firebase Admin** (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`) authenticates API callers; `RANDO3D_ADMIN_PASSWORD` is now only a legacy admin/fallback gate; plus the required `R2_*` variables documented in `README.md`. NB: these server secrets are set only for **Preview/Production** on Vercel (not Development) and are "sensitive" (cannot be pulled back), so `npx vercel dev` cannot exercise the R2/Firebase-admin routes locally — only the frontend.
+Env vars: server-side **Firebase Admin** (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`) authenticates API callers; `RANDO3D_ADMIN_PASSWORD` is now only a legacy admin/fallback gate; `ADMIN_UIDS` is the CSV allowlist of Firebase uids granted the admin console; plus the required `R2_*` variables documented in `README.md`. NB: these server secrets are set only for **Preview/Production** on Vercel (not Development) and are "sensitive" (cannot be pulled back), so `npx vercel dev` cannot exercise the R2/Firebase-admin routes locally — only the frontend.
 
 ## Architecture
 
@@ -49,3 +49,11 @@ Both hooks generate data-URL images on the fly and cache them. `useVideoPosters`
 ### Access control
 
 The `accessCode` gate (`components/AccessGate.tsx`) is **client-side only** — the project JSON is still readable in the `/api/project` response, so this is a light barrier for sharing, not real security. Studio mode bypasses it. Studio is reachable from the public view by a hidden gesture: long-press the compass logo for 1.5s.
+
+### Drafts vs published
+
+A map is a **draft** by default and only becomes **published** on an explicit action (the Studio "publish" save → `handleSaveProject` sends `hikeStatus: 'published'`; the autosave preserves the current status). `api/project.ts` only writes `active.json` for published maps, and its `GET ?code=` is **auth-aware**: a draft is served only to its owner (matching Firebase uid) or an admin — anonymous reads get 404. Media are uploaded to R2 at import time regardless of status (counted in the owner's quota).
+
+### Admin console (`/api/admin/*`, `src/portal/admin/`)
+
+Admins are identified by an **uid allowlist** (`ADMIN_UIDS`, CSV) re-checked server-side on every endpoint via `requireAdmin` (`server/admin.ts`) — never trust the client. The portal calls `GET /api/admin/me` to decide whether to show the Admin entry. Endpoints (all admin-gated): `users` (all accounts + plan + maps/media + R2 usage & real cost), `overview` (site totals + R2 cost), `maps` (god-view of every map incl. drafts), `set-plan` (override a user's plan via Firestore Admin), `map` (unpublish/delete a map). **God access**: an admin editing someone's map writes under the real owner's prefix and never changes `ownerId` (ownership is preserved). R2 cost uses `monthlyR2Cost`/`R2_COST_PER_GB_EUR`/`R2_FREE_BYTES` in `server/plans.ts`.

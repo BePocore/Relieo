@@ -50,6 +50,7 @@ Variables Vercel :
 5. `R2_PUBLIC_BASE_URL` (domaine public du bucket, sans slash final)
 6. `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (Firebase Admin, auth serveur des appels API)
 7. `RANDO3D_ADMIN_PASSWORD` (verrou admin/repli hérité, plus l'auth principale)
+8. `ADMIN_UIDS` (liste blanche d'uid Firebase pour la console admin `/api/admin/*`, CSV)
 
 Ces secrets serveur sont définis pour **Preview/Production** uniquement (pas
 Development) et sont « sensibles » : on ne peut pas les relire une fois créés.

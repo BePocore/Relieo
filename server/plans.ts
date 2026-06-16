@@ -24,3 +24,22 @@ export const planStorageLimit = (planId: string | undefined): number => {
   }
   return PLAN_STORAGE_LIMITS[DEFAULT_PLAN_ID]
 }
+
+// --- Coût d'infrastructure Cloudflare R2 (pour le dashboard admin) ---
+// R2 facture le stockage à l'usage : 10 Go gratuits par mois, puis ~0,015 €/Go
+// par mois (egress gratuit, ops négligeables). Valeurs approximatives et
+// pilotables ici. `R2_FREE_BYTES` est le palier gratuit global du bucket.
+export const R2_COST_PER_GB_EUR = 0.015
+export const R2_FREE_BYTES = 10_000_000_000
+
+const BYTES_PER_GB = 1_000_000_000
+
+// Coût mensuel réel d'un volume d'octets, hors palier gratuit (déjà décompté au
+// niveau du bucket). Utilisé tel quel pour le coût global ; pour un utilisateur
+// pris isolément, on facture chaque Go (le gratuit est mutualisé au bucket).
+export const monthlyR2Cost = (bytes: number, applyFreeTier = false): number => {
+  const billableBytes = applyFreeTier
+    ? Math.max(0, bytes - R2_FREE_BYTES)
+    : Math.max(0, bytes)
+  return (billableBytes / BYTES_PER_GB) * R2_COST_PER_GB_EUR
+}

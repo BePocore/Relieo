@@ -12,7 +12,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 There is no test suite.
 
-Env vars: server-side **Firebase Admin** (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`) authenticates API callers; `RANDO3D_ADMIN_PASSWORD` is now only a legacy admin/fallback gate; plus the required `R2_*` variables documented in `README.md`. NB: these server secrets are set only for **Preview/Production** on Vercel (not Development) and are "sensitive" (cannot be pulled back), so `npx vercel dev` cannot exercise the R2/Firebase-admin routes locally — only the frontend.
+Env vars: server-side **Firebase Admin** (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`) authenticates API callers; `RANDO3D_ADMIN_PASSWORD` is now only a legacy admin/fallback gate; `ADMIN_UIDS` is the CSV allowlist of Firebase uids granted the admin console (`/api/admin/*`, re-checked server-side); plus the required `R2_*` variables documented in `README.md`. NB: these server secrets are set only for **Preview/Production** on Vercel (not Development) and are "sensitive" (cannot be pulled back), so `npx vercel dev` cannot exercise the R2/Firebase-admin routes locally — only the frontend.
 
 ## Architecture
 
@@ -49,3 +49,7 @@ Both hooks generate data-URL images on the fly and cache them. `useVideoPosters`
 ### Access control
 
 The `accessCode` gate (`components/AccessGate.tsx`) is **client-side only** — the project JSON is still readable in the `/api/project` response, so this is a light barrier for sharing, not real security. Studio mode bypasses it. Studio is reachable from the public view by a hidden gesture: long-press the compass logo for 1.5s.
+
+### Drafts & admin console
+
+Maps are **drafts** by default and published only on explicit action; `api/project.ts` writes `active.json` for published maps only and its `GET ?code=` is auth-aware (a draft is served to its owner or an admin, else 404). Admins are an **uid allowlist** (`ADMIN_UIDS`) re-checked server-side by `requireAdmin` (`server/admin.ts`) on every `/api/admin/*` endpoint (`me`, `users`, `overview`, `maps`, `set-plan`, `map`). God access preserves ownership: an admin editing a map writes under the real owner's prefix and never rewrites `ownerId`. R2 cost helpers live in `server/plans.ts` (`monthlyR2Cost`). UI: `src/portal/admin/AdminView.tsx`.

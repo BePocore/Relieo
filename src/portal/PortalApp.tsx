@@ -75,9 +75,10 @@ import {
   formatBytes,
   type PlanId,
 } from './plans'
+import { AdminView } from './admin/AdminView'
 import './Portal.css'
 
-type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans'
+type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'admin'
 
 // Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
@@ -126,6 +127,7 @@ const currentView = (): PortalView => {
   if (window.location.pathname.endsWith('/profile')) return 'profile'
   if (window.location.pathname.endsWith('/hikes')) return 'hikes'
   if (window.location.pathname.endsWith('/plans')) return 'plans'
+  if (window.location.pathname.endsWith('/admin')) return 'admin'
   return 'dashboard'
 }
 
@@ -345,10 +347,9 @@ function HikeCard({ hike }: { hike: PortalHike }) {
   //   `code` identifie laquelle (ignoré tant que le backend reste mono-rando).
   // Brouillon → ouvre un Studio 3D vierge en local (`new`).
   const title = `&title=${encodeURIComponent(hike.title)}`
-  const openHref =
-    hike.status === 'published'
-      ? `/?mode=studio&code=${encodeURIComponent(hike.code)}${title}`
-      : `/?mode=studio&new=${encodeURIComponent(hike.code)}${title}`
+  // Publiée ou brouillon : on ouvre la carte par son code (le Studio recharge le
+  // contenu sauvegardé ; un brouillon n'est servi qu'à son propriétaire/admin).
+  const openHref = `/?mode=studio&code=${encodeURIComponent(hike.code)}${title}`
   return (
     <article className="hike-card">
       <div
@@ -642,12 +643,40 @@ function DashboardShell({
   const [mobileMenu, setMobileMenu] = useState(false)
   const [profile, setProfile] = useState(user)
   const [usage, setUsage] = useState<StorageUsage | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     const syncView = () => setView(currentView())
     window.addEventListener('popstate', syncView)
     return () => window.removeEventListener('popstate', syncView)
   }, [])
+
+  // L'autorisation admin est revérifiée côté serveur sur chaque endpoint : ce
+  // flag ne sert qu'à afficher l'entrée « Admin » et la vue.
+  useEffect(() => {
+    let cancelled = false
+    void getIdToken()
+      .then((token) => {
+        if (!token) return null
+        return fetch('/api/admin/me', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      })
+      .then(async (response) => {
+        if (!response || !response.ok) return
+        const data = (await response.json().catch(() => null)) as
+          | { admin?: boolean }
+          | null
+        if (!cancelled && data?.admin) setIsAdmin(true)
+      })
+      .catch(() => {
+        // Silencieux : pas admin par défaut.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user.id])
 
   useEffect(() => {
     let cancelled = false
@@ -772,6 +801,18 @@ function DashboardShell({
           <p>OUTILS</p>
           <button type="button"><BarChart3 size={18} /> Statistiques</button>
           <button type="button"><Settings size={18} /> Paramètres</button>
+          {isAdmin ? (
+            <>
+              <p>ADMINISTRATION</p>
+              <button
+                className={view === 'admin' ? 'active admin-nav' : 'admin-nav'}
+                type="button"
+                onClick={() => setPortalView('admin')}
+              >
+                <ShieldCheck size={18} /> Admin
+              </button>
+            </>
+          ) : null}
         </nav>
         <div className="sidebar-status"><span><ShieldCheck size={16} /></span><div><strong>Cloud synchronisé</strong><small>Firebase + Cloudflare R2</small></div></div>
         <button className="logout-button" type="button" onClick={onLogout}><LogOut size={18} /> Déconnexion</button>
@@ -785,7 +826,9 @@ function DashboardShell({
         </header>
 
         <div className="portal-content">
-          {view === 'profile' ? (
+          {view === 'admin' && isAdmin ? (
+            <AdminView />
+          ) : view === 'profile' ? (
             <ProfileView user={profile} onSave={saveProfile} onSavePhoto={savePhoto} />
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
