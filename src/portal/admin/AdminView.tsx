@@ -23,6 +23,7 @@ type AdminUser = {
   email: string | null
   name?: string
   plan: string
+  isAdmin: boolean
   createdAt: string | null
   emailVerified: boolean
   hikeCount: number
@@ -267,10 +268,17 @@ export function AdminApp({
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr key={u.uid}>
+            <tr className={u.isAdmin ? 'admin-row' : ''} key={u.uid}>
               <td>
                 <div className="admin-user-cell">
-                  <strong>{u.name || u.email || u.uid}</strong>
+                  <strong>
+                    {u.name || u.email || u.uid}
+                    {u.isAdmin ? (
+                      <span className="admin-row-badge">
+                        <ShieldCheck size={12} /> Admin
+                      </span>
+                    ) : null}
+                  </strong>
                   <small>{u.email ?? '—'}{u.emailVerified ? '' : ' · non vérifié'}</small>
                 </div>
               </td>

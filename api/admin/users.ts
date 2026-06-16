@@ -1,6 +1,6 @@
 import { getAuth } from 'firebase-admin/auth'
 import { adminApp, hasFirebaseAdmin } from '../../server/firebaseAdmin.js'
-import { requireAdmin } from '../../server/admin.js'
+import { isAdminUid, requireAdmin } from '../../server/admin.js'
 import { readAllProfiles } from '../../server/firestoreAdmin.js'
 import { hasR2Config, r2UsageForPrefixes } from '../../server/r2.js'
 import { readHikeIndex } from '../../server/hikeIndex.js'
@@ -14,6 +14,7 @@ type AdminUser = {
   email: string | null
   name?: string
   plan: string
+  isAdmin: boolean
   createdAt: string | null
   emailVerified: boolean
   hikeCount: number
@@ -77,6 +78,7 @@ export async function GET(request: Request) {
           email: record.email ?? null,
           name: profile?.name ?? record.displayName ?? undefined,
           plan: profile?.plan ?? DEFAULT_PLAN_ID,
+          isAdmin: isAdminUid(record.uid),
           createdAt: record.metadata.creationTime ?? null,
           emailVerified: record.emailVerified,
           hikeCount: aggregate?.hikeCount ?? 0,
@@ -88,7 +90,11 @@ export async function GET(request: Request) {
       }),
     )
 
-    users.sort((a, b) => b.usedBytes - a.usedBytes)
+    // Les admins remontent en tête, puis tri par stockage décroissant.
+    users.sort(
+      (a, b) =>
+        Number(b.isAdmin) - Number(a.isAdmin) || b.usedBytes - a.usedBytes,
+    )
     return Response.json({ users }, { headers: jsonHeaders })
   } catch (error) {
     return Response.json(

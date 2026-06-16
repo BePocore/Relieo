@@ -245,8 +245,45 @@
 .admin-table td small { color: var(--admin-muted); }
 
 .admin-user-cell { display: flex; flex-direction: column; }
-.admin-user-cell strong { font-weight: 600; }
+.admin-user-cell strong { font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
 .admin-user-cell small { font-size: 12px; }
+
+/* Ligne de l'admin : ressort en cadre vert avec relief 3D, épinglée en tête. */
+.admin-table tr.admin-row td {
+  background: linear-gradient(135deg, #0e5538, #1aa06a);
+  color: #fff;
+  border-bottom: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 10px 22px -8px rgba(18, 107, 71, 0.65);
+}
+.admin-table tr.admin-row td small { color: rgba(255, 255, 255, 0.82); }
+.admin-table tr.admin-row td:first-child {
+  border-top-left-radius: 16px;
+  border-bottom-left-radius: 16px;
+}
+.admin-table tr.admin-row td:last-child {
+  border-top-right-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+.admin-table tr.admin-row .admin-plan-select {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+.admin-row-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
 
 .admin-plan-select {
   padding: 7px 10px;
