@@ -81,28 +81,6 @@ export const hasFirebaseAdmin = (): boolean => {
   return Boolean(current.projectId && current.clientEmail && current.privateKey)
 }
 
-// Diagnostic NON sensible de la configuration (n'expose jamais la clé). Sert à
-// comprendre un échec de credential (DECODER, etc.) sans révéler de secret.
-export const firebaseAdminDiagnostics = () => {
-  const current = config()
-  const key = current.privateKey
-  return {
-    keySource: process.env.FIREBASE_PRIVATE_KEY_B64
-      ? 'b64'
-      : process.env.FIREBASE_PRIVATE_KEY
-        ? 'raw'
-        : 'none',
-    projectIdSet: Boolean(current.projectId),
-    clientEmailSet: Boolean(current.clientEmail),
-    keyPresent: Boolean(key),
-    keyLength: key?.length ?? 0,
-    keyHasBegin: key ? key.includes('-----BEGIN PRIVATE KEY-----') : false,
-    keyHasEnd: key ? key.includes('-----END PRIVATE KEY-----') : false,
-    keyHasRealNewlines: key ? key.includes('\n') : false,
-    keyHasLiteralBackslashN: key ? key.includes('\\n') : false,
-  }
-}
-
 let app: App | undefined
 // App Firebase Admin partagée (Auth + Firestore admin). Exportée pour permettre
 // l'accès Firestore côté serveur (server/firestoreAdmin.ts).
