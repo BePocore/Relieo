@@ -36,7 +36,15 @@ const cleanPrivateKey = (value: string | undefined): string | undefined => {
   const beginIndex = cleaned.indexOf(begin)
   const endIndex = cleaned.indexOf(end, beginIndex)
   if (beginIndex >= 0 && endIndex >= 0) {
-    return cleaned.slice(beginIndex, endIndex + end.length)
+    // Reconstruit un PEM canonique : on isole le corps base64 (en retirant tout
+    // ce qui n'est pas un caractère base64 : espaces, retours à la ligne…) puis
+    // on le redécoupe en lignes de 64. Robuste même si la clé a été collée sur
+    // une seule ligne (cas où OpenSSL renvoie « DECODER routines::unsupported »).
+    const body = cleaned
+      .slice(beginIndex + begin.length, endIndex)
+      .replace(/[^A-Za-z0-9+/=]/g, '')
+    const wrapped = body.match(/.{1,64}/g)?.join('\n') ?? body
+    return `${begin}\n${wrapped}\n${end}\n`
   }
 
   return cleaned.trim()
