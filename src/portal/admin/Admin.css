@@ -204,6 +204,19 @@
   font-size: 14px;
 }
 .admin-loading { color: var(--admin-muted); padding: 20px 0; }
+.admin-diag {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  background: #0d2a1f;
+  color: #cfe0d6;
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 /* Tableaux */
 .admin-table-wrap {

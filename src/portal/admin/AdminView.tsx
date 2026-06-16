@@ -112,6 +112,7 @@ export function AdminApp({
   const [maps, setMaps] = useState<AdminMap[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [diag, setDiag] = useState<Record<string, unknown> | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -142,6 +143,21 @@ export function AdminApp({
           ? loadError.message
           : 'Lecture admin impossible.',
       )
+      // Diagnostic de la config Firebase Admin (sans exposer la clé).
+      try {
+        const token = await getIdToken()
+        if (token) {
+          const diagRes = await fetch('/api/admin/diag', {
+            cache: 'no-store',
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (diagRes.ok) {
+            setDiag((await diagRes.json()) as Record<string, unknown>)
+          }
+        }
+      } catch {
+        // ignore
+      }
     } finally {
       setLoading(false)
     }
@@ -430,6 +446,9 @@ export function AdminApp({
         <div className="admin-content">
           {error ? (
             <p className="admin-error"><AlertTriangle size={15} /> {error}</p>
+          ) : null}
+          {diag ? (
+            <pre className="admin-diag">{JSON.stringify(diag, null, 2)}</pre>
           ) : null}
 
           {loading ? (
