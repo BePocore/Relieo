@@ -6,6 +6,7 @@ import {
   Euro,
   ExternalLink,
   EyeOff,
+  Gavel,
   HardDrive,
   LayoutDashboard,
   LineChart,
@@ -50,6 +51,19 @@ type AdminMap = {
   updatedAt: string
 }
 
+type Sanction = {
+  id: string
+  action: 'unpublish' | 'delete'
+  mapCode: string
+  mapTitle: string
+  ownerId: string
+  ownerEmail: string | null
+  adminUid: string
+  adminEmail: string | null
+  message: string
+  createdAt: string
+}
+
 type Overview = {
   userCount: number
   hikeCount: number
@@ -61,14 +75,24 @@ type Overview = {
   monthlyCostEur: number
 }
 
-type AdminSection = 'overview' | 'users' | 'maps' | 'storage'
+type AdminSection = 'overview' | 'users' | 'maps' | 'sanctions' | 'storage'
 
 const SECTION_TITLES: Record<AdminSection, string> = {
   overview: 'Vue d’ensemble',
   users: 'Utilisateurs',
   maps: 'Cartes',
+  sanctions: 'Sanctions',
   storage: 'Stockage R2',
 }
+
+const formatDateTime = (value: string): string =>
+  new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 
 const formatEur = (value: number): string =>
   `${value.toLocaleString('fr-FR', {
@@ -116,6 +140,7 @@ export function AdminApp({
   const [overview, setOverview] = useState<Overview | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [maps, setMaps] = useState<AdminMap[]>([])
+  const [sanctions, setSanctions] = useState<Sanction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
@@ -137,13 +162,16 @@ export function AdminApp({
       setLoading(true)
       setError(null)
       const headers = { Authorization: `Bearer ${token}` }
-      const [overviewRes, usersRes, mapsRes] = await Promise.all([
+      const [overviewRes, usersRes, mapsRes, sanctionsRes] = await Promise.all([
         fetch('/api/admin/overview', { cache: 'no-store', headers }),
         fetch('/api/admin/users', { cache: 'no-store', headers }),
         fetch('/api/admin/maps', { cache: 'no-store', headers }),
+        fetch('/api/admin/sanctions', { cache: 'no-store', headers }),
       ])
-      if (!overviewRes.ok || !usersRes.ok || !mapsRes.ok) {
-        const failed = [overviewRes, usersRes, mapsRes].find((r) => !r.ok)
+      if (!overviewRes.ok || !usersRes.ok || !mapsRes.ok || !sanctionsRes.ok) {
+        const failed = [overviewRes, usersRes, mapsRes, sanctionsRes].find(
+          (r) => !r.ok,
+        )
         const data = (await failed?.json().catch(() => null)) as
           | { message?: string }
           | null
@@ -152,6 +180,9 @@ export function AdminApp({
       setOverview((await overviewRes.json()) as Overview)
       setUsers(((await usersRes.json()) as { users: AdminUser[] }).users)
       setMaps(((await mapsRes.json()) as { maps: AdminMap[] }).maps)
+      setSanctions(
+        ((await sanctionsRes.json()) as { sanctions: Sanction[] }).sanctions,
+      )
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -277,6 +308,7 @@ export function AdminApp({
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
     { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
     { id: 'maps', label: 'Cartes', icon: <MapIcon size={18} /> },
+    { id: 'sanctions', label: 'Sanctions', icon: <Gavel size={18} /> },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
   ]
 
@@ -445,6 +477,94 @@ export function AdminApp({
       </table>
     </div>
   )
+
+  const sanctionStats = useMemo(() => {
+    const weekAgo = new Date().getTime() - 7 * 24 * 60 * 60 * 1000
+    return {
+      total: sanctions.length,
+      unpublishCount: sanctions.filter((s) => s.action === 'unpublish').length,
+      deleteCount: sanctions.filter((s) => s.action === 'delete').length,
+      recentCount: sanctions.filter(
+        (s) => new Date(s.createdAt).getTime() >= weekAgo,
+      ).length,
+    }
+  }, [sanctions])
+
+  const sanctionsView = (() => {
+    const { total, unpublishCount, deleteCount, recentCount } = sanctionStats
+
+    return (
+      <>
+        <section className="admin-stats" aria-label="Synthèse des sanctions">
+          <article className="admin-stat-card featured">
+            <span><Gavel size={18} /></span>
+            <p>Total sanctions</p>
+            <strong>{total}</strong>
+          </article>
+          <article className="admin-stat-card">
+            <span><EyeOff size={18} /></span>
+            <p>Dépublications</p>
+            <strong>{unpublishCount}</strong>
+          </article>
+          <article className="admin-stat-card">
+            <span><Trash2 size={18} /></span>
+            <p>Suppressions</p>
+            <strong>{deleteCount}</strong>
+          </article>
+          <article className="admin-stat-card">
+            <span><RefreshCw size={18} /></span>
+            <p>7 derniers jours</p>
+            <strong>{recentCount}</strong>
+          </article>
+        </section>
+
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Carte</th>
+                <th>Propriétaire</th>
+                <th>Message</th>
+                <th>Admin</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sanctions.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <span className={`admin-sanction-badge ${s.action}`}>
+                      {s.action === 'delete' ? (
+                        <><Trash2 size={13} /> Suppression</>
+                      ) : (
+                        <><EyeOff size={13} /> Dépublication</>
+                      )}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="admin-user-cell">
+                      <strong>{s.mapTitle}</strong>
+                      <small>{s.mapCode}</small>
+                    </div>
+                  </td>
+                  <td>{s.ownerEmail ?? s.ownerId ?? '—'}</td>
+                  <td className="admin-sanction-message">
+                    {s.message ? s.message : <span className="admin-muted-text">—</span>}
+                  </td>
+                  <td>{s.adminEmail ?? s.adminUid}</td>
+                  <td>{formatDateTime(s.createdAt)}</td>
+                </tr>
+              ))}
+              {sanctions.length === 0 ? (
+                <tr><td className="admin-empty" colSpan={6}>Aucune sanction enregistrée.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </>
+    )
+  })()
 
   const storagePanels = (
     <div className="admin-storage">
@@ -627,6 +747,8 @@ export function AdminApp({
             usersTable
           ) : section === 'maps' ? (
             mapsTable
+          ) : section === 'sanctions' ? (
+            sanctionsView
           ) : (
             storagePanels
           )}

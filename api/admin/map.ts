@@ -1,4 +1,5 @@
-import { hasFirebaseAdmin } from '../../server/firebaseAdmin.js'
+import { getAuth } from 'firebase-admin/auth'
+import { adminApp, hasFirebaseAdmin } from '../../server/firebaseAdmin.js'
 import { requireAdmin } from '../../server/admin.js'
 import {
   hasR2Config,
@@ -12,11 +13,22 @@ import {
   upsertHikeIndex,
 } from '../../server/hikeIndex.js'
 import { pushUserNotification } from '../../server/firestoreAdmin.js'
+import { appendSanction, type SanctionAction } from '../../server/sanctions.js'
 import {
   activeTrailPath,
   trailFolder,
   trailLocation,
 } from '../../server/trailStorage.js'
+
+// Email du propriétaire au moment de l'action (pour un journal autonome).
+const ownerEmail = async (uid: string | null): Promise<string | null> => {
+  if (!uid) return null
+  try {
+    return (await getAuth(adminApp()).getUser(uid)).email ?? null
+  } catch {
+    return null
+  }
+}
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -70,21 +82,39 @@ export async function POST(request: Request) {
     }
     const folder = trailFolder(code)
     const owner = await ownerForFolder(folder)
+    const mapTitle = body.title?.trim() || code
+    const message = body.message?.trim() ?? ''
+
+    // Trace l'action dans le journal de modération (toujours, message ou non).
+    const logSanction = async (act: SanctionAction): Promise<void> => {
+      await appendSanction({
+        id: `${folder}-${Date.now()}`,
+        action: act,
+        mapCode: code,
+        mapTitle,
+        ownerId: owner ?? '',
+        ownerEmail: await ownerEmail(owner),
+        adminUid: admin.uid,
+        adminEmail: admin.email,
+        message,
+        createdAt: new Date().toISOString(),
+      })
+    }
 
     if (action === 'unpublish') {
       await upsertHikeIndex({ folder, status: 'draft' })
       await clearActiveIfMatches(folder)
       // Notifie le propriétaire (message admin affiché à sa prochaine connexion).
-      const message = body.message?.trim()
       if (owner && message) {
         await pushUserNotification(owner, {
           id: `${folder}-${Date.now()}`,
           type: 'unpublish',
           message,
-          mapTitle: body.title?.trim() || code,
+          mapTitle,
           createdAt: new Date().toISOString(),
         })
       }
+      await logSanction('unpublish')
       return Response.json({ code, action, status: 'draft' }, { headers: jsonHeaders })
     }
 
@@ -95,16 +125,16 @@ export async function POST(request: Request) {
       await r2DeletePrefix(`${trailLocation(owner, code).prefix}/`)
     }
     // Notifie le propriétaire (message admin affiché à sa prochaine connexion).
-    const deleteMessage = body.message?.trim()
-    if (owner && deleteMessage) {
+    if (owner && message) {
       await pushUserNotification(owner, {
         id: `${folder}-${Date.now()}`,
         type: 'delete',
-        message: deleteMessage,
-        mapTitle: body.title?.trim() || code,
+        message,
+        mapTitle,
         createdAt: new Date().toISOString(),
       })
     }
+    await logSanction('delete')
     return Response.json({ code, action, deleted: true }, { headers: jsonHeaders })
   } catch (error) {
     return Response.json(

@@ -471,6 +471,35 @@
 .admin-chart-tip-row span:nth-child(2) { color: rgba(255, 255, 255, 0.7); }
 .admin-chart-tip-row strong { font-weight: 700; }
 
+/* Journal des sanctions : badges colorés par type d'action */
+.admin-sanction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-sanction-badge.unpublish {
+  background: #fff4e0;
+  color: #9a6207;
+  border: 1px solid #f5d9a6;
+}
+.admin-sanction-badge.delete {
+  background: #fdecec;
+  color: #b3261e;
+  border: 1px solid #f3c0bd;
+}
+.admin-sanction-message {
+  max-width: 320px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.admin-muted-text { color: var(--admin-muted); }
+
 /* Modale de dépublication (saisie du message au propriétaire) */
 .admin-modal-backdrop {
   position: fixed;
