@@ -11,6 +11,8 @@ export type PortalPlan = {
   // Prix affiché (libellé) + suffixe (« /mois », « gratuit »…).
   priceLabel: string
   priceSuffix: string
+  // Prix mensuel réel en euros (0 = gratuit). Sert au calcul du revenu admin.
+  monthlyPriceEur: number
   storageLabel: string
   features: string[]
   // false = forfait factice, pas encore disponible (« Bientôt »).
@@ -27,6 +29,7 @@ export const PLANS: PortalPlan[] = [
     tagline: 'Pour démarrer et raconter vos premières aventures.',
     priceLabel: 'Gratuit',
     priceSuffix: 'pour toujours',
+    monthlyPriceEur: 0,
     storageLabel: '5 Go de stockage',
     features: [
       '5 Go de médias (toutes cartes confondues)',
@@ -43,6 +46,7 @@ export const PLANS: PortalPlan[] = [
     tagline: 'Plus d’espace et de qualité pour les grands voyages.',
     priceLabel: '5 €',
     priceSuffix: '/ mois',
+    monthlyPriceEur: 5,
     storageLabel: '50 Go de stockage',
     features: [
       '50 Go de médias',
@@ -58,6 +62,7 @@ export const PLANS: PortalPlan[] = [
     tagline: 'Pour les créateurs qui publient beaucoup.',
     priceLabel: '12 €',
     priceSuffix: '/ mois',
+    monthlyPriceEur: 12,
     storageLabel: '200 Go de stockage',
     features: [
       '200 Go de médias',

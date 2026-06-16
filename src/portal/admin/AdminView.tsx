@@ -1,21 +1,26 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
+  CreditCard,
   Database,
+  Euro,
   ExternalLink,
   EyeOff,
   HardDrive,
   LayoutDashboard,
+  LineChart,
   LogOut,
   Map as MapIcon,
   RefreshCw,
   ShieldCheck,
   Trash2,
+  TrendingUp,
   Users,
 } from 'lucide-react'
 import type { PortalUser } from '../portalStore'
 import { getIdToken } from '../firebase'
 import { PLANS, formatBytes, type PlanId } from '../plans'
+import { UserGrowthChart, type ChartSeries } from './UserGrowthChart'
 import './Admin.css'
 
 type AdminUser = {
@@ -201,6 +206,62 @@ export function AdminApp({
       setBusyAction(null)
     }
   }
+
+  // Revenus + évolution des inscriptions, dérivés de la liste des utilisateurs
+  // (l'admin est exclu, il ne paie pas et ne compte pas comme client).
+  const analytics = useMemo(() => {
+    const clients = users.filter((u) => !u.isAdmin)
+    const priceOf = (planId: string) =>
+      PLANS.find((p) => p.id === planId)?.monthlyPriceEur ?? 0
+
+    const mrr = clients.reduce((sum, u) => sum + priceOf(u.plan), 0)
+    const paidCount = clients.filter((u) => priceOf(u.plan) > 0).length
+    const arpu = clients.length ? mrr / clients.length : 0
+    const perPlan = PLANS.map((plan) => {
+      const count = clients.filter((u) => u.plan === plan.id).length
+      return { plan, count, monthly: count * plan.monthlyPriceEur }
+    })
+
+    // Évolution cumulée par mois. On part d'un mois de référence à 0 avant la
+    // première inscription pour toujours avoir une courbe qui démarre du bas.
+    const dated = clients
+      .map((u) => ({ t: u.createdAt ? new Date(u.createdAt).getTime() : NaN, plan: u.plan }))
+      .filter((u) => Number.isFinite(u.t))
+      .sort((a, b) => a.t - b.t)
+
+    let chart: { labels: string[]; series: ChartSeries[] } | null = null
+    if (dated.length > 0) {
+      const first = new Date(dated[0].t)
+      const now = new Date()
+      const months: Array<{ label: string; end: number }> = []
+      // Mois de référence (un mois avant la première inscription) à 0.
+      const cursor = new Date(first.getFullYear(), first.getMonth() - 1, 1)
+      const lastMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      while (cursor <= lastMonth) {
+        const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59).getTime()
+        months.push({
+          label: cursor.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }),
+          end,
+        })
+        cursor.setMonth(cursor.getMonth() + 1)
+      }
+      const cumulative = (end: number, planId?: string) =>
+        dated.filter((u) => u.t <= end && (!planId || u.plan === planId)).length
+
+      const series: ChartSeries[] = [
+        { id: 'total', label: 'Total', color: '#2f6df0', values: months.map((m) => cumulative(m.end)) },
+        ...PLANS.map((plan, i) => ({
+          id: plan.id,
+          label: plan.name,
+          color: ['#1aa06a', '#f4a23b', '#8b5cf6'][i] ?? '#94a3b8',
+          values: months.map((m) => cumulative(m.end, plan.id)),
+        })),
+      ]
+      chart = { labels: months.map((m) => m.label), series }
+    }
+
+    return { mrr, paidCount, arpu, perPlan, chart, clientCount: clients.length }
+  }, [users])
 
   const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode }> = [
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
@@ -401,6 +462,77 @@ export function AdminApp({
     </div>
   )
 
+  const revenuePanel = (
+    <section className="admin-panel" aria-label="Revenus">
+      <header className="admin-panel-head">
+        <h2><Euro size={18} /> Revenus</h2>
+        <p>Revenu mensuel récurrent généré par les forfaits payants.</p>
+      </header>
+      <div className="admin-revenue-cards">
+        <article className="admin-mini-card featured">
+          <span><Euro size={16} /></span>
+          <p>Revenu mensuel (MRR)</p>
+          <strong>{formatEur(analytics.mrr)}</strong>
+        </article>
+        <article className="admin-mini-card">
+          <span><TrendingUp size={16} /></span>
+          <p>Projection annuelle</p>
+          <strong>{formatEur(analytics.mrr * 12)}</strong>
+        </article>
+        <article className="admin-mini-card">
+          <span><CreditCard size={16} /></span>
+          <p>Abonnés payants</p>
+          <strong>{analytics.paidCount}</strong>
+          <small>sur {analytics.clientCount} utilisateurs</small>
+        </article>
+        <article className="admin-mini-card">
+          <span><Users size={16} /></span>
+          <p>Revenu moyen / utilisateur</p>
+          <strong>{formatEur(analytics.arpu)}</strong>
+        </article>
+      </div>
+      <table className="admin-table admin-revenue-table">
+        <thead>
+          <tr><th>Forfait</th><th>Prix</th><th>Abonnés</th><th>Revenu / mois</th></tr>
+        </thead>
+        <tbody>
+          {analytics.perPlan.map(({ plan, count, monthly }) => (
+            <tr key={plan.id}>
+              <td>
+                <strong>{plan.name}</strong>
+                {plan.available ? null : <small> · à venir</small>}
+              </td>
+              <td>{plan.monthlyPriceEur === 0 ? 'Gratuit' : `${formatEur(plan.monthlyPriceEur)}/mois`}</td>
+              <td>{count}</td>
+              <td>{formatEur(monthly)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  )
+
+  const growthPanel = (
+    <section className="admin-panel" aria-label="Évolution des utilisateurs">
+      <header className="admin-panel-head">
+        <h2><LineChart size={18} /> Évolution des utilisateurs</h2>
+        <p>Inscriptions cumulées par forfait, mois par mois.</p>
+      </header>
+      {analytics.chart ? (
+        <>
+          <div className="admin-chart-legend">
+            {analytics.chart.series.map((s) => (
+              <span key={s.id}><i style={{ background: s.color }} />{s.label}</span>
+            ))}
+          </div>
+          <UserGrowthChart labels={analytics.chart.labels} series={analytics.chart.series} />
+        </>
+      ) : (
+        <p className="admin-empty">Pas encore d’inscription à afficher.</p>
+      )}
+    </section>
+  )
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -457,6 +589,8 @@ export function AdminApp({
             <>
               {statCards}
               {storagePanels}
+              {revenuePanel}
+              {growthPanel}
             </>
           ) : section === 'users' ? (
             usersTable
