@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 There is no test suite.
 
-Env vars: `RANDO3D_ADMIN_PASSWORD` (server, gates publishing/upload) and the required `R2_*` variables documented in `README.md`.
+Env vars: server-side **Firebase Admin** (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`) authenticates API callers; `RANDO3D_ADMIN_PASSWORD` is now only a legacy admin/fallback gate; plus the required `R2_*` variables documented in `README.md`. NB: these server secrets are set only for **Preview/Production** on Vercel (not Development) and are "sensitive" (cannot be pulled back), so `npx vercel dev` cannot exercise the R2/Firebase-admin routes locally — only the frontend.
 
 ## Architecture
 
@@ -20,7 +20,7 @@ React 19 + Vite + MapLibre GL JS single-page app deployed on Vercel. One URL, tw
 
 ### Data model & persistence
 
-The published map is one JSON object (`TrailProject` in `src/types.ts`) stored in **Cloudflare R2** at `rando3d/randonnees/<code>/project.json`, fetched/saved through `/api/project` (GET/PUT). `rando3d/active.json` identifies the currently published hike. There is no browser or static-data fallback.
+The published map is one JSON object (`TrailProject` in `src/types.ts`) stored in **Cloudflare R2** under its **owner's** prefix: `relieo/users/<uid>/randonnees/<folder>/project.json` (the `uid` comes from the Firebase token; `<folder>` is the sanitized hike code). Fetched/saved through `/api/project` (GET/PUT). `relieo/index.json` is the registry of all maps (each entry carries `ownerId`, used to resolve the storage key on a public `?code=` read), and `relieo/active.json` identifies the currently published hike for the public default view. There is no browser or static-data fallback. (Historique : l'ancien schéma plat `rando3d/randonnees/<code>/` a été migré vers ce schéma par utilisateur le 2026-06-16.)
 
 - Routes are `traces: Trace[]` (multiple GPX, each with a `color`). The legacy flat `track: TrackPoint[]` field is still written on save **because `api/project.ts` validates the PUT with `Array.isArray(project.track)`** — keep it populated (it's the concatenation of all traces). Old single-track projects are wrapped into one trace on load.
 - `points: TrailPoint[]` are the photo/video/360/POI markers. `accessCode` (optional) drives the visitor gate.
@@ -28,7 +28,7 @@ The published map is one JSON object (`TrailProject` in `src/types.ts`) stored i
 
 ### Serverless API (`api/`, `server/`)
 
-`api/project.ts` and `api/upload.ts` become Vercel Functions backed exclusively by Cloudflare R2. Both authenticate via the `x-admin-password` header compared to `RANDO3D_ADMIN_PASSWORD` (`server/auth.ts`). Media files are uploaded directly from the browser through signed R2 URLs; failed files are never added to the project and must be selected again.
+`api/project.ts` and `api/upload.ts` become Vercel Functions backed exclusively by Cloudflare R2. Auth is primarily a **Firebase ID token** (`Authorization: Bearer`, verified in `server/firebaseAdmin.ts` via `verifyRequestUser`, which also enforces `email_verified` server-side); the legacy `x-admin-password` header (compared to `RANDO3D_ADMIN_PASSWORD`, `server/auth.ts`) is only a fallback when Firebase Admin is unconfigured, and still gates admin-only endpoints (`/api/assign-hike`). **Storage is scoped per user**: every object a user writes lives under `relieo/users/<uid>/`, the single prefix summed for their quota (`server/userStorage.ts`) — so a user can neither write into another's folder nor escape their quota via unpublished folders. Media files are uploaded directly from the browser through signed R2 URLs; failed files are never added to the project and must be selected again.
 
 ### `src/lib/` — pure, framework-free logic
 

@@ -28,24 +28,32 @@ terrain pour corriger une position GPS avant publication.
 
 ## Sauvegarde Cloudflare R2
 
-Cloudflare R2 est l'unique source de verite. Chaque randonnée possède son
-propre dossier `rando3d/randonnees/<code>/` avec le projet, les originaux et
-les aperçus. Le fichier `project.json` contient les traces, points, couleurs,
-descriptions et références média. Les originaux sont ouverts dans leur qualité
-d'import ; la carte utilise une vignette légère pour rester fluide.
-Quand le code change puis que la randonnée est publiée, le dossier est copié
-vers le nouveau nom avant la suppression de l'ancien emplacement.
+Cloudflare R2 est l'unique source de verite. Chaque randonnée vit sous le
+dossier de son **propriétaire** : `relieo/users/<uid>/randonnees/<folder>/`
+(le `uid` vient du token Firebase) avec le projet, les originaux et les
+aperçus. `relieo/index.json` recense toutes les cartes (avec leur `ownerId`)
+et `relieo/active.json` désigne la carte publiée par défaut. Le fichier
+`project.json` contient les traces, points, couleurs, descriptions et
+références média. Les originaux sont ouverts dans leur qualité d'import ; la
+carte utilise une vignette légère pour rester fluide. Ranger le stockage par
+utilisateur garantit le quota par compte (somme du préfixe `relieo/users/<uid>/`)
+et empêche d'écrire dans le dossier d'un autre.
 
 Cloudflare R2 est obligatoire pour le projet et les médias.
 
 Variables Vercel :
 
-1. `RANDO3D_ADMIN_PASSWORD`
-2. `R2_ACCOUNT_ID`
-3. `R2_ACCESS_KEY_ID`
-4. `R2_SECRET_ACCESS_KEY`
-5. `R2_BUCKET_NAME`
-6. `R2_PUBLIC_BASE_URL` (domaine public du bucket, sans slash final)
+1. `R2_ACCOUNT_ID`
+2. `R2_ACCESS_KEY_ID`
+3. `R2_SECRET_ACCESS_KEY`
+4. `R2_BUCKET_NAME`
+5. `R2_PUBLIC_BASE_URL` (domaine public du bucket, sans slash final)
+6. `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (Firebase Admin, auth serveur des appels API)
+7. `RANDO3D_ADMIN_PASSWORD` (verrou admin/repli hérité, plus l'auth principale)
+
+Ces secrets serveur sont définis pour **Preview/Production** uniquement (pas
+Development) et sont « sensibles » : on ne peut pas les relire une fois créés.
+`npx vercel dev` n'a donc pas R2/Firebase Admin en local et n'exécute que le front.
 
 Le bucket R2 doit autoriser les requetes `PUT` depuis le domaine Vercel et les
 requetes `GET` publiques. Les uploads utilisent une URL signee temporaire : les
