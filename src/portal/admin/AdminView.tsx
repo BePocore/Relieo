@@ -124,9 +124,11 @@ export function AdminApp({
   // Modale de dépublication : carte ciblée + message à transmettre au propriétaire.
   const [unpublishTarget, setUnpublishTarget] = useState<AdminMap | null>(null)
   const [unpublishMessage, setUnpublishMessage] = useState('')
-  // Modale de suppression : carte ciblée + saisie de confirmation (« delete »).
+  // Modale de suppression : carte ciblée + saisie de confirmation (« delete »)
+  // + message facultatif transmis au propriétaire.
   const [deleteTarget, setDeleteTarget] = useState<AdminMap | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleteMessage, setDeleteMessage] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -425,6 +427,7 @@ export function AdminApp({
                     type="button"
                     onClick={() => {
                       setDeleteConfirm('')
+                      setDeleteMessage('')
                       setDeleteTarget(m)
                     }}
                     title="Supprimer définitivement"
@@ -690,6 +693,16 @@ export function AdminApp({
               ({deleteTarget.ownerEmail ?? deleteTarget.ownerId}) perdra la carte
               sans possibilité de récupération.
             </p>
+            <label className="admin-modal-label" htmlFor="delete-message">
+              Message au propriétaire (facultatif, affiché à sa prochaine connexion)
+            </label>
+            <textarea
+              className="admin-modal-textarea"
+              id="delete-message"
+              placeholder="Ex : Votre carte a été supprimée car…"
+              value={deleteMessage}
+              onChange={(event) => setDeleteMessage(event.target.value)}
+            />
             <p className="admin-modal-instruction">
               Pour confirmer, tape <code>delete</code> ci-dessous.
             </p>
@@ -717,7 +730,10 @@ export function AdminApp({
                 type="button"
                 onClick={async () => {
                   const target = deleteTarget
-                  await mapAction(target.code, 'delete')
+                  await mapAction(target.code, 'delete', {
+                    message: deleteMessage,
+                    title: target.title,
+                  })
                   setDeleteTarget(null)
                 }}
               >

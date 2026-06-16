@@ -1355,9 +1355,10 @@ function FirebasePortal() {
           <ul className="portal-notif-list">
             {notifications.map((item) => (
               <li key={item.id}>
-                {item.type === 'unpublish' && item.mapTitle ? (
+                {item.mapTitle && item.type !== 'info' ? (
                   <p className="portal-notif-title">
-                    Carte « {item.mapTitle} » dépubliée
+                    Carte « {item.mapTitle} »{' '}
+                    {item.type === 'delete' ? 'supprimée' : 'dépubliée'}
                   </p>
                 ) : null}
                 <p className="portal-notif-message">{item.message}</p>

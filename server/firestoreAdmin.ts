@@ -50,7 +50,7 @@ export const setUserPlan = async (
 // écraser les autres champs ni les notifications déjà présentes.
 export type UserNotification = {
   id: string
-  type: 'unpublish' | 'info'
+  type: 'unpublish' | 'delete' | 'info'
   message: string
   mapTitle?: string
   createdAt: string

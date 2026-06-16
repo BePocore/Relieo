@@ -38,7 +38,7 @@ export type ProfileExtras = {
 // sa prochaine connexion (ex : une de ses cartes a été dépubliée).
 export type PortalNotification = {
   id: string
-  type: 'unpublish' | 'info'
+  type: 'unpublish' | 'delete' | 'info'
   message: string
   mapTitle?: string
   createdAt: string

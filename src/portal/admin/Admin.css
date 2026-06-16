@@ -496,7 +496,14 @@
   color: #b3261e;
 }
 .admin-modal p { margin: 0 0 16px; font-size: 13.5px; color: var(--admin-muted); line-height: 1.5; }
-.admin-modal-instruction { margin-bottom: 8px; color: var(--admin-ink); }
+.admin-modal-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--admin-ink);
+}
+.admin-modal-instruction { margin: 14px 0 8px; color: var(--admin-ink); }
 .admin-modal-instruction code {
   padding: 1px 7px;
   border-radius: 6px;

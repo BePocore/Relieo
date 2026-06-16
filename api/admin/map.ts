@@ -94,6 +94,17 @@ export async function POST(request: Request) {
     if (owner) {
       await r2DeletePrefix(`${trailLocation(owner, code).prefix}/`)
     }
+    // Notifie le propriétaire (message admin affiché à sa prochaine connexion).
+    const deleteMessage = body.message?.trim()
+    if (owner && deleteMessage) {
+      await pushUserNotification(owner, {
+        id: `${folder}-${Date.now()}`,
+        type: 'delete',
+        message: deleteMessage,
+        mapTitle: body.title?.trim() || code,
+        createdAt: new Date().toISOString(),
+      })
+    }
     return Response.json({ code, action, deleted: true }, { headers: jsonHeaders })
   } catch (error) {
     return Response.json(
