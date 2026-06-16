@@ -42,11 +42,30 @@ const cleanPrivateKey = (value: string | undefined): string | undefined => {
   return cleaned.trim()
 }
 
+// Décode un base64 (insensible aux retours à la ligne / guillemets). Renvoie le
+// texte décodé, ou undefined si vide. Permet de fournir la clé privée OU le JSON
+// de compte de service entier en base64, à l'épreuve de l'échappement `\n`.
+const decodeBase64 = (value: string | undefined): string | undefined => {
+  const cleaned = cleanEnv(value)
+  if (!cleaned) return undefined
+  try {
+    return Buffer.from(cleaned, 'base64').toString('utf8')
+  } catch {
+    return undefined
+  }
+}
+
 // Identité serveur Firebase via clé de service (variables d'env secrètes).
+// `FIREBASE_PRIVATE_KEY_B64` (base64 de la clé PEM ou du JSON complet) est
+// prioritaire : c'est la voie robuste, immunisée contre les `\n` mal échappés.
+// Repli sur `FIREBASE_PRIVATE_KEY` (PEM brut, avec normalisation des `\n`).
 const config = () => ({
   projectId: cleanEnv(process.env.FIREBASE_PROJECT_ID),
   clientEmail: cleanEnv(process.env.FIREBASE_CLIENT_EMAIL),
-  privateKey: cleanPrivateKey(process.env.FIREBASE_PRIVATE_KEY),
+  privateKey: cleanPrivateKey(
+    decodeBase64(process.env.FIREBASE_PRIVATE_KEY_B64) ??
+      process.env.FIREBASE_PRIVATE_KEY,
+  ),
 })
 
 export const hasFirebaseAdmin = (): boolean => {
