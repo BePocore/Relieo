@@ -251,39 +251,48 @@ export function AdminApp({
           </tr>
         </thead>
         <tbody>
-          {users.map((u) => (
-            <tr className={u.isAdmin ? 'admin-row' : ''} key={u.uid}>
-              <td>
-                <div className="admin-user-cell">
-                  <strong>
-                    {u.name || u.email || u.uid}
-                    {u.isAdmin ? (
+          {users.map((u) =>
+            u.isAdmin ? (
+              <tr className="admin-row" key={u.uid}>
+                <td colSpan={6}>
+                  <div className="admin-user-cell">
+                    <strong>
+                      {u.name || u.email || u.uid}
                       <span className="admin-row-badge">
                         <ShieldCheck size={12} /> Admin
                       </span>
-                    ) : null}
-                  </strong>
-                  <small>{u.email ?? '—'}{u.emailVerified ? '' : ' · non vérifié'}</small>
-                </div>
-              </td>
-              <td>
-                <select
-                  className="admin-plan-select"
-                  disabled={busyAction === `plan-${u.uid}`}
-                  value={u.plan}
-                  onChange={(event) => void changePlan(u.uid, event.target.value as PlanId)}
-                >
-                  {PLANS.map((plan) => (
-                    <option key={plan.id} value={plan.id}>{plan.name}</option>
-                  ))}
-                </select>
-              </td>
-              <td>{u.hikeCount} <small>({u.publishedCount} pub.)</small></td>
-              <td>{u.mediaCount}</td>
-              <td>{formatBytes(u.usedBytes)}</td>
-              <td>{formatEur(u.monthlyCostEur)}</td>
-            </tr>
-          ))}
+                    </strong>
+                    <small>{u.email ?? '—'} · Compte administrateur, non comptabilisé</small>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              <tr key={u.uid}>
+                <td>
+                  <div className="admin-user-cell">
+                    <strong>{u.name || u.email || u.uid}</strong>
+                    <small>{u.email ?? '—'}{u.emailVerified ? '' : ' · non vérifié'}</small>
+                  </div>
+                </td>
+                <td>
+                  <select
+                    className="admin-plan-select"
+                    disabled={busyAction === `plan-${u.uid}`}
+                    value={u.plan}
+                    onChange={(event) => void changePlan(u.uid, event.target.value as PlanId)}
+                  >
+                    {PLANS.map((plan) => (
+                      <option key={plan.id} value={plan.id}>{plan.name}</option>
+                    ))}
+                  </select>
+                </td>
+                <td>{u.hikeCount} <small>({u.publishedCount} pub.)</small></td>
+                <td>{u.mediaCount}</td>
+                <td>{formatBytes(u.usedBytes)}</td>
+                <td>{formatEur(u.monthlyCostEur)}</td>
+              </tr>
+            ),
+          )}
           {users.length === 0 ? (
             <tr><td className="admin-empty" colSpan={6}>Aucun utilisateur.</td></tr>
           ) : null}
@@ -377,14 +386,16 @@ export function AdminApp({
       <article className="admin-storage-card">
         <h2>Top consommateurs</h2>
         <ul className="admin-top-users">
-          {users.slice(0, 8).map((u) => (
+          {users.filter((u) => !u.isAdmin).slice(0, 8).map((u) => (
             <li key={u.uid}>
               <span>{u.name || u.email || u.uid}</span>
               <strong>{formatBytes(u.usedBytes)}</strong>
               <small>{formatEur(u.monthlyCostEur)}/mois</small>
             </li>
           ))}
-          {users.length === 0 ? <li className="admin-empty">Aucun utilisateur.</li> : null}
+          {users.filter((u) => !u.isAdmin).length === 0 ? (
+            <li className="admin-empty">Aucun utilisateur.</li>
+          ) : null}
         </ul>
       </article>
     </div>
