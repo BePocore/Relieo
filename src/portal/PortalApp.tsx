@@ -626,11 +626,13 @@ function PlanOnboarding({
 
 function DashboardShell({
   user,
+  isAdmin,
   onLogout,
   onSaveProfile,
   onSavePhoto,
 }: {
   user: PortalUser
+  isAdmin: boolean
   onLogout: () => void
   onSaveProfile: (user: PortalUser) => Promise<void>
   onSavePhoto: (photoURL: string) => Promise<void>
@@ -643,40 +645,12 @@ function DashboardShell({
   const [mobileMenu, setMobileMenu] = useState(false)
   const [profile, setProfile] = useState(user)
   const [usage, setUsage] = useState<StorageUsage | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     const syncView = () => setView(currentView())
     window.addEventListener('popstate', syncView)
     return () => window.removeEventListener('popstate', syncView)
   }, [])
-
-  // L'autorisation admin est revérifiée côté serveur sur chaque endpoint : ce
-  // flag ne sert qu'à afficher l'entrée « Admin » et la vue.
-  useEffect(() => {
-    let cancelled = false
-    void getIdToken()
-      .then((token) => {
-        if (!token) return null
-        return fetch('/api/admin/me', {
-          cache: 'no-store',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-      })
-      .then(async (response) => {
-        if (!response || !response.ok) return
-        const data = (await response.json().catch(() => null)) as
-          | { admin?: boolean }
-          | null
-        if (!cancelled && data?.admin) setIsAdmin(true)
-      })
-      .catch(() => {
-        // Silencieux : pas admin par défaut.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [user.id])
 
   useEffect(() => {
     let cancelled = false
@@ -1230,6 +1204,41 @@ function FirebasePortal() {
   } | null>(null)
   const [emailVerified, setEmailVerified] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  // Détection admin remontée ici (avant le dashboard) pour pouvoir sauter
+  // l'écran de choix de forfait : l'admin (Dieu) n'a pas de forfait.
+  const [admin, setAdmin] = useState<{ checked: boolean; isAdmin: boolean }>({
+    checked: false,
+    isAdmin: false,
+  })
+
+  useEffect(() => {
+    if (!session || !emailVerified) return
+    let cancelled = false
+    void getIdToken()
+      .then((token) => {
+        if (!token) return null
+        return fetch('/api/admin/me', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      })
+      .then(async (response) => {
+        let isAdmin = false
+        if (response && response.ok) {
+          const data = (await response.json().catch(() => null)) as
+            | { admin?: boolean }
+            | null
+          isAdmin = Boolean(data?.admin)
+        }
+        if (!cancelled) setAdmin({ checked: true, isAdmin })
+      })
+      .catch(() => {
+        if (!cancelled) setAdmin({ checked: true, isAdmin: false })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session, emailVerified])
 
   useEffect(() => {
     document.body.classList.add('portal-active')
@@ -1309,8 +1318,11 @@ function FirebasePortal() {
   }
 
   // Étape post-inscription : tant qu'aucun forfait n'est choisi, on affiche
-  // l'écran de sélection avant de donner accès au dashboard.
-  if (!session.portalUser.plan) {
+  // l'écran de sélection avant de donner accès au dashboard. L'admin (Dieu) en
+  // est exempté ; on attend la fin de la détection admin pour ne pas faire
+  // clignoter l'écran de forfait avant de l'identifier.
+  if (!session.portalUser.plan && !admin.isAdmin) {
+    if (!admin.checked) return null
     return (
       <>
         {profileError ? <p className="auth-error">{profileError}</p> : null}
@@ -1334,6 +1346,7 @@ function FirebasePortal() {
       {profileError ? <p className="auth-error">{profileError}</p> : null}
       <DashboardShell
         user={session.portalUser}
+        isAdmin={admin.isAdmin}
         onLogout={() => {
           void signOut(auth)
           navigate('/login')
