@@ -124,6 +124,9 @@ export function AdminApp({
   // Modale de dépublication : carte ciblée + message à transmettre au propriétaire.
   const [unpublishTarget, setUnpublishTarget] = useState<AdminMap | null>(null)
   const [unpublishMessage, setUnpublishMessage] = useState('')
+  // Modale de suppression : carte ciblée + saisie de confirmation (« delete »).
+  const [deleteTarget, setDeleteTarget] = useState<AdminMap | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -188,12 +191,6 @@ export function AdminApp({
     action: 'unpublish' | 'delete',
     extra?: { message?: string; title?: string },
   ) => {
-    if (
-      action === 'delete' &&
-      !window.confirm(`Supprimer définitivement la carte « ${code} » et ses médias ?`)
-    ) {
-      return
-    }
     setBusyAction(`map-${code}`)
     try {
       const response = await authFetch('/api/admin/map', {
@@ -426,7 +423,10 @@ export function AdminApp({
                     className="admin-action danger"
                     disabled={busyAction === `map-${m.code}`}
                     type="button"
-                    onClick={() => void mapAction(m.code, 'delete')}
+                    onClick={() => {
+                      setDeleteConfirm('')
+                      setDeleteTarget(m)
+                    }}
                     title="Supprimer définitivement"
                   >
                     <Trash2 size={15} /> Supprimer
@@ -671,6 +671,57 @@ export function AdminApp({
                 }}
               >
                 Valider et dépublier
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-modal">
+            <h2 className="admin-modal-danger">
+              <Trash2 size={18} /> Supprimer « {deleteTarget.title} »
+            </h2>
+            <p>
+              Action <strong>définitive et irréversible</strong>. La carte, ses
+              {' '}{deleteTarget.mediaCount} média(s) et son dossier de stockage R2
+              seront supprimés. Le propriétaire
+              ({deleteTarget.ownerEmail ?? deleteTarget.ownerId}) perdra la carte
+              sans possibilité de récupération.
+            </p>
+            <p className="admin-modal-instruction">
+              Pour confirmer, tape <code>delete</code> ci-dessous.
+            </p>
+            <input
+              autoFocus
+              className="admin-modal-input"
+              placeholder="delete"
+              value={deleteConfirm}
+              onChange={(event) => setDeleteConfirm(event.target.value)}
+            />
+            <div className="admin-modal-actions">
+              <button
+                className="admin-modal-cancel"
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="admin-modal-delete"
+                disabled={
+                  deleteConfirm.trim().toLowerCase() !== 'delete' ||
+                  busyAction === `map-${deleteTarget.code}`
+                }
+                type="button"
+                onClick={async () => {
+                  const target = deleteTarget
+                  await mapAction(target.code, 'delete')
+                  setDeleteTarget(null)
+                }}
+              >
+                <Trash2 size={15} /> Supprimer définitivement
               </button>
             </div>
           </div>

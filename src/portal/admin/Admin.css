@@ -489,7 +489,50 @@
   box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.45);
 }
 .admin-modal h2 { margin: 0 0 8px; font-size: 19px; }
+.admin-modal-danger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b3261e;
+}
 .admin-modal p { margin: 0 0 16px; font-size: 13.5px; color: var(--admin-muted); line-height: 1.5; }
+.admin-modal-instruction { margin-bottom: 8px; color: var(--admin-ink); }
+.admin-modal-instruction code {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: #fdecec;
+  color: #b3261e;
+  font-weight: 700;
+}
+.admin-modal-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.admin-modal-input:focus {
+  outline: none;
+  border-color: #b3261e;
+  box-shadow: 0 0 0 3px #fdecec;
+}
+.admin-modal-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #b3261e;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.admin-modal-delete:hover:not(:disabled) { background: #911c16; }
+.admin-modal-delete:disabled { opacity: 0.5; cursor: default; }
 .admin-modal-textarea {
   width: 100%;
   min-height: 110px;
