@@ -1,4 +1,4 @@
-import { getFirestore } from 'firebase-admin/firestore'
+import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { adminApp } from './firebaseAdmin.js'
 
 // Profil utilisateur tel que stocké dans Firestore (collection `profiles/<uid>`).
@@ -43,4 +43,32 @@ export const setUserPlan = async (
     .collection('profiles')
     .doc(uid)
     .set({ plan, updatedAt: new Date().toISOString() }, { merge: true })
+}
+
+// Notification admin déposée dans le profil de l'utilisateur (champ tableau
+// `notifications`), affichée à sa prochaine connexion. arrayUnion ajoute sans
+// écraser les autres champs ni les notifications déjà présentes.
+export type UserNotification = {
+  id: string
+  type: 'unpublish' | 'info'
+  message: string
+  mapTitle?: string
+  createdAt: string
+}
+
+export const pushUserNotification = async (
+  uid: string,
+  notification: UserNotification,
+): Promise<void> => {
+  const db = getFirestore(adminApp())
+  await db
+    .collection('profiles')
+    .doc(uid)
+    .set(
+      {
+        notifications: FieldValue.arrayUnion(notification),
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    )
 }

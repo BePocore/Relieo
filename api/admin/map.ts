@@ -11,6 +11,7 @@ import {
   removeHikeIndex,
   upsertHikeIndex,
 } from '../../server/hikeIndex.js'
+import { pushUserNotification } from '../../server/firestoreAdmin.js'
 import {
   activeTrailPath,
   trailFolder,
@@ -19,7 +20,13 @@ import {
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
-type MapActionBody = { code?: string; action?: 'unpublish' | 'delete' }
+type MapActionBody = {
+  code?: string
+  action?: 'unpublish' | 'delete'
+  // Message facultatif transmis au propriétaire à sa prochaine connexion.
+  message?: string
+  title?: string
+}
 
 // Si la carte ciblée est la carte publique active, on retire le pointeur pour
 // qu'elle disparaisse de la vue publique par défaut.
@@ -67,6 +74,17 @@ export async function POST(request: Request) {
     if (action === 'unpublish') {
       await upsertHikeIndex({ folder, status: 'draft' })
       await clearActiveIfMatches(folder)
+      // Notifie le propriétaire (message admin affiché à sa prochaine connexion).
+      const message = body.message?.trim()
+      if (owner && message) {
+        await pushUserNotification(owner, {
+          id: `${folder}-${Date.now()}`,
+          type: 'unpublish',
+          message,
+          mapTitle: body.title?.trim() || code,
+          createdAt: new Date().toISOString(),
+        })
+      }
       return Response.json({ code, action, status: 'draft' }, { headers: jsonHeaders })
     }
 

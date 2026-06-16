@@ -33,3 +33,13 @@ export type ProfileExtras = {
   plan?: string
   photoURL?: string
 }
+
+// Notification déposée par l'admin dans le profil de l'utilisateur, affichée à
+// sa prochaine connexion (ex : une de ses cartes a été dépubliée).
+export type PortalNotification = {
+  id: string
+  type: 'unpublish' | 'info'
+  message: string
+  mapTitle?: string
+  createdAt: string
+}

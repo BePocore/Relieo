@@ -121,6 +121,9 @@ export function AdminApp({
   const [busyAction, setBusyAction] = useState<string | null>(null)
   // Fenêtre temporelle du graphe d'évolution (en mois, 'all' = tout l'historique).
   const [rangeMonths, setRangeMonths] = useState<number | 'all'>('all')
+  // Modale de dépublication : carte ciblée + message à transmettre au propriétaire.
+  const [unpublishTarget, setUnpublishTarget] = useState<AdminMap | null>(null)
+  const [unpublishMessage, setUnpublishMessage] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -180,7 +183,11 @@ export function AdminApp({
     }
   }
 
-  const mapAction = async (code: string, action: 'unpublish' | 'delete') => {
+  const mapAction = async (
+    code: string,
+    action: 'unpublish' | 'delete',
+    extra?: { message?: string; title?: string },
+  ) => {
     if (
       action === 'delete' &&
       !window.confirm(`Supprimer définitivement la carte « ${code} » et ses médias ?`)
@@ -192,7 +199,7 @@ export function AdminApp({
       const response = await authFetch('/api/admin/map', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, action }),
+        body: JSON.stringify({ code, action, ...extra }),
       })
       if (!response.ok) throw new Error()
       if (action === 'delete') {
@@ -406,7 +413,10 @@ export function AdminApp({
                       className="admin-action"
                       disabled={busyAction === `map-${m.code}`}
                       type="button"
-                      onClick={() => void mapAction(m.code, 'unpublish')}
+                      onClick={() => {
+                        setUnpublishMessage('')
+                        setUnpublishTarget(m)
+                      }}
                       title="Repasser en brouillon"
                     >
                       <EyeOff size={15} /> Dépublier
@@ -619,6 +629,53 @@ export function AdminApp({
           )}
         </div>
       </main>
+
+      {unpublishTarget ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-modal">
+            <h2>Dépublier « {unpublishTarget.title} »</h2>
+            <p>
+              La carte repasse en brouillon. Le message ci-dessous sera affiché à
+              son propriétaire ({unpublishTarget.ownerEmail ?? unpublishTarget.ownerId})
+              à sa prochaine connexion.
+            </p>
+            <textarea
+              autoFocus
+              className="admin-modal-textarea"
+              placeholder="Ex : Votre carte a été dépubliée car elle ne respecte pas…"
+              value={unpublishMessage}
+              onChange={(event) => setUnpublishMessage(event.target.value)}
+            />
+            <div className="admin-modal-actions">
+              <button
+                className="admin-modal-cancel"
+                type="button"
+                onClick={() => setUnpublishTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="admin-modal-validate"
+                disabled={
+                  !unpublishMessage.trim() ||
+                  busyAction === `map-${unpublishTarget.code}`
+                }
+                type="button"
+                onClick={async () => {
+                  const target = unpublishTarget
+                  await mapAction(target.code, 'unpublish', {
+                    message: unpublishMessage,
+                    title: target.title,
+                  })
+                  setUnpublishTarget(null)
+                }}
+              >
+                Valider et dépublier
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

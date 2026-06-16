@@ -16,7 +16,7 @@ import {
   setDoc,
   type Firestore,
 } from 'firebase/firestore'
-import type { ProfileExtras } from './portalStore'
+import type { PortalNotification, ProfileExtras } from './portalStore'
 
 const cleanEnv = (value: string | undefined): string | undefined => {
   const cleaned = value?.replace(/^\uFEFF/, '').trim()
@@ -137,6 +137,40 @@ export const saveUserPlan = async (
   await setDoc(
     reference,
     { plan, updatedAt: serverTimestamp() },
+    { merge: true },
+  )
+}
+
+// Notifications déposées par l'admin dans le profil (ex : carte dépubliée).
+// L'utilisateur lit son propre document (autorisé par les règles Firestore).
+export const readUserNotifications = async (
+  uid: string,
+): Promise<PortalNotification[]> => {
+  const reference = profileDocument(uid)
+  if (!reference) return []
+  const snapshot = await getDoc(reference)
+  if (!snapshot.exists()) return []
+  const raw = snapshot.data().notifications
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (item): item is PortalNotification =>
+      Boolean(item) && typeof item.message === 'string' && typeof item.id === 'string',
+  )
+}
+
+// Acquittement : on retire les notifications affichées (par id) du profil.
+export const dismissUserNotifications = async (
+  uid: string,
+  ids: string[],
+): Promise<void> => {
+  const reference = profileDocument(uid)
+  if (!reference) return
+  const remaining = (await readUserNotifications(uid)).filter(
+    (item) => !ids.includes(item.id),
+  )
+  await setDoc(
+    reference,
+    { notifications: remaining, updatedAt: serverTimestamp() },
     { merge: true },
   )
 }

@@ -56,13 +56,16 @@ import {
 } from 'firebase/auth'
 import {
   type PortalHike,
+  type PortalNotification,
   type PortalUser,
   type ProfileExtras,
 } from './portalStore'
 import {
+  dismissUserNotifications,
   getFirebaseAuth,
   getIdToken,
   googleProvider,
+  readUserNotifications,
   readUserProfile,
   saveUserPhoto,
   saveUserPlan,
@@ -1194,6 +1197,8 @@ function FirebasePortal() {
     checked: false,
     isAdmin: false,
   })
+  // Messages déposés par l'admin (ex : carte dépubliée), affichés à la connexion.
+  const [notifications, setNotifications] = useState<PortalNotification[]>([])
 
   useEffect(() => {
     if (!session || !emailVerified) return
@@ -1223,6 +1228,22 @@ function FirebasePortal() {
       cancelled = true
     }
   }, [session, emailVerified])
+
+  // Charge les notifications admin une fois l'utilisateur (non-admin) identifié.
+  useEffect(() => {
+    if (!session || !emailVerified || !admin.checked || admin.isAdmin) return
+    let cancelled = false
+    void readUserNotifications(session.firebaseUser.uid)
+      .then((items) => {
+        if (!cancelled) setNotifications(items)
+      })
+      .catch(() => {
+        if (!cancelled) setNotifications([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session, emailVerified, admin])
 
   useEffect(() => {
     document.body.classList.add('portal-active')
@@ -1320,11 +1341,59 @@ function FirebasePortal() {
     )
   }
 
+  // Popup des messages admin (ex : carte dépubliée), affiché par-dessus le
+  // dashboard à la connexion. Acquittement = suppression côté Firestore.
+  const notificationsModal =
+    notifications.length > 0 ? (
+      <div className="portal-modal-backdrop" role="dialog" aria-modal="true">
+        <div className="portal-modal">
+          <h2>
+            {notifications.length > 1
+              ? 'Messages de l’administrateur'
+              : 'Message de l’administrateur'}
+          </h2>
+          <ul className="portal-notif-list">
+            {notifications.map((item) => (
+              <li key={item.id}>
+                {item.type === 'unpublish' && item.mapTitle ? (
+                  <p className="portal-notif-title">
+                    Carte « {item.mapTitle} » dépubliée
+                  </p>
+                ) : null}
+                <p className="portal-notif-message">{item.message}</p>
+                <span className="portal-notif-date">
+                  {new Date(item.createdAt).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <button
+            className="portal-notif-ok"
+            type="button"
+            onClick={() => {
+              const ids = notifications.map((item) => item.id)
+              setNotifications([])
+              void dismissUserNotifications(session.firebaseUser.uid, ids).catch(
+                () => undefined,
+              )
+            }}
+          >
+            J’ai compris
+          </button>
+        </div>
+      </div>
+    ) : null
+
   // Étape post-inscription : tant qu'aucun forfait n'est choisi, on affiche
   // l'écran de sélection avant de donner accès au dashboard.
   if (!session.portalUser.plan) {
     return (
       <>
+        {notificationsModal}
         {profileError ? <p className="auth-error">{profileError}</p> : null}
         <PlanOnboarding
           user={session.portalUser}
@@ -1343,6 +1412,7 @@ function FirebasePortal() {
 
   return (
     <>
+      {notificationsModal}
       {profileError ? <p className="auth-error">{profileError}</p> : null}
       <DashboardShell
         user={session.portalUser}
