@@ -164,6 +164,18 @@ const studioUrl = (): string => {
   return url.toString()
 }
 
+// Après la première sauvegarde d'une nouvelle carte, bascule l'URL `?new=<code>`
+// en `?code=<code>` pour qu'un rechargement recharge le brouillon enregistré
+// (et ne réouvre pas un studio vide).
+const syncStudioUrlToCode = (code: string): void => {
+  if (!code) return
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has('new')) return
+  url.searchParams.delete('new')
+  url.searchParams.set('code', code)
+  window.history.replaceState(window.history.state, '', url.toString())
+}
+
 const studioReturnStateKey = 'relieoStudioReturn'
 
 const studioReturnUrl = (): string | null => {
@@ -374,7 +386,9 @@ function App() {
   const [hikeTitle] = useState(() =>
     new URLSearchParams(window.location.search).get('title')?.trim() ?? '',
   )
-  const isLocalBlankStudio = import.meta.env.DEV && Boolean(newTrailCode)
+  // Nouvelle carte vierge : `?new=<code>` démarre un studio VIDE (en dev comme
+  // en prod). La carte reste un brouillon (autosave en draft) jusqu'à publication.
+  const isNewBlankStudio = Boolean(newTrailCode)
   const [isPanelOpen, setIsPanelOpen] = useState(() => isStudioUrl())
   const [traces, setTraces] = useState<Trace[]>([])
   const [points, setPoints] = useState<TrailPoint[]>([])
@@ -466,7 +480,7 @@ function App() {
         setIsLoading(true)
         setError(null)
 
-        if (isLocalBlankStudio) {
+        if (isNewBlankStudio) {
           const blankPoints: TrailPoint[] = []
           const blankTraces: Trace[] = []
           const blankMediaLibrary: ImportedMedia[] = []
@@ -540,7 +554,7 @@ function App() {
     }
 
     void loadTrail()
-  }, [applyProject, isLocalBlankStudio, newTrailCode, hikeCode])
+  }, [applyProject, isNewBlankStudio, newTrailCode, hikeCode])
 
   const combinedPoints = useMemo(
     () => traces.flatMap((trace) => trace.points),
@@ -714,6 +728,7 @@ function App() {
         throw new Error(result?.message ?? 'Sauvegarde auto impossible.')
       }
       setSavedProjectSignature(snapshot.signature)
+      syncStudioUrlToCode(snapshot.accessCode.trim())
       setSaveStatus('Modifs sauvegardées automatiquement.')
     } catch (saveError) {
       const message =
@@ -1396,12 +1411,6 @@ function App() {
   }, [points])
 
   const handleSaveProject = useCallback(async () => {
-    if (isLocalBlankStudio) {
-      setSaveStatus(
-        'Prototype local : la publication Cloudflare sera branchée lors de l’assemblage final.',
-      )
-      return
-    }
     if (!accessCode.trim()) {
       setSaveStatus('Le code de la carte est obligatoire pour créer son dossier R2.')
       return
@@ -1462,6 +1471,7 @@ function App() {
           : accessCode.trim()
       setIsPublished(true)
       setSavedProjectSignature(submittedSignature)
+      syncStudioUrlToCode(accessCode.trim())
       setSaveStatus(`Carte publiée dans Cloudflare R2 : ${folder}.`)
       setError(null)
     } catch (saveError) {
@@ -1476,7 +1486,6 @@ function App() {
       setIsSaving(false)
     }
   }, [
-    isLocalBlankStudio,
     accessCode,
     adminPassword,
     combinedPoints,
