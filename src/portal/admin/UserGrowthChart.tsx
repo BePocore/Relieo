@@ -19,12 +19,15 @@ const PAD = { top: 18, right: 18, bottom: 30, left: 40 }
 const PLOT_W = W - PAD.left - PAD.right
 const PLOT_H = H - PAD.top - PAD.bottom
 
-// Arrondit le haut de l'axe Y à une valeur « propre ».
-const niceMax = (value: number): number => {
-  if (value <= 0) return 4
-  const pow = Math.pow(10, Math.floor(Math.log10(value)))
-  const step = pow <= 1 ? 1 : pow / 2
-  return Math.max(step, Math.ceil(value / step) * step)
+// Graduations entières et distinctes pour l'axe Y (les valeurs sont des
+// effectifs : pas de demi-utilisateur, et pas de labels dupliqués).
+const buildTicks = (rawMax: number): number[] => {
+  const top = Math.max(1, rawMax)
+  const step = Math.max(1, Math.ceil(top / 4))
+  const max = Math.ceil(top / step) * step
+  const ticks: number[] = []
+  for (let v = 0; v <= max; v += step) ticks.push(v)
+  return ticks
 }
 
 // Courbe lissée (Catmull-Rom converti en Béziers) pour un rendu type capture.
@@ -52,12 +55,12 @@ export function UserGrowthChart({ labels, series }: Props) {
 
   const { ticks, xOf, yOf } = useMemo(() => {
     const allValues = series.flatMap((s) => s.values)
-    const max = niceMax(Math.max(1, ...allValues))
+    const ticks = buildTicks(Math.max(1, ...allValues))
+    const max = ticks[ticks.length - 1]
     const count = labels.length
     const xOf = (i: number) =>
       PAD.left + (count <= 1 ? PLOT_W / 2 : (i / (count - 1)) * PLOT_W)
     const yOf = (v: number) => PAD.top + PLOT_H - (v / max) * PLOT_H
-    const ticks = Array.from({ length: 5 }, (_, i) => (max / 4) * i)
     return { ticks, xOf, yOf }
   }, [labels.length, series])
 
@@ -161,7 +164,7 @@ export function UserGrowthChart({ labels, series }: Props) {
         <div
           className="admin-chart-tip"
           style={{
-            left: `${(xOf(hover) / W) * 100}%`,
+            left: `${Math.min(86, Math.max(14, (xOf(hover) / W) * 100))}%`,
             top: `${(PAD.top / H) * 100}%`,
           }}
         >

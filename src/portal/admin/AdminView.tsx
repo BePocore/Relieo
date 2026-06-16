@@ -119,6 +119,8 @@ export function AdminApp({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
+  // Fenêtre temporelle du graphe d'évolution (en mois, 'all' = tout l'historique).
+  const [rangeMonths, setRangeMonths] = useState<number | 'all'>('all')
 
   const load = useCallback(async () => {
     try {
@@ -233,18 +235,20 @@ export function AdminApp({
     if (dated.length > 0) {
       const first = new Date(dated[0].t)
       const now = new Date()
-      const months: Array<{ label: string; end: number }> = []
+      const allMonths: Array<{ label: string; end: number }> = []
       // Mois de référence (un mois avant la première inscription) à 0.
       const cursor = new Date(first.getFullYear(), first.getMonth() - 1, 1)
       const lastMonth = new Date(now.getFullYear(), now.getMonth(), 1)
       while (cursor <= lastMonth) {
         const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59).getTime()
-        months.push({
+        allMonths.push({
           label: cursor.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }),
           end,
         })
         cursor.setMonth(cursor.getMonth() + 1)
       }
+      // Fenêtre sélectionnée (le cumul reste compté depuis le début).
+      const months = rangeMonths === 'all' ? allMonths : allMonths.slice(-rangeMonths)
       const cumulative = (end: number, planId?: string) =>
         dated.filter((u) => u.t <= end && (!planId || u.plan === planId)).length
 
@@ -261,7 +265,7 @@ export function AdminApp({
     }
 
     return { mrr, paidCount, arpu, perPlan, chart, clientCount: clients.length }
-  }, [users])
+  }, [users, rangeMonths])
 
   const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode }> = [
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
@@ -514,9 +518,23 @@ export function AdminApp({
 
   const growthPanel = (
     <section className="admin-panel" aria-label="Évolution des utilisateurs">
-      <header className="admin-panel-head">
-        <h2><LineChart size={18} /> Évolution des utilisateurs</h2>
-        <p>Inscriptions cumulées par forfait, mois par mois.</p>
+      <header className="admin-panel-head admin-panel-head-row">
+        <div>
+          <h2><LineChart size={18} /> Évolution des utilisateurs</h2>
+          <p>Inscriptions cumulées par forfait, mois par mois.</p>
+        </div>
+        <select
+          className="admin-range-select"
+          value={rangeMonths === 'all' ? 'all' : String(rangeMonths)}
+          onChange={(event) =>
+            setRangeMonths(event.target.value === 'all' ? 'all' : Number(event.target.value))
+          }
+        >
+          <option value="3">3 derniers mois</option>
+          <option value="6">6 derniers mois</option>
+          <option value="12">12 derniers mois</option>
+          <option value="all">Tout l’historique</option>
+        </select>
       </header>
       {analytics.chart ? (
         <>
