@@ -746,6 +746,19 @@ function DashboardShell({
     [hikes],
   )
 
+  // Carte la plus récemment modifiée : alimente le panneau « Activité récente ».
+  const recentHike = useMemo(
+    () =>
+      hikes.reduce<PortalHike | null>(
+        (latest, hike) =>
+          !latest || new Date(hike.updatedAt) > new Date(latest.updatedAt)
+            ? hike
+            : latest,
+        null,
+      ),
+    [hikes],
+  )
+
   const createHike = (title: string, code: string) => {
     setCreateOpen(false)
     window.location.assign(
@@ -820,7 +833,32 @@ function DashboardShell({
 
               {view === 'dashboard' ? (
                 <section className="dashboard-bottom-grid">
-                  <article className="activity-panel"><div className="section-heading"><div><h2>Activité récente</h2><p>Votre dernier projet</p></div></div><div className="activity-line"><span className="activity-icon"><Mountain size={19} /></span><div><strong>Halsa a été publiée</strong><p>70 points et 66 médias synchronisés</p></div><time>{formatDate(hikes.find((hike) => hike.id === 'halsa')?.updatedAt ?? new Date().toISOString())}</time></div></article>
+                  <article className="activity-panel">
+                    <div className="section-heading"><div><h2>Activité récente</h2><p>Votre dernier projet</p></div></div>
+                    {recentHike ? (
+                      <div className="activity-line">
+                        <span className="activity-icon"><Mountain size={19} /></span>
+                        <div>
+                          <strong>
+                            {recentHike.title}{' '}
+                            {recentHike.status === 'published'
+                              ? 'a été publiée'
+                              : 'enregistrée en brouillon'}
+                          </strong>
+                          <p>{recentHike.pointCount} points et {recentHike.mediaCount} médias synchronisés</p>
+                        </div>
+                        <time>{formatDate(recentHike.updatedAt)}</time>
+                      </div>
+                    ) : (
+                      <div className="activity-line">
+                        <span className="activity-icon"><Mountain size={19} /></span>
+                        <div>
+                          <strong>Aucun projet pour l’instant</strong>
+                          <p>Créez votre première carte pour démarrer.</p>
+                        </div>
+                      </div>
+                    )}
+                  </article>
                   <article className="storage-panel">
                     <div>
                       <p className="portal-kicker">Stockage média</p>
