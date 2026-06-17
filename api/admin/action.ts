@@ -29,17 +29,18 @@ import type { AuthedUser } from '../../server/firebaseAdmin.js'
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
 type ActionBody = {
-  action?: 'set-plan' | 'map' | 'user-action' | 'mark-read'
+  action?: 'set-plan' | 'map' | 'user-action' | 'reply-appeal' | 'mark-read'
   // set-plan
   plan?: string
-  // map + user-action
+  // map + user-action + reply-appeal
   uid?: string
   code?: string
   op?: string
   message?: string
   title?: string
-  // mark-read
+  // mark-read + reply-appeal (notification visée)
   ids?: string[]
+  notifId?: string
 }
 
 const json = (data: unknown, status = 200) =>
@@ -174,6 +175,7 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
       message,
       banCount: current.banCount + 1,
       appeal: null,
+      adminReply: null,
     })
     await pushUserNotification(uid, {
       id: `${uid}-block-${Date.now()}`,
@@ -186,7 +188,12 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
   }
 
   if (op === 'unblock') {
-    await setModeration(uid, { status: 'active', message: '', appeal: null })
+    await setModeration(uid, {
+      status: 'active',
+      message: '',
+      appeal: null,
+      adminReply: null,
+    })
     await logSanction('unblock')
     return json({ uid, op, status: 'active' })
   }
@@ -240,6 +247,19 @@ export async function POST(request: Request) {
         return handleMap(admin, body)
       case 'user-action':
         return handleUserAction(admin, body)
+      case 'reply-appeal': {
+        const uid = body.uid?.trim()
+        const message = body.message?.trim()
+        if (!uid || !message) {
+          return json({ message: 'uid et message sont obligatoires.' }, 400)
+        }
+        await setModeration(uid, {
+          adminReply: { message, sentAt: new Date().toISOString() },
+        })
+        // L'appel traité est marqué lu.
+        if (body.notifId) await markAdminNotificationsRead([body.notifId])
+        return json({ uid, replied: true })
+      }
       case 'mark-read': {
         const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : []
         if (ids.length > 0) await markAdminNotificationsRead(ids)

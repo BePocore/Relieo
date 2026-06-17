@@ -1229,11 +1229,13 @@ function VerifyEmailScreen({
 function BlockedScreen({
   message,
   appealSent,
+  adminReply,
   onAppeal,
   onLogout,
 }: {
   message: string
   appealSent: boolean
+  adminReply: string | null
   onAppeal: (message: string) => Promise<void>
   onLogout: () => void
 }) {
@@ -1261,6 +1263,12 @@ function BlockedScreen({
           <span className="sanction-icon blocked"><Ban size={26} /></span>
           <h2>Votre compte est bloqué</h2>
           <p className="sanction-message">{message || 'Votre accès a été suspendu par un administrateur.'}</p>
+          {adminReply ? (
+            <div className="sanction-reply">
+              <span className="sanction-reply-label">Réponse de l’administrateur</span>
+              <p>{adminReply}</p>
+            </div>
+          ) : null}
           {sent ? (
             <p className="verify-success"><Check size={15} /> Message envoyé à l’administrateur.</p>
           ) : (
@@ -1405,7 +1413,13 @@ function FirebasePortal() {
         if (!cancelled) setAccountStatus(status)
       })
       .catch(() => {
-        if (!cancelled) setAccountStatus({ status: 'active', message: '', appealSent: false })
+        if (!cancelled)
+          setAccountStatus({
+            status: 'active',
+            message: '',
+            appealSent: false,
+            adminReply: null,
+          })
       })
     return () => {
       cancelled = true
@@ -1515,6 +1529,7 @@ function FirebasePortal() {
   if (accountStatus.status === 'blocked') {
     return (
       <BlockedScreen
+        adminReply={accountStatus.adminReply}
         appealSent={accountStatus.appealSent}
         message={accountStatus.message}
         onAppeal={(message) => sendAccountAppeal(message)}

@@ -1710,6 +1710,23 @@
   text-align: left;
 }
 .sanction-note { margin: 0; font-size: 13px; color: #64706a; }
+.sanction-reply {
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #dff3e9;
+  border: 1px solid #bfe6d2;
+}
+.sanction-reply-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #0b6b43;
+  margin-bottom: 4px;
+}
+.sanction-reply p { margin: 0; font-size: 14px; line-height: 1.5; color: #14201b; white-space: pre-wrap; }
 .sanction-label {
   display: block;
   text-align: left;

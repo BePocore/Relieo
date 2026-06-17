@@ -40,6 +40,8 @@ export type AccountStatus = {
   status: 'active' | 'blocked' | 'deleted'
   message: string
   appealSent: boolean
+  // Réponse de l'admin à l'appel, affichée sur l'écran de blocage.
+  adminReply: string | null
 }
 
 // Notification déposée par l'admin dans le profil de l'utilisateur, affichée à

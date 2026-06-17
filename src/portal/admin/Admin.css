@@ -575,8 +575,8 @@
 .admin-notif-card.unread .admin-notif-from { color: #9a4d07; }
 .admin-notif-head time { font-size: 12px; color: var(--admin-muted); }
 .admin-notif-message { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.admin-notif-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .admin-notif-mark {
-  margin-top: 12px;
   padding: 7px 12px;
   border: 1px solid var(--admin-line);
   border-radius: 10px;
@@ -586,6 +586,29 @@
   cursor: pointer;
 }
 .admin-notif-mark:hover { background: var(--admin-green-soft); }
+.admin-notif-mark.primary {
+  border-color: transparent;
+  background: var(--admin-green);
+  color: #fff;
+}
+.admin-notif-mark.primary:hover { background: var(--admin-green-dark); }
+.admin-notif-reply {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--admin-green-soft);
+  border: 1px solid #bfe6d2;
+}
+.admin-notif-reply span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--admin-green);
+  margin-bottom: 3px;
+}
+.admin-notif-reply p { margin: 0; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; }
 
 /* Modale de dépublication (saisie du message au propriétaire) */
 .admin-modal-backdrop {

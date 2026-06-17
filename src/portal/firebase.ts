@@ -181,9 +181,15 @@ export const readAccountStatus = async (
   uid: string,
 ): Promise<AccountStatus> => {
   const db = getFirebaseDb()
-  if (!db) return { status: 'active', message: '', appealSent: false }
+  const fallback: AccountStatus = {
+    status: 'active',
+    message: '',
+    appealSent: false,
+    adminReply: null,
+  }
+  if (!db) return fallback
   const snapshot = await getDoc(doc(db, 'moderation', uid))
-  if (!snapshot.exists()) return { status: 'active', message: '', appealSent: false }
+  if (!snapshot.exists()) return fallback
   const data = snapshot.data()
   return {
     status:
@@ -192,6 +198,10 @@ export const readAccountStatus = async (
         : 'active',
     message: typeof data.message === 'string' ? data.message : '',
     appealSent: Boolean(data.appeal),
+    adminReply:
+      data.adminReply && typeof data.adminReply.message === 'string'
+        ? data.adminReply.message
+        : null,
   }
 }
 

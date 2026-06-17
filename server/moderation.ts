@@ -21,6 +21,8 @@ export type ModerationRecord = {
   updatedAt: string | null
   // Message d'appel envoyé par l'utilisateur pour le ban en cours (1 seul).
   appeal: ModerationAppeal | null
+  // Réponse de l'admin à l'appel, affichée à l'utilisateur sur l'écran de blocage.
+  adminReply: ModerationAppeal | null
 }
 
 const DEFAULT: ModerationRecord = {
@@ -29,7 +31,16 @@ const DEFAULT: ModerationRecord = {
   banCount: 0,
   updatedAt: null,
   appeal: null,
+  adminReply: null,
 }
+
+const parseAppeal = (value: unknown): ModerationAppeal | null =>
+  value && typeof (value as ModerationAppeal).message === 'string'
+    ? {
+        message: (value as ModerationAppeal).message,
+        sentAt: (value as ModerationAppeal).sentAt ?? '',
+      }
+    : null
 
 const docRef = (uid: string) =>
   getFirestore(adminApp()).collection('moderation').doc(uid)
@@ -48,10 +59,8 @@ export const readModeration = async (
     message: typeof data.message === 'string' ? data.message : '',
     banCount: typeof data.banCount === 'number' ? data.banCount : 0,
     updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : null,
-    appeal:
-      data.appeal && typeof data.appeal.message === 'string'
-        ? { message: data.appeal.message, sentAt: data.appeal.sentAt ?? '' }
-        : null,
+    appeal: parseAppeal(data.appeal),
+    adminReply: parseAppeal(data.adminReply),
   }
 }
 
@@ -71,10 +80,8 @@ export const readAllModeration = async (): Promise<
       message: typeof data.message === 'string' ? data.message : '',
       banCount: typeof data.banCount === 'number' ? data.banCount : 0,
       updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : null,
-      appeal:
-        data.appeal && typeof data.appeal.message === 'string'
-          ? { message: data.appeal.message, sentAt: data.appeal.sentAt ?? '' }
-          : null,
+      appeal: parseAppeal(data.appeal),
+      adminReply: parseAppeal(data.adminReply),
     })
   }
   return records

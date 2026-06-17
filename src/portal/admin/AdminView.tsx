@@ -43,6 +43,8 @@ type AdminUser = {
   monthlyCostEur: number
   status: 'active' | 'blocked' | 'deleted'
   banCount: number
+  appeal: string | null
+  adminReply: string | null
 }
 
 type AdminNotification = {
@@ -187,6 +189,9 @@ export function AdminApp({
   const [deleteUserTarget, setDeleteUserTarget] = useState<AdminUser | null>(null)
   const [deleteUserConfirm, setDeleteUserConfirm] = useState('')
   const [deleteUserMessage, setDeleteUserMessage] = useState('')
+  // Modale de réponse à un appel de banni.
+  const [replyTarget, setReplyTarget] = useState<AdminNotification | null>(null)
+  const [replyMessage, setReplyMessage] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -307,6 +312,28 @@ export function AdminApp({
           ? actionError.message
           : 'Action sur le compte impossible.',
       )
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const replyToAppeal = async (notif: AdminNotification, message: string) => {
+    setBusyAction(`reply-${notif.id}`)
+    try {
+      const response = await authFetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reply-appeal',
+          uid: notif.fromUid,
+          message,
+          notifId: notif.id,
+        }),
+      })
+      if (!response.ok) throw new Error()
+      await load()
+    } catch {
+      setError('Envoi de la réponse impossible.')
     } finally {
       setBusyAction(null)
     }
@@ -772,26 +799,47 @@ export function AdminApp({
             Tout marquer comme lu
           </button>
         ) : null}
-        {notifications.map((n) => (
-          <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
-            <div className="admin-notif-head">
-              <span className="admin-notif-from">
-                <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
-              </span>
-              <time>{formatDateTime(n.createdAt)}</time>
-            </div>
-            <p className="admin-notif-message">{n.message}</p>
-            {!n.read ? (
-              <button
-                className="admin-notif-mark"
-                type="button"
-                onClick={() => void markNotificationsRead([n.id])}
-              >
-                Marquer comme lu
-              </button>
-            ) : null}
-          </article>
-        ))}
+        {notifications.map((n) => {
+          const reply = users.find((u) => u.uid === n.fromUid)?.adminReply ?? null
+          return (
+            <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
+              <div className="admin-notif-head">
+                <span className="admin-notif-from">
+                  <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
+                </span>
+                <time>{formatDateTime(n.createdAt)}</time>
+              </div>
+              <p className="admin-notif-message">{n.message}</p>
+              {reply ? (
+                <div className="admin-notif-reply">
+                  <span>Votre réponse</span>
+                  <p>{reply}</p>
+                </div>
+              ) : null}
+              <div className="admin-notif-actions">
+                <button
+                  className="admin-notif-mark primary"
+                  type="button"
+                  onClick={() => {
+                    setReplyMessage(reply ?? '')
+                    setReplyTarget(n)
+                  }}
+                >
+                  {reply ? 'Modifier la réponse' : 'Répondre'}
+                </button>
+                {!n.read ? (
+                  <button
+                    className="admin-notif-mark"
+                    type="button"
+                    onClick={() => void markNotificationsRead([n.id])}
+                  >
+                    Marquer comme lu
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          )
+        })}
         {notifications.length === 0 ? (
           <p className="admin-empty">Aucune notification.</p>
         ) : null}
@@ -1202,6 +1250,49 @@ export function AdminApp({
                 }}
               >
                 <Trash2 size={15} /> Supprimer définitivement
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {replyTarget ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-modal">
+            <h2>Répondre à {replyTarget.fromEmail ?? replyTarget.fromUid}</h2>
+            <p>Son message : « {replyTarget.message} »</p>
+            <label className="admin-modal-label" htmlFor="reply-message">
+              Votre réponse (affichée sur son écran de blocage)
+            </label>
+            <textarea
+              autoFocus
+              className="admin-modal-textarea"
+              id="reply-message"
+              placeholder="Votre réponse…"
+              value={replyMessage}
+              onChange={(event) => setReplyMessage(event.target.value)}
+            />
+            <div className="admin-modal-actions">
+              <button
+                className="admin-modal-cancel"
+                type="button"
+                onClick={() => setReplyTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="admin-modal-validate"
+                disabled={
+                  !replyMessage.trim() || busyAction === `reply-${replyTarget.id}`
+                }
+                type="button"
+                onClick={async () => {
+                  const target = replyTarget
+                  await replyToAppeal(target, replyMessage.trim())
+                  setReplyTarget(null)
+                }}
+              >
+                Envoyer la réponse
               </button>
             </div>
           </div>
