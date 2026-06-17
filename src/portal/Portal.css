@@ -978,15 +978,32 @@
   background: url('https://pub-6e336e685535453c9bbafab6421d8fc6.r2.dev/relieo/users/vIHeTHpT0NVYfODDu0ldcDLt9Br2/randonnees/Halsa/previews/34cbfc6ea1455f26dd5ebb4f.jpg') center / cover;
 }
 
-.auth-map {
+.auth-slideshow {
   position: absolute;
   inset: 0;
   z-index: 0;
-  opacity: 0;
-  transition: opacity 1.4s ease;
+  overflow: hidden;
 }
-.auth-map.is-ready { opacity: 1; }
-.auth-map canvas { outline: none; }
+.auth-slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transform: scale(1.06);
+  transition: opacity 1.8s ease;
+}
+.auth-slide.is-active {
+  opacity: 1;
+  animation: heroKenBurns 8s ease-out forwards;
+}
+@keyframes heroKenBurns {
+  from { transform: scale(1.06); }
+  to { transform: scale(1.16); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-slide.is-active { animation: none; }
+}
 
 .auth-visual::before {
   content: '';
