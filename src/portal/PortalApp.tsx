@@ -11,6 +11,7 @@ import {
 import {
   ArrowRight,
   BarChart3,
+  Ban,
   Bell,
   Camera,
   Check,
@@ -55,6 +56,7 @@ import {
   updateProfile,
 } from 'firebase/auth'
 import {
+  type AccountStatus,
   type PortalHike,
   type PortalNotification,
   type PortalUser,
@@ -62,14 +64,17 @@ import {
 } from './portalStore'
 import {
   dismissUserNotifications,
+  finalizeAccountDeletion,
   getFirebaseAuth,
   getIdToken,
   googleProvider,
+  readAccountStatus,
   readUserNotifications,
   readUserProfile,
   saveUserPhoto,
   saveUserPlan,
   saveUserProfile,
+  sendAccountAppeal,
 } from './firebase'
 import {
   DEFAULT_PLAN_ID,
@@ -1220,6 +1225,107 @@ function VerifyEmailScreen({
   )
 }
 
+// Écran d'un compte banni : message admin + 1 message d'appel possible.
+function BlockedScreen({
+  message,
+  appealSent,
+  onAppeal,
+  onLogout,
+}: {
+  message: string
+  appealSent: boolean
+  onAppeal: (message: string) => Promise<void>
+  onLogout: () => void
+}) {
+  const [text, setText] = useState('')
+  const [sent, setSent] = useState(appealSent)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const send = () => {
+    if (!text.trim()) return
+    setBusy(true)
+    setError(null)
+    onAppeal(text.trim())
+      .then(() => setSent(true))
+      .catch((sendError: unknown) =>
+        setError(sendError instanceof Error ? sendError.message : 'Envoi impossible.'),
+      )
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <main className="portal-auth sanction-screen blocked">
+      <section className="auth-panel">
+        <div className="auth-form-wrap sanction-wrap">
+          <span className="sanction-icon blocked"><Ban size={26} /></span>
+          <h2>Votre compte est bloqué</h2>
+          <p className="sanction-message">{message || 'Votre accès a été suspendu par un administrateur.'}</p>
+          {sent ? (
+            <p className="verify-success"><Check size={15} /> Message envoyé à l’administrateur.</p>
+          ) : (
+            <>
+              <label className="sanction-label" htmlFor="appeal">
+                Un message à l’administrateur (1 seul possible)
+              </label>
+              <textarea
+                className="sanction-textarea"
+                id="appeal"
+                placeholder="Expliquez votre situation…"
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+              />
+              {error ? <p className="auth-error">{error}</p> : null}
+              <button
+                className="portal-primary"
+                disabled={busy || !text.trim()}
+                type="button"
+                onClick={send}
+              >
+                {busy ? 'Envoi…' : 'Envoyer le message'}
+                <ArrowRight size={17} />
+              </button>
+            </>
+          )}
+          <button className="verify-link" type="button" onClick={onLogout}>
+            <LogOut size={15} /> Se déconnecter
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+// Écran d'un compte supprimé : message admin + déconnexion. Au montage, on
+// désactive le compte (reconnexion et recréation avec le même email impossibles).
+function DeletedScreen({
+  message,
+  onLogout,
+}: {
+  message: string
+  onLogout: () => void
+}) {
+  useEffect(() => {
+    void finalizeAccountDeletion()
+  }, [])
+
+  return (
+    <main className="portal-auth sanction-screen deleted">
+      <section className="auth-panel">
+        <div className="auth-form-wrap sanction-wrap">
+          <span className="sanction-icon deleted"><Ban size={26} /></span>
+          <h2>Votre compte a été supprimé</h2>
+          <p className="sanction-message">{message || 'Votre compte et son contenu ont été supprimés par un administrateur.'}</p>
+          <p className="sanction-note">Vous ne pourrez plus vous reconnecter avec cette adresse.</p>
+          <button className="verify-link" type="button" onClick={onLogout}>
+            <LogOut size={15} /> Se déconnecter
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
 function FirebasePortal() {
   const auth = getFirebaseAuth()
   const [ready, setReady] = useState(false)
@@ -1237,6 +1343,8 @@ function FirebasePortal() {
   })
   // Messages déposés par l'admin (ex : carte dépubliée), affichés à la connexion.
   const [notifications, setNotifications] = useState<PortalNotification[]>([])
+  // État de modération du compte (actif / bloqué / supprimé).
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
 
   useEffect(() => {
     if (!session || !emailVerified) return
@@ -1277,6 +1385,27 @@ function FirebasePortal() {
       })
       .catch(() => {
         if (!cancelled) setNotifications([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session, emailVerified, admin])
+
+  // Charge l'état de modération du compte (bloqué / supprimé) après l'admin check.
+  useEffect(() => {
+    if (!session || !emailVerified || !admin.checked || admin.isAdmin) {
+      // Réinitialise tant qu'on n'est pas un utilisateur prêt à router.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAccountStatus(null)
+      return
+    }
+    let cancelled = false
+    void readAccountStatus(session.firebaseUser.uid)
+      .then((status) => {
+        if (!cancelled) setAccountStatus(status)
+      })
+      .catch(() => {
+        if (!cancelled) setAccountStatus({ status: 'active', message: '', appealSent: false })
       })
     return () => {
       cancelled = true
@@ -1379,6 +1508,35 @@ function FirebasePortal() {
     )
   }
 
+  // Compte sanctionné : on attend l'état de modération, puis on route vers
+  // l'écran de blocage / suppression au lieu du dashboard. (les admins sont
+  // exclus en amont par le test admin.isAdmin)
+  if (!accountStatus) return null
+  if (accountStatus.status === 'blocked') {
+    return (
+      <BlockedScreen
+        appealSent={accountStatus.appealSent}
+        message={accountStatus.message}
+        onAppeal={(message) => sendAccountAppeal(message)}
+        onLogout={() => {
+          void signOut(auth)
+          navigate('/login')
+        }}
+      />
+    )
+  }
+  if (accountStatus.status === 'deleted') {
+    return (
+      <DeletedScreen
+        message={accountStatus.message}
+        onLogout={() => {
+          void signOut(auth)
+          navigate('/login')
+        }}
+      />
+    )
+  }
+
   // Popup des messages admin (ex : carte dépubliée), affiché par-dessus le
   // dashboard à la connexion. Acquittement = suppression côté Firestore.
   const notificationsModal =
@@ -1393,7 +1551,11 @@ function FirebasePortal() {
           <ul className="portal-notif-list">
             {notifications.map((item) => (
               <li key={item.id}>
-                {item.mapTitle && item.type !== 'info' ? (
+                {item.type === 'block' ? (
+                  <p className="portal-notif-title">Compte bloqué</p>
+                ) : item.type === 'delete-account' ? (
+                  <p className="portal-notif-title">Compte supprimé</p>
+                ) : item.mapTitle && item.type !== 'info' ? (
                   <p className="portal-notif-title">
                     Carte « {item.mapTitle} »{' '}
                     {item.type === 'delete' ? 'supprimée' : 'dépubliée'}

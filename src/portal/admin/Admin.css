@@ -309,7 +309,40 @@
 .admin-action:hover:not(:disabled) { background: var(--admin-green-soft); }
 .admin-action.danger { color: #a3261f; }
 .admin-action.danger:hover:not(:disabled) { background: #fdecec; }
+.admin-action.warn { color: #9a6207; border-color: #f0dcb4; }
+.admin-action.warn:hover:not(:disabled) { background: #fff4e0; }
+.admin-action.success { color: #0b6b43; border-color: #bfe6d2; }
+.admin-action.success:hover:not(:disabled) { background: var(--admin-green-soft); }
 .admin-action:disabled { opacity: 0.5; cursor: default; }
+
+/* Badge de statut de compte (dans la cellule utilisateur) */
+.admin-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.admin-status-badge.blocked { background: #fff4e0; color: #9a6207; }
+.admin-status-badge.deleted { background: #fdecec; color: #b3261e; }
+
+/* Badge de compteur non-lu dans la sidebar */
+.admin-nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e8513a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
 
 .admin-empty { text-align: center; color: var(--admin-muted); padding: 24px; }
 
@@ -487,10 +520,21 @@
   color: #9a6207;
   border: 1px solid #f5d9a6;
 }
-.admin-sanction-badge.delete {
+.admin-sanction-badge.delete,
+.admin-sanction-badge.delete-account {
   background: #fdecec;
   color: #b3261e;
   border: 1px solid #f3c0bd;
+}
+.admin-sanction-badge.block {
+  background: #fbe9d8;
+  color: #9a4d07;
+  border: 1px solid #f0cba0;
+}
+.admin-sanction-badge.unblock {
+  background: #e3f4ea;
+  color: #0b6b43;
+  border: 1px solid #bfe6d2;
 }
 .admin-sanction-message {
   max-width: 320px;
@@ -499,6 +543,49 @@
   line-height: 1.45;
 }
 .admin-muted-text { color: var(--admin-muted); }
+
+/* Section Notifications admin (appels des bannis) */
+.admin-notif-list { display: flex; flex-direction: column; gap: 12px; }
+.admin-notif-readall { align-self: flex-end; }
+.admin-notif-card {
+  padding: 16px 18px;
+  border: 1px solid var(--admin-line);
+  border-radius: 16px;
+  background: #fff;
+}
+.admin-notif-card.unread {
+  border-color: #f0cba0;
+  background: #fffaf2;
+  box-shadow: inset 4px 0 0 #e8513a;
+}
+.admin-notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.admin-notif-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.admin-notif-card.unread .admin-notif-from { color: #9a4d07; }
+.admin-notif-head time { font-size: 12px; color: var(--admin-muted); }
+.admin-notif-message { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.admin-notif-mark {
+  margin-top: 12px;
+  padding: 7px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-notif-mark:hover { background: var(--admin-green-soft); }
 
 /* Modale de dépublication (saisie du message au propriétaire) */
 .admin-modal-backdrop {

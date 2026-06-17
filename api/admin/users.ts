@@ -2,6 +2,7 @@ import { getAuth } from 'firebase-admin/auth'
 import { adminApp, hasFirebaseAdmin } from '../../server/firebaseAdmin.js'
 import { isAdminUid, requireAdmin } from '../../server/admin.js'
 import { readAllProfiles } from '../../server/firestoreAdmin.js'
+import { readAllModeration } from '../../server/moderation.js'
 import { hasR2Config, r2UsageForPrefixes } from '../../server/r2.js'
 import { readHikeIndex } from '../../server/hikeIndex.js'
 import { userStorageRoot } from '../../server/trailStorage.js'
@@ -22,6 +23,9 @@ type AdminUser = {
   mediaCount: number
   usedBytes: number
   monthlyCostEur: number
+  // État de modération du compte (sanctions).
+  status: 'active' | 'blocked' | 'deleted'
+  banCount: number
 }
 
 // Vue admin des utilisateurs : chaque compte Firebase + son profil Firestore,
@@ -42,10 +46,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [authList, profiles, hikes] = await Promise.all([
+    const [authList, profiles, hikes, moderation] = await Promise.all([
       getAuth(adminApp()).listUsers(1000),
       readAllProfiles(),
       readHikeIndex(),
+      readAllModeration(),
     ])
 
     // Agrégats par propriétaire depuis le registre des cartes.
@@ -70,6 +75,7 @@ export async function GET(request: Request) {
       authList.users.map(async (record) => {
         const profile = profiles.get(record.uid)
         const aggregate = byOwner.get(record.uid)
+        const mod = moderation.get(record.uid)
         const usedBytes = await r2UsageForPrefixes([
           userStorageRoot(record.uid),
         ])
@@ -86,6 +92,8 @@ export async function GET(request: Request) {
           mediaCount: aggregate?.mediaCount ?? 0,
           usedBytes,
           monthlyCostEur: monthlyR2Cost(usedBytes),
+          status: mod?.status ?? 'active',
+          banCount: mod?.banCount ?? 0,
         }
       }),
     )

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
+  Ban,
+  Bell,
   CreditCard,
   Database,
   Euro,
@@ -12,10 +14,12 @@ import {
   LineChart,
   LogOut,
   Map as MapIcon,
+  Mail,
   RefreshCw,
   ShieldCheck,
   Trash2,
   TrendingUp,
+  Unlock,
   Users,
 } from 'lucide-react'
 import type { PortalUser } from '../portalStore'
@@ -37,6 +41,18 @@ type AdminUser = {
   mediaCount: number
   usedBytes: number
   monthlyCostEur: number
+  status: 'active' | 'blocked' | 'deleted'
+  banCount: number
+}
+
+type AdminNotification = {
+  id: string
+  type: 'appeal'
+  fromUid: string
+  fromEmail: string | null
+  message: string
+  createdAt: string
+  read: boolean
 }
 
 type AdminMap = {
@@ -53,11 +69,13 @@ type AdminMap = {
 
 type Sanction = {
   id: string
-  action: 'unpublish' | 'delete'
+  action: 'unpublish' | 'delete' | 'block' | 'unblock' | 'delete-account'
   mapCode: string
   mapTitle: string
   ownerId: string
   ownerEmail: string | null
+  targetUid?: string
+  targetEmail?: string | null
   adminUid: string
   adminEmail: string | null
   message: string
@@ -75,13 +93,20 @@ type Overview = {
   monthlyCostEur: number
 }
 
-type AdminSection = 'overview' | 'users' | 'maps' | 'sanctions' | 'storage'
+type AdminSection =
+  | 'overview'
+  | 'users'
+  | 'maps'
+  | 'sanctions'
+  | 'notifications'
+  | 'storage'
 
 const SECTION_TITLES: Record<AdminSection, string> = {
   overview: 'Vue d’ensemble',
   users: 'Utilisateurs',
   maps: 'Cartes',
   sanctions: 'Sanctions',
+  notifications: 'Notifications',
   storage: 'Stockage R2',
 }
 
@@ -141,6 +166,7 @@ export function AdminApp({
   const [users, setUsers] = useState<AdminUser[]>([])
   const [maps, setMaps] = useState<AdminMap[]>([])
   const [sanctions, setSanctions] = useState<Sanction[]>([])
+  const [notifications, setNotifications] = useState<AdminNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
@@ -154,6 +180,13 @@ export function AdminApp({
   const [deleteTarget, setDeleteTarget] = useState<AdminMap | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleteMessage, setDeleteMessage] = useState('')
+  // Modale de blocage d'un compte : utilisateur ciblé + message obligatoire.
+  const [blockTarget, setBlockTarget] = useState<AdminUser | null>(null)
+  const [blockMessage, setBlockMessage] = useState('')
+  // Modale de suppression d'un compte : utilisateur + confirmation + message.
+  const [deleteUserTarget, setDeleteUserTarget] = useState<AdminUser | null>(null)
+  const [deleteUserConfirm, setDeleteUserConfirm] = useState('')
+  const [deleteUserMessage, setDeleteUserMessage] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -162,16 +195,28 @@ export function AdminApp({
       setLoading(true)
       setError(null)
       const headers = { Authorization: `Bearer ${token}` }
-      const [overviewRes, usersRes, mapsRes, sanctionsRes] = await Promise.all([
-        fetch('/api/admin/overview', { cache: 'no-store', headers }),
-        fetch('/api/admin/users', { cache: 'no-store', headers }),
-        fetch('/api/admin/maps', { cache: 'no-store', headers }),
-        fetch('/api/admin/sanctions', { cache: 'no-store', headers }),
-      ])
-      if (!overviewRes.ok || !usersRes.ok || !mapsRes.ok || !sanctionsRes.ok) {
-        const failed = [overviewRes, usersRes, mapsRes, sanctionsRes].find(
-          (r) => !r.ok,
-        )
+      const [overviewRes, usersRes, mapsRes, sanctionsRes, notifsRes] =
+        await Promise.all([
+          fetch('/api/admin/overview', { cache: 'no-store', headers }),
+          fetch('/api/admin/users', { cache: 'no-store', headers }),
+          fetch('/api/admin/maps', { cache: 'no-store', headers }),
+          fetch('/api/admin/sanctions', { cache: 'no-store', headers }),
+          fetch('/api/admin/notifications', { cache: 'no-store', headers }),
+        ])
+      if (
+        !overviewRes.ok ||
+        !usersRes.ok ||
+        !mapsRes.ok ||
+        !sanctionsRes.ok ||
+        !notifsRes.ok
+      ) {
+        const failed = [
+          overviewRes,
+          usersRes,
+          mapsRes,
+          sanctionsRes,
+          notifsRes,
+        ].find((r) => !r.ok)
         const data = (await failed?.json().catch(() => null)) as
           | { message?: string }
           | null
@@ -182,6 +227,10 @@ export function AdminApp({
       setMaps(((await mapsRes.json()) as { maps: AdminMap[] }).maps)
       setSanctions(
         ((await sanctionsRes.json()) as { sanctions: Sanction[] }).sanctions,
+      )
+      setNotifications(
+        ((await notifsRes.json()) as { notifications: AdminNotification[] })
+          .notifications,
       )
     } catch (loadError) {
       setError(
@@ -246,6 +295,53 @@ export function AdminApp({
     }
   }
 
+  const userAction = async (
+    uid: string,
+    action: 'block' | 'unblock' | 'delete-account',
+    message?: string,
+  ) => {
+    setBusyAction(`user-${uid}`)
+    try {
+      const response = await authFetch('/api/admin/user-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid, action, message }),
+      })
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as
+          | { message?: string }
+          | null
+        throw new Error(data?.message ?? 'Action impossible.')
+      }
+      // Recharge tout (statut, banCount, journal, notifications) pour rester sûr.
+      await load()
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : 'Action sur le compte impossible.',
+      )
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const markNotificationsRead = async (ids: string[]) => {
+    if (ids.length === 0) return
+    setNotifications((current) =>
+      current.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)),
+    )
+    try {
+      await authFetch('/api/admin/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+    } catch {
+      setError('Mise à jour des notifications impossible.')
+    }
+  }
+
   // Revenus + évolution des inscriptions, dérivés de la liste des utilisateurs
   // (l'admin est exclu, il ne paie pas et ne compte pas comme client).
   const analytics = useMemo(() => {
@@ -304,11 +400,14 @@ export function AdminApp({
     return { mrr, paidCount, arpu, perPlan, chart, clientCount: clients.length }
   }, [users, rangeMonths])
 
-  const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode }> = [
+  const unreadCount = notifications.filter((n) => !n.read).length
+
+  const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode; badge?: number }> = [
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
     { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
     { id: 'maps', label: 'Cartes', icon: <MapIcon size={18} /> },
     { id: 'sanctions', label: 'Sanctions', icon: <Gavel size={18} /> },
+    { id: 'notifications', label: 'Notifications', icon: <Bell size={18} />, badge: unreadCount },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
   ]
 
@@ -351,13 +450,14 @@ export function AdminApp({
             <th>Médias</th>
             <th>Stockage</th>
             <th>Coût R2/mois</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {users.map((u) =>
             u.isAdmin ? (
               <tr className="admin-row" key={u.uid}>
-                <td colSpan={6}>
+                <td colSpan={7}>
                   <div className="admin-user-cell">
                     <strong>
                       {u.name || u.email || u.uid}
@@ -373,8 +473,18 @@ export function AdminApp({
               <tr key={u.uid}>
                 <td>
                   <div className="admin-user-cell">
-                    <strong>{u.name || u.email || u.uid}</strong>
-                    <small>{u.email ?? '—'}{u.emailVerified ? '' : ' · non vérifié'}</small>
+                    <strong>
+                      {u.name || u.email || u.uid}
+                      {u.status === 'blocked' ? (
+                        <span className="admin-status-badge blocked"><Ban size={11} /> Bloqué</span>
+                      ) : u.status === 'deleted' ? (
+                        <span className="admin-status-badge deleted"><Trash2 size={11} /> Supprimé</span>
+                      ) : null}
+                    </strong>
+                    <small>
+                      {u.email ?? '—'}{u.emailVerified ? '' : ' · non vérifié'}
+                      {u.banCount > 0 ? ` · ${u.banCount} ban${u.banCount > 1 ? 's' : ''}` : ''}
+                    </small>
                   </div>
                 </td>
                 <td>
@@ -393,11 +503,60 @@ export function AdminApp({
                 <td>{u.mediaCount}</td>
                 <td>{formatBytes(u.usedBytes)}</td>
                 <td>{formatEur(u.monthlyCostEur)}</td>
+                <td>
+                  {u.status === 'deleted' ? (
+                    <span className="admin-muted-text">—</span>
+                  ) : (
+                    <div className="admin-actions">
+                      {u.status === 'blocked' ? (
+                        <button
+                          className="admin-action success"
+                          disabled={busyAction === `user-${u.uid}`}
+                          type="button"
+                          onClick={() => void userAction(u.uid, 'unblock')}
+                          title="Lever le bannissement"
+                        >
+                          <Unlock size={15} /> Débloquer
+                        </button>
+                      ) : (
+                        <button
+                          className="admin-action warn"
+                          disabled={busyAction === `user-${u.uid}`}
+                          type="button"
+                          onClick={() => {
+                            setBlockMessage('')
+                            setBlockTarget(u)
+                          }}
+                          title="Bloquer ce compte"
+                        >
+                          <Ban size={15} /> Bloquer
+                        </button>
+                      )}
+                      <button
+                        className="admin-action danger"
+                        disabled={busyAction === `user-${u.uid}` || u.banCount < 3}
+                        type="button"
+                        onClick={() => {
+                          setDeleteUserConfirm('')
+                          setDeleteUserMessage('')
+                          setDeleteUserTarget(u)
+                        }}
+                        title={
+                          u.banCount < 3
+                            ? `Suppression possible après 3 bannissements (${u.banCount}/3)`
+                            : 'Supprimer définitivement le compte'
+                        }
+                      >
+                        <Trash2 size={15} /> Supprimer
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ),
           )}
           {users.length === 0 ? (
-            <tr><td className="admin-empty" colSpan={6}>Aucun utilisateur.</td></tr>
+            <tr><td className="admin-empty" colSpan={7}>Aucun utilisateur.</td></tr>
           ) : null}
         </tbody>
       </table>
@@ -480,18 +639,37 @@ export function AdminApp({
 
   const sanctionStats = useMemo(() => {
     const weekAgo = new Date().getTime() - 7 * 24 * 60 * 60 * 1000
+    const isAccount = (a: Sanction['action']) =>
+      a === 'block' || a === 'unblock' || a === 'delete-account'
     return {
       total: sanctions.length,
-      unpublishCount: sanctions.filter((s) => s.action === 'unpublish').length,
-      deleteCount: sanctions.filter((s) => s.action === 'delete').length,
+      mapCount: sanctions.filter((s) => !isAccount(s.action)).length,
+      accountCount: sanctions.filter((s) => isAccount(s.action)).length,
       recentCount: sanctions.filter(
         (s) => new Date(s.createdAt).getTime() >= weekAgo,
       ).length,
     }
   }, [sanctions])
 
+  const sanctionBadge = (action: Sanction['action']): ReactNode => {
+    switch (action) {
+      case 'delete':
+        return <span className="admin-sanction-badge delete"><Trash2 size={13} /> Suppression carte</span>
+      case 'block':
+        return <span className="admin-sanction-badge block"><Ban size={13} /> Blocage compte</span>
+      case 'unblock':
+        return <span className="admin-sanction-badge unblock"><Unlock size={13} /> Déblocage</span>
+      case 'delete-account':
+        return <span className="admin-sanction-badge delete-account"><Trash2 size={13} /> Suppression compte</span>
+      default:
+        return <span className="admin-sanction-badge unpublish"><EyeOff size={13} /> Dépublication</span>
+    }
+  }
+
   const sanctionsView = (() => {
-    const { total, unpublishCount, deleteCount, recentCount } = sanctionStats
+    const { total, mapCount, accountCount, recentCount } = sanctionStats
+    const isAccount = (a: Sanction['action']) =>
+      a === 'block' || a === 'unblock' || a === 'delete-account'
 
     return (
       <>
@@ -502,14 +680,14 @@ export function AdminApp({
             <strong>{total}</strong>
           </article>
           <article className="admin-stat-card">
-            <span><EyeOff size={18} /></span>
-            <p>Dépublications</p>
-            <strong>{unpublishCount}</strong>
+            <span><MapIcon size={18} /></span>
+            <p>Sur des cartes</p>
+            <strong>{mapCount}</strong>
           </article>
           <article className="admin-stat-card">
-            <span><Trash2 size={18} /></span>
-            <p>Suppressions</p>
-            <strong>{deleteCount}</strong>
+            <span><Ban size={18} /></span>
+            <p>Sur des comptes</p>
+            <strong>{accountCount}</strong>
           </article>
           <article className="admin-stat-card">
             <span><RefreshCw size={18} /></span>
@@ -523,8 +701,7 @@ export function AdminApp({
             <thead>
               <tr>
                 <th>Action</th>
-                <th>Carte</th>
-                <th>Propriétaire</th>
+                <th>Cible</th>
                 <th>Message</th>
                 <th>Admin</th>
                 <th>Date</th>
@@ -533,22 +710,20 @@ export function AdminApp({
             <tbody>
               {sanctions.map((s) => (
                 <tr key={s.id}>
+                  <td>{sanctionBadge(s.action)}</td>
                   <td>
-                    <span className={`admin-sanction-badge ${s.action}`}>
-                      {s.action === 'delete' ? (
-                        <><Trash2 size={13} /> Suppression</>
-                      ) : (
-                        <><EyeOff size={13} /> Dépublication</>
-                      )}
-                    </span>
+                    {isAccount(s.action) ? (
+                      <div className="admin-user-cell">
+                        <strong>{s.targetEmail ?? s.targetUid ?? s.ownerEmail ?? '—'}</strong>
+                        <small>Compte utilisateur</small>
+                      </div>
+                    ) : (
+                      <div className="admin-user-cell">
+                        <strong>{s.mapTitle || s.mapCode}</strong>
+                        <small>{s.mapCode}{s.ownerEmail ? ` · ${s.ownerEmail}` : ''}</small>
+                      </div>
+                    )}
                   </td>
-                  <td>
-                    <div className="admin-user-cell">
-                      <strong>{s.mapTitle}</strong>
-                      <small>{s.mapCode}</small>
-                    </div>
-                  </td>
-                  <td>{s.ownerEmail ?? s.ownerId ?? '—'}</td>
                   <td className="admin-sanction-message">
                     {s.message ? s.message : <span className="admin-muted-text">—</span>}
                   </td>
@@ -557,7 +732,7 @@ export function AdminApp({
                 </tr>
               ))}
               {sanctions.length === 0 ? (
-                <tr><td className="admin-empty" colSpan={6}>Aucune sanction enregistrée.</td></tr>
+                <tr><td className="admin-empty" colSpan={5}>Aucune sanction enregistrée.</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -565,6 +740,78 @@ export function AdminApp({
       </>
     )
   })()
+
+  const notificationsView = (
+    <>
+      <section className="admin-stats" aria-label="Synthèse des notifications">
+        <article className="admin-stat-card featured">
+          <span><Bell size={18} /></span>
+          <p>Notifications</p>
+          <strong>{notifications.length}</strong>
+        </article>
+        <article className="admin-stat-card">
+          <span><Mail size={18} /></span>
+          <p>Non lues</p>
+          <strong>{unreadCount}</strong>
+        </article>
+        <article className="admin-stat-card">
+          <span><Ban size={18} /></span>
+          <p>Appels de bannis</p>
+          <strong>{notifications.filter((n) => n.type === 'appeal').length}</strong>
+        </article>
+        <article className="admin-stat-card">
+          <span><RefreshCw size={18} /></span>
+          <p>7 derniers jours</p>
+          <strong>
+            {notifications.filter(
+              (n) =>
+                new Date(n.createdAt).getTime() >=
+                new Date().getTime() - 7 * 24 * 60 * 60 * 1000,
+            ).length}
+          </strong>
+        </article>
+      </section>
+
+      <div className="admin-notif-list">
+        {unreadCount > 0 ? (
+          <button
+            className="admin-refresh admin-notif-readall"
+            type="button"
+            onClick={() =>
+              void markNotificationsRead(
+                notifications.filter((n) => !n.read).map((n) => n.id),
+              )
+            }
+          >
+            Tout marquer comme lu
+          </button>
+        ) : null}
+        {notifications.map((n) => (
+          <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
+            <div className="admin-notif-head">
+              <span className="admin-notif-from">
+                <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
+              </span>
+              <time>{formatDateTime(n.createdAt)}</time>
+            </div>
+            <p className="admin-notif-message">{n.message}</p>
+            {!n.read ? (
+              <button
+                className="admin-notif-mark"
+                type="button"
+                onClick={() => void markNotificationsRead([n.id])}
+              >
+                Marquer comme lu
+              </button>
+            ) : null}
+          </article>
+        ))}
+        {notifications.length === 0 ? (
+          <p className="admin-empty">Aucune notification.</p>
+        ) : null}
+      </div>
+    </>
+  )
 
   const storagePanels = (
     <div className="admin-storage">
@@ -704,6 +951,7 @@ export function AdminApp({
               onClick={() => setSection(item.id)}
             >
               {item.icon} {item.label}
+              {item.badge ? <span className="admin-nav-badge">{item.badge}</span> : null}
             </button>
           ))}
         </nav>
@@ -749,6 +997,8 @@ export function AdminApp({
             mapsTable
           ) : section === 'sanctions' ? (
             sanctionsView
+          ) : section === 'notifications' ? (
+            notificationsView
           ) : (
             storagePanels
           )}
@@ -857,6 +1107,112 @@ export function AdminApp({
                     title: target.title,
                   })
                   setDeleteTarget(null)
+                }}
+              >
+                <Trash2 size={15} /> Supprimer définitivement
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {blockTarget ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-modal">
+            <h2 className="admin-modal-danger"><Ban size={18} /> Bloquer ce compte</h2>
+            <p>
+              {blockTarget.email ?? blockTarget.uid} n’aura plus accès à son
+              espace : il ne verra qu’un écran de blocage avec le message
+              ci-dessous, et pourra t’envoyer un seul message. ({blockTarget.banCount} bannissement(s) déjà reçu(s))
+            </p>
+            <label className="admin-modal-label" htmlFor="block-message">
+              Message d’explication (affiché à l’utilisateur, obligatoire)
+            </label>
+            <textarea
+              autoFocus
+              className="admin-modal-textarea"
+              id="block-message"
+              placeholder="Ex : Votre compte est suspendu car…"
+              value={blockMessage}
+              onChange={(event) => setBlockMessage(event.target.value)}
+            />
+            <div className="admin-modal-actions">
+              <button
+                className="admin-modal-cancel"
+                type="button"
+                onClick={() => setBlockTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="admin-modal-delete"
+                disabled={
+                  !blockMessage.trim() || busyAction === `user-${blockTarget.uid}`
+                }
+                type="button"
+                onClick={async () => {
+                  const target = blockTarget
+                  await userAction(target.uid, 'block', blockMessage)
+                  setBlockTarget(null)
+                }}
+              >
+                <Ban size={15} /> Bloquer le compte
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteUserTarget ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-modal">
+            <h2 className="admin-modal-danger">
+              <Trash2 size={18} /> Supprimer le compte
+            </h2>
+            <p>
+              Action <strong>définitive</strong> sur {deleteUserTarget.email ?? deleteUserTarget.uid}.
+              Tout son contenu (cartes, médias, stockage R2) est effacé. Le compte
+              et l’adresse email restent <strong>réservés</strong> : l’utilisateur
+              ne pourra plus se reconnecter ni recréer un compte avec cette adresse.
+            </p>
+            <label className="admin-modal-label" htmlFor="deluser-message">
+              Message au propriétaire (facultatif, affiché à sa prochaine connexion)
+            </label>
+            <textarea
+              className="admin-modal-textarea"
+              id="deluser-message"
+              placeholder="Ex : Votre compte a été supprimé suite à…"
+              value={deleteUserMessage}
+              onChange={(event) => setDeleteUserMessage(event.target.value)}
+            />
+            <p className="admin-modal-instruction">
+              Pour confirmer, tape <code>delete</code> ci-dessous.
+            </p>
+            <input
+              className="admin-modal-input"
+              placeholder="delete"
+              value={deleteUserConfirm}
+              onChange={(event) => setDeleteUserConfirm(event.target.value)}
+            />
+            <div className="admin-modal-actions">
+              <button
+                className="admin-modal-cancel"
+                type="button"
+                onClick={() => setDeleteUserTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="admin-modal-delete"
+                disabled={
+                  deleteUserConfirm.trim().toLowerCase() !== 'delete' ||
+                  busyAction === `user-${deleteUserTarget.uid}`
+                }
+                type="button"
+                onClick={async () => {
+                  const target = deleteUserTarget
+                  await userAction(target.uid, 'delete-account', deleteUserMessage)
+                  setDeleteUserTarget(null)
                 }}
               >
                 <Trash2 size={15} /> Supprimer définitivement

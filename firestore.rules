@@ -7,5 +7,13 @@ service cloud.firestore {
         && request.auth.uid == userId;
       allow delete: if false;
     }
+
+    // État de modération du compte : lecture par le propriétaire (pour afficher
+    // l'écran de blocage / suppression), écriture réservée à l'Admin SDK (qui
+    // contourne les règles). Un utilisateur ne peut donc pas lever sa sanction.
+    match /moderation/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
   }
 }

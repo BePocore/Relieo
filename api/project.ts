@@ -20,6 +20,7 @@ import {
 import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { isAdminUser } from '../server/admin.js'
+import { readModeration } from '../server/moderation.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
 import { pickRandomCoverUrl } from '../server/cover.js'
@@ -284,6 +285,14 @@ export async function PUT(request: Request) {
         { status: 401, headers: jsonHeaders },
       )
     }
+  }
+
+  // Un compte sanctionné (bloqué ou supprimé) ne peut plus sauvegarder.
+  if (authedUser && (await readModeration(authedUser.uid)).status !== 'active') {
+    return Response.json(
+      { message: 'Votre compte est suspendu.' },
+      { status: 403, headers: jsonHeaders },
+    )
   }
 
   try {

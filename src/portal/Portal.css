@@ -1674,6 +1674,58 @@
   font-weight: 700;
 }
 
+/* Écrans de sanction (compte bloqué / supprimé) */
+.sanction-wrap { text-align: center; display: flex; flex-direction: column; gap: 14px; }
+.sanction-icon {
+  width: 56px;
+  height: 56px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 18px;
+  margin: 0 auto;
+}
+.sanction-icon.blocked { background: #fbe9d8; color: #9a4d07; }
+.sanction-icon.deleted { background: #fdecec; color: #b3261e; }
+.sanction-wrap h2 { margin: 0; font-size: 22px; color: #14201b; }
+.sanction-message {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f7faf8;
+  border: 1px solid #e2e8e4;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #14201b;
+  white-space: pre-wrap;
+  text-align: left;
+}
+.sanction-note { margin: 0; font-size: 13px; color: #64706a; }
+.sanction-label {
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #14201b;
+}
+.sanction-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px 14px;
+  border: 1px solid #d7e0db;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.sanction-textarea:focus {
+  outline: none;
+  border-color: #126b47;
+  box-shadow: 0 0 0 3px #dff3e9;
+}
+.sanction-screen.blocked .verify-icon,
+.sanction-screen.deleted .verify-icon { display: none; }
+
 /* Popup des messages de l'administrateur (affiché à la connexion) */
 .portal-modal-backdrop {
   position: fixed;

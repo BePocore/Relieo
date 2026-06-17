@@ -34,11 +34,19 @@ export type ProfileExtras = {
   photoURL?: string
 }
 
+// État de modération du compte, lu depuis Firestore `moderation/<uid>` (écrit
+// seulement par l'admin). Pilote l'écran de blocage / suppression du portail.
+export type AccountStatus = {
+  status: 'active' | 'blocked' | 'deleted'
+  message: string
+  appealSent: boolean
+}
+
 // Notification déposée par l'admin dans le profil de l'utilisateur, affichée à
 // sa prochaine connexion (ex : une de ses cartes a été dépubliée).
 export type PortalNotification = {
   id: string
-  type: 'unpublish' | 'delete' | 'info'
+  type: 'unpublish' | 'delete' | 'block' | 'delete-account' | 'info'
   message: string
   mapTitle?: string
   createdAt: string

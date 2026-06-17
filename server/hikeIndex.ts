@@ -93,3 +93,16 @@ export const removeHikeIndex = async (
   }
   return next
 }
+
+// Retire TOUTES les cartes d'un propriétaire du registre (suppression de compte).
+// Renvoie les dossiers retirés pour permettre le nettoyage R2 / pointeur public.
+export const removeOwnerFromIndex = async (
+  ownerId: string,
+): Promise<string[]> => {
+  const hikes = await readHikeIndex()
+  const removed = hikes.filter((hike) => hike.ownerId === ownerId)
+  if (removed.length === 0) return []
+  const next = hikes.filter((hike) => hike.ownerId !== ownerId)
+  await r2PutText(hikeIndexPath, JSON.stringify({ hikes: next }))
+  return removed.map((hike) => hike.folder)
+}

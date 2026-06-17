@@ -7,6 +7,7 @@ import {
 } from '../server/r2.js'
 import { cleanStorageName, STUDIO_OWNER, trailLocation } from '../server/trailStorage.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
+import { readModeration } from '../server/moderation.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
 
@@ -60,6 +61,14 @@ export async function POST(request: Request) {
         { status: 401 },
       )
     }
+  }
+
+  // Un compte sanctionné (bloqué ou supprimé) ne peut plus rien envoyer.
+  if (uid && (await readModeration(uid)).status !== 'active') {
+    return Response.json(
+      { message: 'Votre compte est suspendu.' },
+      { status: 403 },
+    )
   }
 
   try {

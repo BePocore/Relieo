@@ -16,7 +16,7 @@ import {
   setDoc,
   type Firestore,
 } from 'firebase/firestore'
-import type { PortalNotification, ProfileExtras } from './portalStore'
+import type { AccountStatus, PortalNotification, ProfileExtras } from './portalStore'
 
 const cleanEnv = (value: string | undefined): string | undefined => {
   const cleaned = value?.replace(/^\uFEFF/, '').trim()
@@ -175,6 +175,26 @@ export const dismissUserNotifications = async (
   )
 }
 
+// État de modération du compte (lecture du propre document, autorisée par les
+// règles). Renvoie 'active' par défaut si le document n'existe pas.
+export const readAccountStatus = async (
+  uid: string,
+): Promise<AccountStatus> => {
+  const db = getFirebaseDb()
+  if (!db) return { status: 'active', message: '', appealSent: false }
+  const snapshot = await getDoc(doc(db, 'moderation', uid))
+  if (!snapshot.exists()) return { status: 'active', message: '', appealSent: false }
+  const data = snapshot.data()
+  return {
+    status:
+      data.status === 'blocked' || data.status === 'deleted'
+        ? data.status
+        : 'active',
+    message: typeof data.message === 'string' ? data.message : '',
+    appealSent: Boolean(data.appeal),
+  }
+}
+
 export const googleProvider = new GoogleAuthProvider()
 
 // Jeton d'identité de l'utilisateur connecté (pour authentifier les appels API
@@ -191,4 +211,38 @@ export const getIdToken = async (): Promise<string | null> => {
       })
     }))
   return current ? current.getIdToken() : null
+}
+
+// Appel authentifié vers une route API du compte (mêmes origine et jeton).
+const accountFetch = async (
+  path: string,
+  body: unknown,
+): Promise<Response> => {
+  const token = await getIdToken()
+  if (!token) throw new Error('Connexion requise.')
+  return fetch(path, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+// Message d'appel d'un utilisateur banni (1 seul par bannissement).
+export const sendAccountAppeal = async (message: string): Promise<void> => {
+  const response = await accountFetch('/api/account/appeal', { message })
+  if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null
+    throw new Error(data?.message ?? 'Envoi impossible.')
+  }
+}
+
+// Acquittement de suppression : désactive le compte (reconnexion impossible).
+export const finalizeAccountDeletion = async (): Promise<void> => {
+  await accountFetch('/api/account/finalize-deletion', {}).catch(() => undefined)
 }

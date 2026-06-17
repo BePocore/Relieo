@@ -5,7 +5,15 @@ import { r2GetText, r2PutText } from './r2.js'
 // dans R2 comme un simple JSON, à l'image de `index.json`.
 export const sanctionsPath = 'relieo/sanctions.json'
 
-export type SanctionAction = 'unpublish' | 'delete'
+// Actions sur les cartes (unpublish/delete) ET sur les comptes (block/unblock/
+// delete-account). Pour les sanctions de compte, mapCode/mapTitle restent vides
+// et targetUid/targetEmail désignent l'utilisateur visé.
+export type SanctionAction =
+  | 'unpublish'
+  | 'delete'
+  | 'block'
+  | 'unblock'
+  | 'delete-account'
 
 export type SanctionEntry = {
   id: string
@@ -14,6 +22,9 @@ export type SanctionEntry = {
   mapTitle: string
   ownerId: string
   ownerEmail: string | null
+  // Utilisateur visé par une sanction de compte (sinon vide).
+  targetUid?: string
+  targetEmail?: string | null
   adminUid: string
   adminEmail: string | null
   message: string
