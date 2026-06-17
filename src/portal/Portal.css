@@ -1675,6 +1675,16 @@
 }
 
 /* Écrans de sanction (compte bloqué / supprimé) */
+.sanction-screen {
+  grid-template-columns: 1fr;
+  place-items: center;
+  padding: 24px;
+}
+.sanction-screen .auth-panel {
+  width: 100%;
+  max-width: 460px;
+  min-height: auto;
+}
 .sanction-wrap { text-align: center; display: flex; flex-direction: column; gap: 14px; }
 .sanction-icon {
   width: 56px;
