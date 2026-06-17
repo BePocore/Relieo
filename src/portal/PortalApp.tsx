@@ -389,7 +389,15 @@ function CreateHikeDialog({
   )
 }
 
-function HikeCard({ hike }: { hike: PortalHike }) {
+function HikeCard({
+  hike,
+  busy,
+  onToggleStatus,
+}: {
+  hike: PortalHike
+  busy: boolean
+  onToggleStatus: (hike: PortalHike) => void
+}) {
   // Publiée → ouvre le Studio sur la rando déjà en ligne (chargée depuis Vercel).
   //   `code` identifie laquelle (ignoré tant que le backend reste mono-rando).
   // Brouillon → ouvre un Studio 3D vierge en local (`new`).
@@ -421,7 +429,26 @@ function HikeCard({ hike }: { hike: PortalHike }) {
         </dl>
         <div className="hike-card-footer">
           <span>Modifiée le {formatDate(hike.updatedAt)}</span>
-          <a className="hike-open" href={openHref}>Ouvrir <ChevronRight size={16} /></a>
+          <div className="hike-card-actions">
+            <button
+              className="hike-toggle"
+              disabled={busy}
+              type="button"
+              onClick={() => onToggleStatus(hike)}
+              title={
+                hike.status === 'published'
+                  ? 'Retirer du public (passe en brouillon)'
+                  : 'Remettre en ligne'
+              }
+            >
+              {hike.status === 'published' ? (
+                <><EyeOff size={15} /> Dépublier</>
+              ) : (
+                <><Check size={15} /> Publier</>
+              )}
+            </button>
+            <a className="hike-open" href={openHref}>Ouvrir <ChevronRight size={16} /></a>
+          </div>
         </div>
       </div>
     </article>
@@ -859,6 +886,36 @@ function DashboardShell({
     )
   }
 
+  // Dépublier (→ brouillon) / publier (→ en ligne) une de SES cartes, sans
+  // toucher au contenu. Une carte dépubliée n'est plus accessible par son code.
+  const [statusBusy, setStatusBusy] = useState<string | null>(null)
+  const toggleHikeStatus = async (hike: PortalHike) => {
+    const next = hike.status === 'published' ? 'draft' : 'published'
+    setStatusBusy(hike.code)
+    try {
+      const token = await getIdToken()
+      if (!token) throw new Error('Connexion requise.')
+      const response = await fetch('/api/hikes', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ code: hike.code, status: next }),
+      })
+      if (!response.ok) throw new Error()
+      setHikes((current) =>
+        current.map((h) => (h.code === hike.code ? { ...h, status: next } : h)),
+      )
+      setHikesError(null)
+    } catch {
+      setHikesError('Changement de statut impossible.')
+    } finally {
+      setStatusBusy(null)
+    }
+  }
+
   const saveProfile = async (next: PortalUser) => {
     await onSaveProfile(next)
     setProfile(next)
@@ -1008,7 +1065,14 @@ function DashboardShell({
                 <div className="section-heading"><div><h2>{view === 'hikes' ? 'Bibliothèque' : 'Cartes récentes'}</h2><p>{filteredHikes.length} projet{filteredHikes.length > 1 ? 's' : ''}</p></div>{view === 'dashboard' ? <button type="button" onClick={() => setPortalView('hikes')}>Tout afficher <ChevronRight size={16} /></button> : null}</div>
                 {hikesError ? <p className="auth-error">{hikesError}</p> : null}
                 <div className="hikes-grid">
-                  {filteredHikes.map((hike) => <HikeCard hike={hike} key={hike.id} />)}
+                  {filteredHikes.map((hike) => (
+                    <HikeCard
+                      busy={statusBusy === hike.code}
+                      hike={hike}
+                      key={hike.id}
+                      onToggleStatus={toggleHikeStatus}
+                    />
+                  ))}
                   <button className="new-hike-card" type="button" onClick={() => setCreateOpen(true)}><span><Plus size={23} /></span><strong>Créer une carte</strong><small>Commencer avec un Studio 3D vierge</small></button>
                 </div>
               </section>

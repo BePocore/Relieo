@@ -1,7 +1,13 @@
-import { hasR2Config, r2GetText } from '../server/r2.js'
+import {
+  hasR2Config,
+  r2DeleteObject,
+  r2GetText,
+  r2PutText,
+} from '../server/r2.js'
 import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
-import { trailLocation } from '../server/trailStorage.js'
+import { isAdminUser } from '../server/admin.js'
+import { activeTrailPath, trailFolder, trailLocation } from '../server/trailStorage.js'
 import { pickCoverFromProjectJson } from '../server/cover.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
@@ -56,6 +62,87 @@ export async function GET(request: Request) {
       {
         code: 'STORAGE_READ_FAILED',
         message: error instanceof Error ? error.message : 'Lecture R2 impossible.',
+      },
+      { status: 500, headers: jsonHeaders },
+    )
+  }
+}
+
+// Le propriétaire (ou l'admin) change le STATUT de sa carte sans toucher au
+// contenu : passer en brouillon la retire du public (et coupe le pointeur public
+// si elle en était la carte par défaut) ; publier la remet en ligne. Le
+// project.json et les médias R2 ne sont JAMAIS modifiés ici.
+export async function POST(request: Request) {
+  if (!hasR2Config() || !hasFirebaseAdmin()) {
+    return Response.json(
+      { message: 'Service indisponible.' },
+      { status: 503, headers: jsonHeaders },
+    )
+  }
+  const user = await verifyRequestUser(request)
+  if (!user) {
+    return Response.json(
+      { message: 'Connexion requise.' },
+      { status: 401, headers: jsonHeaders },
+    )
+  }
+
+  try {
+    const body = (await request.json()) as { code?: string; status?: string }
+    const code = body.code?.trim()
+    const status =
+      body.status === 'draft'
+        ? 'draft'
+        : body.status === 'published'
+          ? 'published'
+          : null
+    if (!code || !status) {
+      return Response.json(
+        { message: 'code et status (published|draft) sont obligatoires.' },
+        { status: 400, headers: jsonHeaders },
+      )
+    }
+
+    const folder = trailFolder(code)
+    const entry = (await readHikeIndex()).find((hike) => hike.folder === folder)
+    if (!entry) {
+      return Response.json(
+        { message: 'Carte introuvable.' },
+        { status: 404, headers: jsonHeaders },
+      )
+    }
+    if (entry.ownerId !== user.uid && !isAdminUser(user)) {
+      return Response.json(
+        { message: 'Cette carte appartient à un autre utilisateur.' },
+        { status: 403, headers: jsonHeaders },
+      )
+    }
+
+    // Statut uniquement : on ne réécrit pas le project.json (contenu préservé).
+    await upsertHikeIndex({ folder, status })
+
+    // Pointeur public : coupé si on dépublie la carte active ; (ré)initialisé
+    // s'il n'existe pas quand on publie.
+    const activeBody = await r2GetText(activeTrailPath)
+    if (status === 'draft') {
+      if (activeBody) {
+        try {
+          const active = JSON.parse(activeBody) as { folder?: string }
+          if (active?.folder === folder) await r2DeleteObject(activeTrailPath)
+        } catch {
+          // active.json illisible : on n'y touche pas.
+        }
+      }
+    } else if (!activeBody) {
+      await r2PutText(activeTrailPath, JSON.stringify(trailLocation(entry.ownerId, code)))
+    }
+
+    return Response.json({ code, status }, { headers: jsonHeaders })
+  } catch (error) {
+    return Response.json(
+      {
+        code: 'HIKE_STATUS_FAILED',
+        message: error instanceof Error ? error.message : 'Mise à jour impossible.',
       },
       { status: 500, headers: jsonHeaders },
     )
