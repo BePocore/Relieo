@@ -233,7 +233,7 @@ const accountFetch = async (
 
 // Message d'appel d'un utilisateur banni (1 seul par bannissement).
 export const sendAccountAppeal = async (message: string): Promise<void> => {
-  const response = await accountFetch('/api/account/appeal', { message })
+  const response = await accountFetch('/api/account', { action: 'appeal', message })
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as
       | { message?: string }
@@ -244,5 +244,7 @@ export const sendAccountAppeal = async (message: string): Promise<void> => {
 
 // Acquittement de suppression : désactive le compte (reconnexion impossible).
 export const finalizeAccountDeletion = async (): Promise<void> => {
-  await accountFetch('/api/account/finalize-deletion', {}).catch(() => undefined)
+  await accountFetch('/api/account', { action: 'finalize-deletion' }).catch(
+    () => undefined,
+  )
 }

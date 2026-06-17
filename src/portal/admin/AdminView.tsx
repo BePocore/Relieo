@@ -195,43 +195,29 @@ export function AdminApp({
       setLoading(true)
       setError(null)
       const headers = { Authorization: `Bearer ${token}` }
-      const [overviewRes, usersRes, mapsRes, sanctionsRes, notifsRes] =
-        await Promise.all([
-          fetch('/api/admin/overview', { cache: 'no-store', headers }),
-          fetch('/api/admin/users', { cache: 'no-store', headers }),
-          fetch('/api/admin/maps', { cache: 'no-store', headers }),
-          fetch('/api/admin/sanctions', { cache: 'no-store', headers }),
-          fetch('/api/admin/notifications', { cache: 'no-store', headers }),
-        ])
-      if (
-        !overviewRes.ok ||
-        !usersRes.ok ||
-        !mapsRes.ok ||
-        !sanctionsRes.ok ||
-        !notifsRes.ok
-      ) {
-        const failed = [
-          overviewRes,
-          usersRes,
-          mapsRes,
-          sanctionsRes,
-          notifsRes,
-        ].find((r) => !r.ok)
-        const data = (await failed?.json().catch(() => null)) as
+      // Une seule lecture regroupée (cf. api/admin/dashboard).
+      const response = await fetch('/api/admin/dashboard', {
+        cache: 'no-store',
+        headers,
+      })
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as
           | { message?: string }
           | null
         throw new Error(data?.message ?? 'Lecture admin impossible.')
       }
-      setOverview((await overviewRes.json()) as Overview)
-      setUsers(((await usersRes.json()) as { users: AdminUser[] }).users)
-      setMaps(((await mapsRes.json()) as { maps: AdminMap[] }).maps)
-      setSanctions(
-        ((await sanctionsRes.json()) as { sanctions: Sanction[] }).sanctions,
-      )
-      setNotifications(
-        ((await notifsRes.json()) as { notifications: AdminNotification[] })
-          .notifications,
-      )
+      const data = (await response.json()) as {
+        overview: Overview
+        users: AdminUser[]
+        maps: AdminMap[]
+        sanctions: Sanction[]
+        notifications: AdminNotification[]
+      }
+      setOverview(data.overview)
+      setUsers(data.users)
+      setMaps(data.maps)
+      setSanctions(data.sanctions)
+      setNotifications(data.notifications)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -252,10 +238,10 @@ export function AdminApp({
   const changePlan = async (uid: string, plan: string) => {
     setBusyAction(`plan-${uid}`)
     try {
-      const response = await authFetch('/api/admin/set-plan', {
+      const response = await authFetch('/api/admin/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, plan }),
+        body: JSON.stringify({ action: 'set-plan', uid, plan }),
       })
       if (!response.ok) throw new Error()
       setUsers((current) =>
@@ -275,10 +261,10 @@ export function AdminApp({
   ) => {
     setBusyAction(`map-${code}`)
     try {
-      const response = await authFetch('/api/admin/map', {
+      const response = await authFetch('/api/admin/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, action, ...extra }),
+        body: JSON.stringify({ action: 'map', op: action, code, ...extra }),
       })
       if (!response.ok) throw new Error()
       if (action === 'delete') {
@@ -302,10 +288,10 @@ export function AdminApp({
   ) => {
     setBusyAction(`user-${uid}`)
     try {
-      const response = await authFetch('/api/admin/user-action', {
+      const response = await authFetch('/api/admin/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, action, message }),
+        body: JSON.stringify({ action: 'user-action', op: action, uid, message }),
       })
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as
@@ -332,10 +318,10 @@ export function AdminApp({
       current.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)),
     )
     try {
-      await authFetch('/api/admin/notifications', {
+      await authFetch('/api/admin/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ action: 'mark-read', ids }),
       })
     } catch {
       setError('Mise à jour des notifications impossible.')

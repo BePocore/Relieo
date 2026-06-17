@@ -1,35 +1,30 @@
 import { getAuth } from 'firebase-admin/auth'
 import { adminApp, hasFirebaseAdmin } from '../../server/firebaseAdmin.js'
 import { isAdminUid, requireAdmin } from '../../server/admin.js'
+import {
+  hasR2Config,
+  r2StorageUsage,
+  r2UsageForPrefixes,
+} from '../../server/r2.js'
+import { readHikeIndex } from '../../server/hikeIndex.js'
 import { readAllProfiles } from '../../server/firestoreAdmin.js'
 import { readAllModeration } from '../../server/moderation.js'
-import { hasR2Config, r2UsageForPrefixes } from '../../server/r2.js'
-import { readHikeIndex } from '../../server/hikeIndex.js'
+import { readSanctions } from '../../server/sanctions.js'
+import { readAdminNotifications } from '../../server/adminNotifications.js'
 import { userStorageRoot } from '../../server/trailStorage.js'
-import { DEFAULT_PLAN_ID, monthlyR2Cost } from '../../server/plans.js'
+import {
+  DEFAULT_PLAN_ID,
+  R2_FREE_BYTES,
+  monthlyR2Cost,
+} from '../../server/plans.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
-type AdminUser = {
-  uid: string
-  email: string | null
-  name?: string
-  plan: string
-  isAdmin: boolean
-  createdAt: string | null
-  emailVerified: boolean
-  hikeCount: number
-  publishedCount: number
-  mediaCount: number
-  usedBytes: number
-  monthlyCostEur: number
-  // État de modération du compte (sanctions).
-  status: 'active' | 'blocked' | 'deleted'
-  banCount: number
-}
-
-// Vue admin des utilisateurs : chaque compte Firebase + son profil Firestore,
-// son nombre de cartes/médias (registre R2) et son stockage réel + coût R2.
+// Endpoint admin unique qui regroupe TOUTES les lectures de la console
+// (anciens `overview`, `users`, `maps`, `sanctions`, `notifications`) en un seul
+// appel — moins de fonctions serverless (limite Vercel Hobby) et un seul
+// aller-retour pour charger le dashboard. Les données partagées (comptes Auth,
+// registre des cartes…) ne sont lues qu'une fois.
 export async function GET(request: Request) {
   if (!hasFirebaseAdmin() || !hasR2Config()) {
     return Response.json(
@@ -46,14 +41,31 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [authList, profiles, hikes, moderation] = await Promise.all([
-      getAuth(adminApp()).listUsers(1000),
-      readAllProfiles(),
-      readHikeIndex(),
-      readAllModeration(),
-    ])
+    const [authList, hikes, profiles, moderation, totalBytes, sanctions, notifications] =
+      await Promise.all([
+        getAuth(adminApp()).listUsers(1000),
+        readHikeIndex(),
+        readAllProfiles(),
+        readAllModeration(),
+        r2StorageUsage(),
+        readSanctions(),
+        readAdminNotifications(),
+      ])
 
-    // Agrégats par propriétaire depuis le registre des cartes.
+    // --- Vue d'ensemble ---
+    const publishedCount = hikes.filter((h) => h.status === 'published').length
+    const overview = {
+      userCount: authList.users.length,
+      hikeCount: hikes.length,
+      publishedCount,
+      draftCount: hikes.length - publishedCount,
+      totalBytes,
+      freeBytes: R2_FREE_BYTES,
+      billableBytes: Math.max(0, totalBytes - R2_FREE_BYTES),
+      monthlyCostEur: monthlyR2Cost(totalBytes, true),
+    }
+
+    // --- Agrégats des cartes par propriétaire ---
     const byOwner = new Map<
       string,
       { hikeCount: number; publishedCount: number; mediaCount: number }
@@ -71,14 +83,13 @@ export async function GET(request: Request) {
       byOwner.set(hike.ownerId, current)
     }
 
-    const users: AdminUser[] = await Promise.all(
+    // --- Utilisateurs (avec stockage réel par préfixe) ---
+    const users = await Promise.all(
       authList.users.map(async (record) => {
         const profile = profiles.get(record.uid)
         const aggregate = byOwner.get(record.uid)
         const mod = moderation.get(record.uid)
-        const usedBytes = await r2UsageForPrefixes([
-          userStorageRoot(record.uid),
-        ])
+        const usedBytes = await r2UsageForPrefixes([userStorageRoot(record.uid)])
         return {
           uid: record.uid,
           email: record.email ?? null,
@@ -97,19 +108,35 @@ export async function GET(request: Request) {
         }
       }),
     )
-
-    // Les admins remontent en tête, puis tri par stockage décroissant.
     users.sort(
       (a, b) =>
         Number(b.isAdmin) - Number(a.isAdmin) || b.usedBytes - a.usedBytes,
     )
-    return Response.json({ users }, { headers: jsonHeaders })
+
+    // --- God-view des cartes ---
+    const emailByUid = new Map<string, string | null>(
+      authList.users.map((record) => [record.uid, record.email ?? null]),
+    )
+    const maps = hikes
+      .map((hike) => ({
+        ...hike,
+        ownerEmail: hike.ownerId ? emailByUid.get(hike.ownerId) ?? null : null,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      )
+
+    return Response.json(
+      { overview, users, maps, sanctions, notifications },
+      { headers: jsonHeaders },
+    )
   } catch (error) {
     return Response.json(
       {
-        code: 'ADMIN_USERS_FAILED',
+        code: 'ADMIN_DASHBOARD_FAILED',
         message:
-          error instanceof Error ? error.message : 'Lecture des utilisateurs impossible.',
+          error instanceof Error ? error.message : 'Lecture admin impossible.',
       },
       { status: 500, headers: jsonHeaders },
     )
