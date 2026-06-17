@@ -1957,3 +1957,89 @@
   cursor: pointer;
 }
 .portal-notif-ok:hover { background: #0b4a32; }
+
+/* ── Zone danger du profil (demande de suppression) ─────────────── */
+.profile-danger {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #f2c9c4;
+  border-radius: 16px;
+  background: #fdf4f3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.profile-danger-text h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #8a2018;
+}
+.profile-danger-text p {
+  margin: 0;
+  max-width: 460px;
+  font-size: 13px;
+  color: #9a5a54;
+  line-height: 1.45;
+}
+.profile-danger-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #c0392b;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.profile-danger-button:hover:not(:disabled) { background: #a3271b; }
+.profile-danger-button:disabled { opacity: 0.5; cursor: default; }
+.profile-danger-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a6d1f;
+}
+.profile-danger-confirm {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #4a5a52;
+}
+.profile-danger-confirm strong { color: #c0392b; }
+.portal-modal textarea {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d4ddd7;
+  border-radius: 10px;
+  font: inherit;
+  resize: vertical;
+}
+.portal-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+.portal-secondary {
+  padding: 10px 16px;
+  border: 1px solid #d4ddd7;
+  border-radius: 12px;
+  background: #fff;
+  color: #2a3a32;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.portal-secondary:hover:not(:disabled) { background: #f3f6f4; }
+.portal-secondary:disabled { opacity: 0.5; cursor: default; }

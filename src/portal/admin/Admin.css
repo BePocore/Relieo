@@ -730,3 +730,22 @@
   .admin-storage { grid-template-columns: 1fr; }
   .admin-revenue-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ── Demande de suppression de compte ───────────────────────────── */
+.admin-row-danger > td { background: #fdeceb; }
+.admin-deleted-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b3261e;
+}
+.admin-deleted-cell small { font-weight: 500; color: var(--admin-muted); }
+.admin-deleted-cell.pending { color: #9a6b12; }
+.admin-notif-mark.danger {
+  border: 1px solid #e6b8b3;
+  color: #b3261e;
+}
+.admin-notif-mark.danger:hover:not(:disabled) { background: #fdeceb; }
+.admin-notif-mark:disabled { opacity: 0.5; cursor: default; }

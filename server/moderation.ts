@@ -15,6 +15,12 @@ export type ModerationAppeal = {
   notifId?: string
 }
 
+// Demande de suppression émise par l'utilisateur lui-même (en attente de l'admin).
+export type DeletionRequest = {
+  message: string
+  requestedAt: string
+}
+
 export type ModerationRecord = {
   status: ModerationStatus
   message: string
@@ -26,6 +32,13 @@ export type ModerationRecord = {
   appeal: ModerationAppeal | null
   // Réponse de l'admin à l'appel, affichée à l'utilisateur sur l'écran de blocage.
   adminReply: ModerationAppeal | null
+  // Demande de suppression volontaire en attente de traitement par l'admin.
+  deletionRequest: DeletionRequest | null
+  // Email/date/admin conservés pour tracer un compte supprimé dont l'auth
+  // Firebase n'existe plus (suppression volontaire libère l'email).
+  email: string | null
+  deletedAt: string | null
+  deletedBy: string | null
 }
 
 const DEFAULT: ModerationRecord = {
@@ -35,6 +48,10 @@ const DEFAULT: ModerationRecord = {
   updatedAt: null,
   appeal: null,
   adminReply: null,
+  deletionRequest: null,
+  email: null,
+  deletedAt: null,
+  deletedBy: null,
 }
 
 const parseAppeal = (value: unknown): ModerationAppeal | null =>
@@ -43,6 +60,14 @@ const parseAppeal = (value: unknown): ModerationAppeal | null =>
         message: (value as ModerationAppeal).message,
         sentAt: (value as ModerationAppeal).sentAt ?? '',
         notifId: (value as ModerationAppeal).notifId,
+      }
+    : null
+
+const parseDeletionRequest = (value: unknown): DeletionRequest | null =>
+  value && typeof (value as DeletionRequest).message === 'string'
+    ? {
+        message: (value as DeletionRequest).message,
+        requestedAt: (value as DeletionRequest).requestedAt ?? '',
       }
     : null
 
@@ -65,6 +90,10 @@ export const readModeration = async (
     updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : null,
     appeal: parseAppeal(data.appeal),
     adminReply: parseAppeal(data.adminReply),
+    deletionRequest: parseDeletionRequest(data.deletionRequest),
+    email: typeof data.email === 'string' ? data.email : null,
+    deletedAt: typeof data.deletedAt === 'string' ? data.deletedAt : null,
+    deletedBy: typeof data.deletedBy === 'string' ? data.deletedBy : null,
   }
 }
 
@@ -86,6 +115,10 @@ export const readAllModeration = async (): Promise<
       updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : null,
       appeal: parseAppeal(data.appeal),
       adminReply: parseAppeal(data.adminReply),
+      deletionRequest: parseDeletionRequest(data.deletionRequest),
+      email: typeof data.email === 'string' ? data.email : null,
+      deletedAt: typeof data.deletedAt === 'string' ? data.deletedAt : null,
+      deletedBy: typeof data.deletedBy === 'string' ? data.deletedBy : null,
     })
   }
   return records

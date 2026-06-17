@@ -72,6 +72,7 @@ import {
   readAccountStatus,
   readUserNotifications,
   readUserProfile,
+  requestAccountDeletion,
   saveUserPhoto,
   saveUserPlan,
   saveUserProfile,
@@ -471,6 +472,43 @@ function ProfileView({
   const [cropFile, setCropFile] = useState<File | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteReason, setDeleteReason] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deletionRequested, setDeletionRequested] = useState(false)
+
+  // Une demande de suppression est-elle déjà en attente ? (état initial)
+  useEffect(() => {
+    let cancelled = false
+    void readAccountStatus(user.id)
+      .then((status) => {
+        if (!cancelled) setDeletionRequested(status.deletionRequested)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [user.id])
+
+  const submitDeletion = async () => {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      await requestAccountDeletion(deleteReason.trim())
+      setDeleteOpen(false)
+      setDeletionRequested(true)
+    } catch (requestError) {
+      setDeleteError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Envoi de la demande impossible.',
+      )
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
 
   const pickPhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -568,6 +606,88 @@ function ProfileView({
           <button className="portal-primary" disabled={busy} type="submit">{saved ? <Check size={17} /> : <UserRound size={17} />}{busy ? 'Enregistrement...' : saved ? 'Profil enregistré' : 'Enregistrer le profil'}</button>
         </form>
       </div>
+
+      <div className="profile-danger">
+        <div className="profile-danger-text">
+          <h3>Supprimer mon compte</h3>
+          <p>
+            Ta demande sera transmise à l’administrateur, qui supprimera ton
+            compte et tout son contenu. Cette action est irréversible.
+          </p>
+        </div>
+        {deletionRequested ? (
+          <p className="profile-danger-pending">
+            <Trash2 size={15} /> Demande envoyée, en attente de traitement par
+            l’administrateur.
+          </p>
+        ) : (
+          <button
+            className="profile-danger-button"
+            type="button"
+            onClick={() => {
+              setDeleteReason('')
+              setDeleteConfirm('')
+              setDeleteError(null)
+              setDeleteOpen(true)
+            }}
+          >
+            <Trash2 size={16} /> Supprimer mon profil
+          </button>
+        )}
+      </div>
+
+      {deleteOpen ? (
+        <div className="portal-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="portal-modal">
+            <h2>Supprimer mon profil</h2>
+            <p>
+              Explique pourquoi tu souhaites supprimer ton compte. La demande
+              sera envoyée à l’administrateur.
+            </p>
+            <textarea
+              rows={4}
+              value={deleteReason}
+              placeholder="Raison de la suppression"
+              onChange={(event) => setDeleteReason(event.target.value)}
+            />
+            <label className="profile-danger-confirm">
+              <span>
+                Tape <strong>delete</strong> pour confirmer
+              </span>
+              <input
+                type="text"
+                autoComplete="off"
+                value={deleteConfirm}
+                placeholder="delete"
+                onChange={(event) => setDeleteConfirm(event.target.value)}
+              />
+            </label>
+            {deleteError ? <p className="auth-error">{deleteError}</p> : null}
+            <div className="portal-modal-actions">
+              <button
+                className="portal-secondary"
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeleteOpen(false)}
+              >
+                Annuler
+              </button>
+              <button
+                className="profile-danger-button"
+                type="button"
+                disabled={
+                  deleteBusy ||
+                  !deleteReason.trim() ||
+                  deleteConfirm.trim().toLowerCase() !== 'delete'
+                }
+                onClick={() => void submitDeletion()}
+              >
+                {deleteBusy ? 'Envoi...' : 'Envoyer la demande'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -1669,6 +1789,7 @@ function FirebasePortal() {
             message: '',
             appealSent: false,
             adminReply: null,
+            deletionRequested: false,
           })
       })
     return () => {

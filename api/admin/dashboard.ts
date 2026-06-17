@@ -105,13 +105,47 @@ export async function GET(request: Request) {
           monthlyCostEur: monthlyR2Cost(usedBytes),
           status: mod?.status ?? 'active',
           banCount: mod?.banCount ?? 0,
+          deletionRequest: Boolean(mod?.deletionRequest),
+          deletedAt: mod?.deletedAt ?? null,
+          deletedBy: mod?.deletedBy ?? null,
         }
       }),
     )
-    users.sort(
-      (a, b) =>
-        Number(b.isAdmin) - Number(a.isAdmin) || b.usedBytes - a.usedBytes,
-    )
+
+    // Comptes supprimés dont l'auth Firebase n'existe plus (suppression
+    // volontaire qui libère l'email) : reconstruits depuis `moderation` pour
+    // garder la trace (Supprimé + date + admin) dans la console.
+    const authUids = new Set(authList.users.map((record) => record.uid))
+    const deletedGhosts = [...moderation.entries()]
+      .filter(([uid, mod]) => mod.status === 'deleted' && !authUids.has(uid))
+      .map(([uid, mod]) => ({
+        uid,
+        email: mod.email,
+        name: undefined,
+        plan: DEFAULT_PLAN_ID,
+        isAdmin: false,
+        createdAt: null,
+        emailVerified: false,
+        hikeCount: 0,
+        publishedCount: 0,
+        mediaCount: 0,
+        usedBytes: 0,
+        monthlyCostEur: 0,
+        status: 'deleted' as const,
+        banCount: mod.banCount,
+        deletionRequest: false,
+        deletedAt: mod.deletedAt,
+        deletedBy: mod.deletedBy,
+      }))
+    const allUsers = [...users, ...deletedGhosts]
+    // Tri : admins en haut, comptes actifs ensuite, demandes de suppression en
+    // attente plus bas, comptes supprimés tout en bas.
+    const rank = (u: {
+      isAdmin: boolean
+      status: string
+      deletionRequest: boolean
+    }) => (u.isAdmin ? 0 : u.status === 'deleted' ? 3 : u.deletionRequest ? 2 : 1)
+    allUsers.sort((a, b) => rank(a) - rank(b) || b.usedBytes - a.usedBytes)
 
     // --- God-view des cartes ---
     const emailByUid = new Map<string, string | null>(
@@ -128,7 +162,7 @@ export async function GET(request: Request) {
       )
 
     return Response.json(
-      { overview, users, maps, sanctions, notifications },
+      { overview, users: allUsers, maps, sanctions, notifications },
       { headers: jsonHeaders },
     )
   } catch (error) {

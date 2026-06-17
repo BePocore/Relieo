@@ -6,7 +6,7 @@ export const adminNotificationsPath = 'relieo/admin-notifications.json'
 
 export type AdminNotification = {
   id: string
-  type: 'appeal'
+  type: 'appeal' | 'deletion-request'
   fromUid: string
   fromEmail: string | null
   message: string

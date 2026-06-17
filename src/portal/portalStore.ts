@@ -42,6 +42,8 @@ export type AccountStatus = {
   appealSent: boolean
   // Réponse de l'admin à l'appel, affichée sur l'écran de blocage.
   adminReply: string | null
+  // Demande volontaire de suppression en attente de traitement par l'admin.
+  deletionRequested: boolean
 }
 
 // Notification déposée par l'admin dans le profil de l'utilisateur, affichée à

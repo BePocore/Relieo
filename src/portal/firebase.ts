@@ -236,6 +236,7 @@ export const readAccountStatus = async (
     message: '',
     appealSent: false,
     adminReply: null,
+    deletionRequested: false,
   }
   if (!db) return fallback
   const snapshot = await getDoc(doc(db, 'moderation', uid))
@@ -252,6 +253,7 @@ export const readAccountStatus = async (
       data.adminReply && typeof data.adminReply.message === 'string'
         ? data.adminReply.message
         : null,
+    deletionRequested: Boolean(data.deletionRequest),
   }
 }
 
@@ -307,6 +309,20 @@ const accountFetch = async (
 // Message d'appel d'un utilisateur banni (1 seul par bannissement).
 export const sendAccountAppeal = async (message: string): Promise<void> => {
   const response = await accountFetch('/api/account', { action: 'appeal', message })
+  if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null
+    throw new Error(data?.message ?? 'Envoi impossible.')
+  }
+}
+
+// Demande volontaire de suppression de compte (transmise à l'admin en notif).
+export const requestAccountDeletion = async (message: string): Promise<void> => {
+  const response = await accountFetch('/api/account', {
+    action: 'request-deletion',
+    message,
+  })
   if (!response.ok) {
     const data = (await response.json().catch(() => null)) as
       | { message?: string }

@@ -139,10 +139,16 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
   const message = body.message?.trim() ?? ''
   if (
     !uid ||
-    (op !== 'block' && op !== 'unblock' && op !== 'delete-account')
+    (op !== 'block' &&
+      op !== 'unblock' &&
+      op !== 'delete-account' &&
+      op !== 'dismiss-deletion-request')
   ) {
     return json(
-      { message: 'uid et op (block|unblock|delete-account) sont obligatoires.' },
+      {
+        message:
+          'uid et op (block|unblock|delete-account|dismiss-deletion-request) sont obligatoires.',
+      },
       400,
     )
   }
@@ -201,8 +207,15 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
     return json({ uid, op, status: 'active' })
   }
 
-  // delete-account : seulement après 3 bannissements.
-  if (current.banCount < 3) {
+  if (op === 'dismiss-deletion-request') {
+    await setModeration(uid, { deletionRequest: null })
+    if (body.notifId) await markAdminNotificationsRead([body.notifId])
+    return json({ uid, op, dismissed: true })
+  }
+
+  // delete-account : après 3 bannissements OU sur demande volontaire de l'utilisateur.
+  const fromRequest = Boolean(current.deletionRequest)
+  if (current.banCount < 3 && !fromRequest) {
     return json(
       { message: `Suppression impossible : ${current.banCount}/3 bannissements reçus.` },
       403,
@@ -211,13 +224,30 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
   const removedFolders = await removeOwnerFromIndex(uid)
   await clearActiveIfRemoved(removedFolders)
   await r2DeletePrefix(userStorageRoot(uid))
-  await setModeration(uid, { status: 'deleted', message, appeal: null })
-  await pushUserNotification(uid, {
-    id: `${uid}-del-${Date.now()}`,
-    type: 'delete-account',
+  await setModeration(uid, {
+    status: 'deleted',
     message,
-    createdAt: new Date().toISOString(),
+    appeal: null,
+    deletionRequest: null,
+    email: targetEmail,
+    deletedAt: new Date().toISOString(),
+    deletedBy: admin.email ?? admin.uid,
   })
+  if (fromRequest) {
+    // Suppression volontaire : on supprime l'auth Firebase pour libérer l'email
+    // (l'utilisateur pourra se réinscrire). La trace reste dans `moderation`.
+    await getAuth(adminApp()).deleteUser(uid)
+  } else {
+    // Suppression après bannissements : l'auth est conservée (désactivée à la
+    // reconnexion via finalize-deletion), l'email reste réservé.
+    await pushUserNotification(uid, {
+      id: `${uid}-del-${Date.now()}`,
+      type: 'delete-account',
+      message,
+      createdAt: new Date().toISOString(),
+    })
+  }
+  if (body.notifId) await markAdminNotificationsRead([body.notifId])
   await logSanction('delete-account')
   return json({ uid, op, status: 'deleted' })
 }

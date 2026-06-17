@@ -43,11 +43,16 @@ type AdminUser = {
   monthlyCostEur: number
   status: 'active' | 'blocked' | 'deleted'
   banCount: number
+  // Demande de suppression volontaire en attente.
+  deletionRequest: boolean
+  // Trace d'un compte supprimé (date + admin).
+  deletedAt: string | null
+  deletedBy: string | null
 }
 
 type AdminNotification = {
   id: string
-  type: 'appeal'
+  type: 'appeal' | 'deletion-request'
   fromUid: string
   fromEmail: string | null
   message: string
@@ -189,6 +194,8 @@ export function AdminApp({
   const [deleteUserTarget, setDeleteUserTarget] = useState<AdminUser | null>(null)
   const [deleteUserConfirm, setDeleteUserConfirm] = useState('')
   const [deleteUserMessage, setDeleteUserMessage] = useState('')
+  // Notification de demande liée à la suppression en cours (pour la marquer lue).
+  const [deleteUserNotifId, setDeleteUserNotifId] = useState<string | null>(null)
   // Modale de réponse à un appel de banni.
   const [replyTarget, setReplyTarget] = useState<AdminNotification | null>(null)
   const [replyMessage, setReplyMessage] = useState('')
@@ -288,15 +295,16 @@ export function AdminApp({
 
   const userAction = async (
     uid: string,
-    action: 'block' | 'unblock' | 'delete-account',
+    action: 'block' | 'unblock' | 'delete-account' | 'dismiss-deletion-request',
     message?: string,
+    notifId?: string,
   ) => {
     setBusyAction(`user-${uid}`)
     try {
       const response = await authFetch('/api/admin/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'user-action', op: action, uid, message }),
+        body: JSON.stringify({ action: 'user-action', op: action, uid, message, notifId }),
       })
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as
@@ -463,6 +471,7 @@ export function AdminApp({
             <th>Médias</th>
             <th>Stockage</th>
             <th>Coût R2/mois</th>
+            <th>Supprimé</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -470,7 +479,7 @@ export function AdminApp({
           {users.map((u) =>
             u.isAdmin ? (
               <tr className="admin-row" key={u.uid}>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <div className="admin-user-cell">
                     <strong>
                       {u.name || u.email || u.uid}
@@ -483,7 +492,7 @@ export function AdminApp({
                 </td>
               </tr>
             ) : (
-              <tr key={u.uid}>
+              <tr className={u.deletionRequest ? 'admin-row-danger' : undefined} key={u.uid}>
                 <td>
                   <div className="admin-user-cell">
                     <strong>
@@ -518,6 +527,18 @@ export function AdminApp({
                 <td>{formatEur(u.monthlyCostEur)}</td>
                 <td>
                   {u.status === 'deleted' ? (
+                    <span className="admin-deleted-cell">
+                      Oui{u.deletedAt ? ` — ${formatDate(u.deletedAt)}` : ''}
+                      {u.deletedBy ? <small>par {u.deletedBy}</small> : null}
+                    </span>
+                  ) : u.deletionRequest ? (
+                    <span className="admin-deleted-cell pending">Demande en cours</span>
+                  ) : (
+                    'Non'
+                  )}
+                </td>
+                <td>
+                  {u.status === 'deleted' ? (
                     <span className="admin-muted-text">—</span>
                   ) : (
                     <div className="admin-actions">
@@ -547,15 +568,19 @@ export function AdminApp({
                       )}
                       <button
                         className="admin-action danger"
-                        disabled={busyAction === `user-${u.uid}` || u.banCount < 3}
+                        disabled={
+                          busyAction === `user-${u.uid}` ||
+                          (u.banCount < 3 && !u.deletionRequest)
+                        }
                         type="button"
                         onClick={() => {
                           setDeleteUserConfirm('')
                           setDeleteUserMessage('')
+                          setDeleteUserNotifId(null)
                           setDeleteUserTarget(u)
                         }}
                         title={
-                          u.banCount < 3
+                          u.banCount < 3 && !u.deletionRequest
                             ? `Suppression possible après 3 bannissements (${u.banCount}/3)`
                             : 'Supprimer définitivement le compte'
                         }
@@ -569,7 +594,7 @@ export function AdminApp({
             ),
           )}
           {users.length === 0 ? (
-            <tr><td className="admin-empty" colSpan={7}>Aucun utilisateur.</td></tr>
+            <tr><td className="admin-empty" colSpan={8}>Aucun utilisateur.</td></tr>
           ) : null}
         </tbody>
       </table>
@@ -803,7 +828,16 @@ export function AdminApp({
           <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
             <div className="admin-notif-head">
               <span className="admin-notif-from">
-                <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
+                {n.type === 'deletion-request' ? (
+                  <>
+                    <Trash2 size={14} /> Demande de suppression de{' '}
+                    {n.fromEmail ?? n.fromUid}
+                  </>
+                ) : (
+                  <>
+                    <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
+                  </>
+                )}
               </span>
               <time>{formatDateTime(n.createdAt)}</time>
             </div>
@@ -815,16 +849,54 @@ export function AdminApp({
               </div>
             ) : null}
             <div className="admin-notif-actions">
-              <button
-                className="admin-notif-mark primary"
-                type="button"
-                onClick={() => {
-                  setReplyMessage(n.reply?.message ?? '')
-                  setReplyTarget(n)
-                }}
-              >
-                {n.reply ? 'Modifier la réponse' : 'Répondre'}
-              </button>
+              {n.type === 'deletion-request' ? (
+                <>
+                  <button
+                    className="admin-notif-mark danger"
+                    type="button"
+                    disabled={busyAction === `user-${n.fromUid}`}
+                    onClick={() => {
+                      const target = users.find((u) => u.uid === n.fromUid)
+                      if (!target) {
+                        setError('Compte introuvable (déjà supprimé ?).')
+                        return
+                      }
+                      setDeleteUserConfirm('')
+                      setDeleteUserMessage('')
+                      setDeleteUserNotifId(n.id)
+                      setDeleteUserTarget(target)
+                    }}
+                  >
+                    <Trash2 size={14} /> Supprimer le compte
+                  </button>
+                  <button
+                    className="admin-notif-mark"
+                    type="button"
+                    disabled={busyAction === `user-${n.fromUid}`}
+                    onClick={() =>
+                      void userAction(
+                        n.fromUid,
+                        'dismiss-deletion-request',
+                        undefined,
+                        n.id,
+                      )
+                    }
+                  >
+                    Ignorer la demande
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="admin-notif-mark primary"
+                  type="button"
+                  onClick={() => {
+                    setReplyMessage(n.reply?.message ?? '')
+                    setReplyTarget(n)
+                  }}
+                >
+                  {n.reply ? 'Modifier la réponse' : 'Répondre'}
+                </button>
+              )}
               {!n.read ? (
                 <button
                   className="admin-notif-mark"
@@ -1202,9 +1274,19 @@ export function AdminApp({
             </h2>
             <p>
               Action <strong>définitive</strong> sur {deleteUserTarget.email ?? deleteUserTarget.uid}.
-              Tout son contenu (cartes, médias, stockage R2) est effacé. Le compte
-              et l’adresse email restent <strong>réservés</strong> : l’utilisateur
-              ne pourra plus se reconnecter ni recréer un compte avec cette adresse.
+              Tout son contenu (cartes, médias, stockage R2) est effacé.{' '}
+              {deleteUserTarget.deletionRequest ? (
+                <>
+                  Suppression <strong>demandée par l’utilisateur</strong> : son
+                  adresse email est libérée, il pourra se réinscrire.
+                </>
+              ) : (
+                <>
+                  Le compte et l’adresse email restent <strong>réservés</strong> :
+                  l’utilisateur ne pourra plus se reconnecter ni recréer un compte
+                  avec cette adresse.
+                </>
+              )}
             </p>
             <label className="admin-modal-label" htmlFor="deluser-message">
               Message au propriétaire (facultatif, affiché à sa prochaine connexion)
@@ -1229,7 +1311,10 @@ export function AdminApp({
               <button
                 className="admin-modal-cancel"
                 type="button"
-                onClick={() => setDeleteUserTarget(null)}
+                onClick={() => {
+                  setDeleteUserTarget(null)
+                  setDeleteUserNotifId(null)
+                }}
               >
                 Annuler
               </button>
@@ -1242,8 +1327,15 @@ export function AdminApp({
                 type="button"
                 onClick={async () => {
                   const target = deleteUserTarget
-                  await userAction(target.uid, 'delete-account', deleteUserMessage)
+                  const notifId = deleteUserNotifId
+                  await userAction(
+                    target.uid,
+                    'delete-account',
+                    deleteUserMessage,
+                    notifId ?? undefined,
+                  )
                   setDeleteUserTarget(null)
+                  setDeleteUserNotifId(null)
                 }}
               >
                 <Trash2 size={15} /> Supprimer définitivement
