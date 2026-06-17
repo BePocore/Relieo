@@ -51,7 +51,9 @@ export async function POST(request: Request) {
       if (moderation.status !== 'blocked') {
         return json({ message: 'Aucun bannissement en cours.' }, 403)
       }
-      const stored = await appendAppeal(user.uid, message)
+      // Id partagé entre la notification admin et l'appel (lien pour la réponse).
+      const notifId = `${user.uid}-appeal-${Date.now()}`
+      const stored = await appendAppeal(user.uid, message, notifId)
       if (!stored) {
         return json(
           { message: 'Vous avez déjà envoyé un message pour ce bannissement.' },
@@ -59,13 +61,14 @@ export async function POST(request: Request) {
         )
       }
       await appendAdminNotification({
-        id: `${user.uid}-appeal-${Date.now()}`,
+        id: notifId,
         type: 'appeal',
         fromUid: user.uid,
         fromEmail: user.email,
         message,
         createdAt: new Date().toISOString(),
         read: false,
+        reply: null,
       })
       return json({ ok: true })
     }

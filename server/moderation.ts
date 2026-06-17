@@ -10,6 +10,9 @@ export type ModerationStatus = 'active' | 'blocked' | 'deleted'
 export type ModerationAppeal = {
   message: string
   sentAt: string
+  // Id de la notification admin correspondante (pour relier la réponse au ban
+  // en cours et l'afficher sur l'écran de blocage de l'utilisateur).
+  notifId?: string
 }
 
 export type ModerationRecord = {
@@ -39,6 +42,7 @@ const parseAppeal = (value: unknown): ModerationAppeal | null =>
     ? {
         message: (value as ModerationAppeal).message,
         sentAt: (value as ModerationAppeal).sentAt ?? '',
+        notifId: (value as ModerationAppeal).notifId,
       }
     : null
 
@@ -98,16 +102,18 @@ export const setModeration = async (
 }
 
 // Enregistre l'appel de l'utilisateur banni (1 seul par ban). Renvoie false si
-// un appel a déjà été déposé pour le ban en cours.
+// un appel a déjà été déposé pour le ban en cours. `notifId` relie l'appel à sa
+// notification admin (pour afficher la réponse du ban en cours à l'utilisateur).
 export const appendAppeal = async (
   uid: string,
   message: string,
+  notifId: string,
 ): Promise<boolean> => {
   const current = await readModeration(uid)
   if (current.appeal) return false
   await docRef(uid).set(
     {
-      appeal: { message, sentAt: new Date().toISOString() },
+      appeal: { message, sentAt: new Date().toISOString(), notifId },
       updatedAt: new Date().toISOString(),
     },
     { merge: true },

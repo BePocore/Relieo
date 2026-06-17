@@ -105,8 +105,6 @@ export async function GET(request: Request) {
           monthlyCostEur: monthlyR2Cost(usedBytes),
           status: mod?.status ?? 'active',
           banCount: mod?.banCount ?? 0,
-          appeal: mod?.appeal?.message ?? null,
-          adminReply: mod?.adminReply?.message ?? null,
         }
       }),
     )

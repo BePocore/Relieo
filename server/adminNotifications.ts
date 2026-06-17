@@ -12,6 +12,8 @@ export type AdminNotification = {
   message: string
   createdAt: string
   read: boolean
+  // Réponse de l'admin À CET appel précis (par notification, pas par utilisateur).
+  reply: { message: string; sentAt: string } | null
 }
 
 const MAX_ENTRIES = 1000
@@ -21,9 +23,11 @@ export const readAdminNotifications = async (): Promise<AdminNotification[]> => 
   if (!body) return []
   try {
     const value = JSON.parse(body) as { notifications?: unknown }
-    return Array.isArray(value.notifications)
-      ? (value.notifications as AdminNotification[])
-      : []
+    if (!Array.isArray(value.notifications)) return []
+    return (value.notifications as AdminNotification[]).map((item) => ({
+      ...item,
+      reply: item.reply ?? null,
+    }))
   } catch {
     return []
   }
@@ -47,4 +51,22 @@ export const markAdminNotificationsRead = async (
     idSet.has(item.id) ? { ...item, read: true } : item,
   )
   await r2PutText(adminNotificationsPath, JSON.stringify({ notifications: next }))
+}
+
+// Enregistre la réponse de l'admin sur une notification précise (et la marque
+// lue). Renvoie l'uid de l'auteur de l'appel, ou null si introuvable.
+export const setAdminNotificationReply = async (
+  id: string,
+  message: string,
+): Promise<string | null> => {
+  const current = await readAdminNotifications()
+  const target = current.find((item) => item.id === id)
+  if (!target) return null
+  const next = current.map((item) =>
+    item.id === id
+      ? { ...item, read: true, reply: { message, sentAt: new Date().toISOString() } }
+      : item,
+  )
+  await r2PutText(adminNotificationsPath, JSON.stringify({ notifications: next }))
+  return target.fromUid
 }

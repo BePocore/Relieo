@@ -16,7 +16,10 @@ import {
 import { pushUserNotification, setUserPlan } from '../../server/firestoreAdmin.js'
 import { readModeration, setModeration } from '../../server/moderation.js'
 import { appendSanction } from '../../server/sanctions.js'
-import { markAdminNotificationsRead } from '../../server/adminNotifications.js'
+import {
+  markAdminNotificationsRead,
+  setAdminNotificationReply,
+} from '../../server/adminNotifications.js'
 import {
   activeTrailPath,
   trailFolder,
@@ -248,17 +251,24 @@ export async function POST(request: Request) {
       case 'user-action':
         return handleUserAction(admin, body)
       case 'reply-appeal': {
-        const uid = body.uid?.trim()
+        const notifId = body.notifId?.trim()
         const message = body.message?.trim()
-        if (!uid || !message) {
-          return json({ message: 'uid et message sont obligatoires.' }, 400)
+        if (!notifId || !message) {
+          return json({ message: 'notifId et message sont obligatoires.' }, 400)
         }
-        await setModeration(uid, {
-          adminReply: { message, sentAt: new Date().toISOString() },
-        })
-        // L'appel traité est marqué lu.
-        if (body.notifId) await markAdminNotificationsRead([body.notifId])
-        return json({ uid, replied: true })
+        // La réponse est attachée à CETTE notification (par appel).
+        const uid = await setAdminNotificationReply(notifId, message)
+        // Si l'appel correspond au bannissement EN COURS, on l'affiche aussi à
+        // l'utilisateur sur son écran de blocage (moderation.adminReply).
+        if (uid) {
+          const current = await readModeration(uid)
+          if (current.status === 'blocked' && current.appeal?.notifId === notifId) {
+            await setModeration(uid, {
+              adminReply: { message, sentAt: new Date().toISOString() },
+            })
+          }
+        }
+        return json({ notifId, replied: true })
       }
       case 'mark-read': {
         const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : []

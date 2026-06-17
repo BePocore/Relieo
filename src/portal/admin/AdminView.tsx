@@ -43,8 +43,6 @@ type AdminUser = {
   monthlyCostEur: number
   status: 'active' | 'blocked' | 'deleted'
   banCount: number
-  appeal: string | null
-  adminReply: string | null
 }
 
 type AdminNotification = {
@@ -55,6 +53,8 @@ type AdminNotification = {
   message: string
   createdAt: string
   read: boolean
+  // Réponse de l'admin à CET appel (par notification).
+  reply: { message: string; sentAt: string } | null
 }
 
 type AdminMap = {
@@ -799,47 +799,44 @@ export function AdminApp({
             Tout marquer comme lu
           </button>
         ) : null}
-        {notifications.map((n) => {
-          const reply = users.find((u) => u.uid === n.fromUid)?.adminReply ?? null
-          return (
-            <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
-              <div className="admin-notif-head">
-                <span className="admin-notif-from">
-                  <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
-                </span>
-                <time>{formatDateTime(n.createdAt)}</time>
+        {notifications.map((n) => (
+          <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
+            <div className="admin-notif-head">
+              <span className="admin-notif-from">
+                <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
+              </span>
+              <time>{formatDateTime(n.createdAt)}</time>
+            </div>
+            <p className="admin-notif-message">{n.message}</p>
+            {n.reply ? (
+              <div className="admin-notif-reply">
+                <span>Votre réponse</span>
+                <p>{n.reply.message}</p>
               </div>
-              <p className="admin-notif-message">{n.message}</p>
-              {reply ? (
-                <div className="admin-notif-reply">
-                  <span>Votre réponse</span>
-                  <p>{reply}</p>
-                </div>
-              ) : null}
-              <div className="admin-notif-actions">
+            ) : null}
+            <div className="admin-notif-actions">
+              <button
+                className="admin-notif-mark primary"
+                type="button"
+                onClick={() => {
+                  setReplyMessage(n.reply?.message ?? '')
+                  setReplyTarget(n)
+                }}
+              >
+                {n.reply ? 'Modifier la réponse' : 'Répondre'}
+              </button>
+              {!n.read ? (
                 <button
-                  className="admin-notif-mark primary"
+                  className="admin-notif-mark"
                   type="button"
-                  onClick={() => {
-                    setReplyMessage(reply ?? '')
-                    setReplyTarget(n)
-                  }}
+                  onClick={() => void markNotificationsRead([n.id])}
                 >
-                  {reply ? 'Modifier la réponse' : 'Répondre'}
+                  Marquer comme lu
                 </button>
-                {!n.read ? (
-                  <button
-                    className="admin-notif-mark"
-                    type="button"
-                    onClick={() => void markNotificationsRead([n.id])}
-                  >
-                    Marquer comme lu
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          )
-        })}
+              ) : null}
+            </div>
+          </article>
+        ))}
         {notifications.length === 0 ? (
           <p className="admin-empty">Aucune notification.</p>
         ) : null}
