@@ -517,10 +517,12 @@ function App() {
           : import.meta.env.DEV
             ? '/prototype-api/project'
             : '/api/project'
-        // Jeton Firebase quand on cible une carte précise : permet au
-        // propriétaire (ou à l'admin) de recharger un brouillon, que le serveur
-        // ne sert qu'authentifié. Visiteur anonyme : pas de jeton, accès public.
-        const authToken = hikeCode ? await getIdToken() : null
+        // Jeton Firebase envoyé UNIQUEMENT dans le Studio : le propriétaire (ou
+        // l'admin) peut y recharger un brouillon, que le serveur ne sert
+        // qu'authentifié. En consultation publique, pas de jeton : un brouillon
+        // reste inaccessible par son lien, même pour son auteur connecté.
+        const authToken =
+          hikeCode && isStudioMode ? await getIdToken() : null
         const projectResponse = await fetch(projectEndpoint, {
           cache: 'no-store',
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
@@ -565,7 +567,7 @@ function App() {
     }
 
     void loadTrail()
-  }, [applyProject, isNewBlankStudio, newTrailCode, hikeCode])
+  }, [applyProject, isNewBlankStudio, newTrailCode, hikeCode, isStudioMode])
 
   const combinedPoints = useMemo(
     () => traces.flatMap((trace) => trace.points),

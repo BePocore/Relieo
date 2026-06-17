@@ -228,9 +228,20 @@ export async function GET(request: Request) {
           { status: 404, headers: jsonHeaders },
         )
       }
-      return new Response(body, {
-        headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
-      })
+      // Le statut fiable vient de l'index : une dépublication via le tableau de
+      // bord ne réécrit pas project.json. On l'injecte pour que le client
+      // connaisse l'état réel (publiée / brouillon).
+      try {
+        const project = JSON.parse(body) as Record<string, unknown>
+        return Response.json(
+          { ...project, hikeStatus: entry.status },
+          { headers: jsonHeaders },
+        )
+      } catch {
+        return new Response(body, {
+          headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     const body = await readPublishedProject()
