@@ -1,10 +1,11 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
 import {
+  browserLocalPersistence,
   browserPopupRedirectResolver,
-  browserSessionPersistence,
   GoogleAuthProvider,
   initializeAuth,
   onAuthStateChanged,
+  signOut,
   type Auth,
   type User,
 } from 'firebase/auth'
@@ -41,6 +42,31 @@ let app: FirebaseApp | undefined
 let authInstance: Auth | undefined
 let dbInstance: Firestore | undefined
 
+// Session « rester connecté » : 7 jours glissants. En persistance locale,
+// Firebase conserve le refresh token indéfiniment ; on ajoute une expiration
+// maison en mémorisant la date de dernière visite et en déconnectant si le
+// délai est dépassé. Chaque ouverture du site dans les 7 jours repousse
+// l'échéance d'autant.
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const LAST_SEEN_KEY = 'relieoAuthLastSeen'
+
+const readLastSeen = (): number => {
+  try {
+    return Number(window.localStorage.getItem(LAST_SEEN_KEY)) || 0
+  } catch {
+    return 0
+  }
+}
+
+const writeLastSeen = (value: number | null): void => {
+  try {
+    if (value === null) window.localStorage.removeItem(LAST_SEEN_KEY)
+    else window.localStorage.setItem(LAST_SEEN_KEY, String(value))
+  } catch {
+    // localStorage indisponible (navigation privée stricte) : on ignore.
+  }
+}
+
 export const getFirebaseAuth = (): Auth | null => {
   if (!firebaseEnabled) return null
   if (!authInstance) {
@@ -50,10 +76,27 @@ export const getFirebaseAuth = (): Auth | null => {
       projectId: config.projectId!,
       appId: config.appId!,
     })
-    authInstance = initializeAuth(app, {
-      persistence: browserSessionPersistence,
+    const instance = initializeAuth(app, {
+      persistence: browserLocalPersistence,
       popupRedirectResolver: browserPopupRedirectResolver,
     })
+    // Expiration glissante de 7 jours par-dessus la persistance locale : à
+    // chaque chargement, on déconnecte si la dernière visite est trop ancienne,
+    // sinon on repousse l'échéance.
+    onAuthStateChanged(instance, (user) => {
+      if (!user) {
+        writeLastSeen(null)
+        return
+      }
+      const lastSeen = readLastSeen()
+      if (lastSeen && Date.now() - lastSeen > SESSION_MAX_AGE_MS) {
+        writeLastSeen(null)
+        void signOut(instance)
+        return
+      }
+      writeLastSeen(Date.now())
+    })
+    authInstance = instance
   }
   return authInstance
 }
