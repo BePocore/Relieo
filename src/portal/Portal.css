@@ -978,11 +978,21 @@
   background: url('https://pub-6e336e685535453c9bbafab6421d8fc6.r2.dev/relieo/users/vIHeTHpT0NVYfODDu0ldcDLt9Br2/randonnees/Halsa/previews/34cbfc6ea1455f26dd5ebb4f.jpg') center / cover;
 }
 
+.auth-map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+.auth-map.is-ready { opacity: 1; }
+.auth-map canvas { outline: none; }
+
 .auth-visual::before {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 1;
   background: rgba(6, 22, 14, 0.54);
 }
 
@@ -991,7 +1001,7 @@
   align-items: center;
   gap: 12px;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   font-size: 19px;
 }
 
@@ -999,7 +1009,7 @@
   width: min(680px, 90%);
   margin-top: auto;
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 .auth-visual-copy .portal-kicker {

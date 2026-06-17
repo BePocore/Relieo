@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -87,6 +89,10 @@ import {
 } from './plans'
 import { AdminApp } from './admin/AdminView'
 import './Portal.css'
+
+// Fond 3D animé du hero de connexion, chargé en différé (le module MapLibre est
+// lourd : on ne le charge que pour l'écran de connexion, jamais ailleurs).
+const HeroMap = lazy(() => import('./HeroMap'))
 
 type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'notifications' | 'admin'
 
@@ -1406,6 +1412,9 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
   return (
     <main className="portal-auth">
       <section className="auth-visual" aria-label="Présentation Relieo">
+        <Suspense fallback={null}>
+          <HeroMap />
+        </Suspense>
         <div className="auth-brand">
           <span className="portal-logo"><Compass size={24} /></span>
           <strong>Relieo</strong>
