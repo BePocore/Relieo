@@ -1593,6 +1593,14 @@
   border-top: 1px solid var(--glass-border);
 }
 
+.studio-publish-hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .studio-password,
 .point-form label {
   display: grid;

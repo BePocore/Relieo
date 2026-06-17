@@ -59,6 +59,7 @@ import type {
 } from './types'
 import { MediaLightbox } from './components/MediaLightbox'
 import { AccessGate } from './components/AccessGate'
+import { UnavailableMap } from './components/UnavailableMap'
 import { useVideoPosters } from './useVideoPosters'
 import { useFramedThumbnails } from './useFramedThumbnails'
 
@@ -424,6 +425,9 @@ function App() {
     index: number
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Échec du chargement initial d'une carte (code inconnu ou brouillon non
+  // accessible) : déclenche l'écran « indisponible » côté visiteur.
+  const [loadFailed, setLoadFailed] = useState(false)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [adminPassword, setAdminPassword] = useState('')
   const [pointsSourceName, setPointsSourceName] = useState('/data/points.json')
@@ -479,6 +483,7 @@ function App() {
       try {
         setIsLoading(true)
         setError(null)
+        setLoadFailed(false)
 
         if (isNewBlankStudio) {
           const blankPoints: TrailPoint[] = []
@@ -512,8 +517,13 @@ function App() {
           : import.meta.env.DEV
             ? '/prototype-api/project'
             : '/api/project'
+        // Jeton Firebase quand on cible une carte précise : permet au
+        // propriétaire (ou à l'admin) de recharger un brouillon, que le serveur
+        // ne sert qu'authentifié. Visiteur anonyme : pas de jeton, accès public.
+        const authToken = hikeCode ? await getIdToken() : null
         const projectResponse = await fetch(projectEndpoint, {
           cache: 'no-store',
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
         }).catch(() => null)
 
         let onlineProject: TrailProject | null = null
@@ -548,6 +558,7 @@ function App() {
             ? loadError.message
             : 'Chargement impossible.',
         )
+        setLoadFailed(true)
       } finally {
         setIsLoading(false)
       }
@@ -1422,7 +1433,7 @@ function App() {
     }
 
     setIsSaving(true)
-    setSaveStatus('Publication en ligne...')
+    setSaveStatus('Sauvegarde...')
     const submittedSignature = currentProjectSignature
 
     try {
@@ -1450,8 +1461,10 @@ function App() {
             elevationGainMeters: stats.elevationGainMeters,
             pointCount: points.length,
             mediaCount: mediaLibrary.length,
-            // Le bouton de publication rend la carte publique.
-            status: 'published',
+            // « Sauvegarder » ne change jamais la visibilité : on conserve le
+            // statut courant (une nouvelle carte démarre en brouillon). La mise
+            // en ligne se fait depuis le tableau de bord.
+            status: isPublished ? 'published' : 'draft',
           }),
         }),
       })
@@ -1462,23 +1475,22 @@ function App() {
       } | null
 
       if (!response.ok) {
-        throw new Error(result?.message ?? 'Publication en ligne impossible.')
+        throw new Error(result?.message ?? 'Sauvegarde impossible.')
       }
 
       const folder =
         result && 'folder' in result && typeof result.folder === 'string'
           ? result.folder
           : accessCode.trim()
-      setIsPublished(true)
       setSavedProjectSignature(submittedSignature)
       syncStudioUrlToCode(accessCode.trim())
-      setSaveStatus(`Carte publiée dans Cloudflare R2 : ${folder}.`)
+      setSaveStatus(`Carte enregistrée : ${folder}.`)
       setError(null)
     } catch (saveError) {
       const message =
         saveError instanceof Error
           ? friendlyStorageMessage(saveError.message)
-          : 'Publication en ligne impossible.'
+          : 'Sauvegarde impossible.'
       setSaveStatus(
         `${message} Les fichiers non envoyés doivent être réimportés.`,
       )
@@ -1496,6 +1508,7 @@ function App() {
     traces,
     hikeTitle,
     stats,
+    isPublished,
   ])
 
   // Carte protégée : on saisit le code avant de charger le moteur cartographique.
@@ -1684,6 +1697,9 @@ function App() {
               <LoaderCircle aria-hidden="true" size={26} />
               <span>Chargement</span>
             </div>
+          ) : !isStudioMode && loadFailed ? (
+            // Visiteur : carte introuvable ou hors ligne → écran dédié.
+            <UnavailableMap />
           ) : needsAccess ? (
             // Carte non montée tant que le code n'est pas saisi (la porte couvre).
             <div className="loading-state" />
@@ -1787,6 +1803,7 @@ function App() {
                   onAdminPasswordChange={handleAdminPasswordChange}
                   onDraftDirtyChange={setHasPanelDraft}
                   saveStatus={saveStatus}
+                  isPublished={isPublished}
                 />
               ) : (
                 <PublicPanel

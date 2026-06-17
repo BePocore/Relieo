@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   Camera,
-  Cloud,
   Download,
   FileJson,
   FileUp,
@@ -15,6 +14,7 @@ import {
   Mountain,
   Plus,
   Route,
+  Save,
   Trash2,
   TriangleAlert,
   UploadCloud,
@@ -76,6 +76,7 @@ type StudioPanelProps = {
   onAdminPasswordChange: (password: string) => void
   onDraftDirtyChange: (dirty: boolean) => void
   saveStatus: string | null
+  isPublished: boolean
 }
 
 type ReportSection = {
@@ -519,6 +520,7 @@ export function StudioPanel({
   onAdminPasswordChange,
   onDraftDirtyChange,
   saveStatus,
+  isPublished,
 }: StudioPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>('points')
   const [draft, setDraft] = useState<DraftPoint>(initialDraft)
@@ -675,9 +677,14 @@ export function StudioPanel({
           type="button"
           onClick={() => void onSaveProject()}
         >
-          <Cloud aria-hidden="true" size={17} />
-          {isSaving ? 'Publication...' : 'Publier en ligne'}
+          <Save aria-hidden="true" size={17} />
+          {isSaving ? 'Enregistrement...' : 'Sauvegarder'}
         </button>
+        <p className="studio-publish-hint">
+          {isPublished
+            ? 'Cette carte est en ligne. Tes modifications seront visibles dès la sauvegarde.'
+            : 'Cette carte est en brouillon. Publie-la depuis ton tableau de bord pour la rendre accessible par son lien.'}
+        </p>
         {uploadProgress ? (
           <div className="upload-progress" role="status">
             <div className="upload-progress-info">
