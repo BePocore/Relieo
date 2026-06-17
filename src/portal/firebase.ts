@@ -210,7 +210,20 @@ export const getIdToken = async (): Promise<string | null> => {
         resolve(user)
       })
     }))
-  return current ? current.getIdToken() : null
+  if (!current) return null
+  // Juste après la vérification d'email, le jeton en cache porte encore
+  // `email_verified: false` (les claims ne changent qu'au rafraîchissement du
+  // jeton, valable ~1h). Si l'utilisateur est vérifié mais que le claim est
+  // périmé, on force un rafraîchissement, sinon le serveur rejette les appels
+  // (« Connexion requise »).
+  if (current.emailVerified) {
+    const result = await current.getIdTokenResult()
+    if (result.claims.email_verified !== true) {
+      return current.getIdToken(true)
+    }
+    return result.token
+  }
+  return current.getIdToken()
 }
 
 // Appel authentifié vers une route API du compte (mêmes origine et jeton).
