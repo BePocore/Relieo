@@ -73,20 +73,25 @@ Les comptes listés dans `ADMIN_UIDS` accèdent à une console plein écran
 graphe d'évolution des inscriptions), utilisateurs, cartes (god-view), journal
 des sanctions et notifications. Un admin peut **dépublier/supprimer** une carte
 et **bloquer/supprimer** un compte, toujours avec un message transmis au
-propriétaire (affiché à sa prochaine connexion). La suppression de compte n'est
-possible qu'après 3 bannissements : elle efface le contenu R2 mais **conserve
-l'authentification et l'email** (réservés, recréation impossible).
+propriétaire (affiché à sa prochaine connexion). La suppression d'un compte par
+sanction n'est possible qu'après 3 bannissements : elle efface le contenu R2
+mais **conserve l'authentification et l'email** (réservés, recréation
+impossible). L'utilisateur peut aussi **demander lui-même la suppression** de
+son compte depuis son profil : la demande arrive en notification admin, et cette
+suppression volontaire **libère l'email** (réinscription possible) tout en
+gardant une trace dans la console (colonne « Supprimé » : date + admin).
 
 L'état de modération vit dans la collection Firestore `moderation/<uid>`
 (écriture réservée à l'Admin SDK, lecture par le propriétaire). **Important :**
 `firestore.rules` n'est pas déployé automatiquement (pas de `firebase.json`).
-Publier la règle `moderation/{userId}` via la console Firebase ou
-`firebase deploy --only firestore:rules`, sinon les écrans de blocage/suppression
-ne s'affichent pas. Les emails de notification sont prévus mais pas encore
-branchés (in-app uniquement pour l'instant).
+La règle `moderation/{userId}` a été déployée manuellement le 2026-06-18 ; toute
+nouvelle règle devra l'être à la main (console Firebase ou
+`firebase deploy --only firestore:rules`). Les emails de notification sont
+prévus mais pas encore branchés (in-app uniquement pour l'instant).
 
-Le Studio est disponible avec `/?mode=studio`. Le bouton `Publier en ligne`
-partage la derniere copie avec le telephone, l'iPad et l'ordinateur.
+Le Studio est disponible avec `/?mode=studio`. Le bouton `Sauvegarder`
+enregistre la carte sans changer sa visibilité (une nouvelle carte reste en
+brouillon) ; la mise en ligne se fait depuis le tableau de bord.
 
 ## Donnees
 
