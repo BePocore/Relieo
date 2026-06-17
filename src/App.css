@@ -1,33 +1,44 @@
 /* ─────────────────────────────────────────────────────────────
    Relieo — design system "forêt nuit"
-   Fond #0c1512 · accent #3cdc8c (lichen électrique) · surfaces
+   Fond var(--c-bg) · accent var(--c-accent) (lichen électrique) · surfaces
    glassmorphism, topbar flottante, panneau bottom-sheet mobile.
    ───────────────────────────────────────────────────────────── */
 
 .app-shell {
-  --bg: #0c1512;
-  --accent: #3cdc8c;
-  --accent-strong: #2bc97a;
-  --accent-ink: #06281a;
-  --accent-soft: rgba(60, 220, 140, 0.14);
-  --accent-border: rgba(60, 220, 140, 0.38);
-  --glass: rgba(14, 24, 20, 0.74);
-  --glass-strong: rgba(12, 21, 18, 0.92);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-border-strong: rgba(255, 255, 255, 0.2);
-  --surface: rgba(255, 255, 255, 0.05);
-  --surface-hover: rgba(255, 255, 255, 0.09);
-  --text: #eaf5ef;
-  --text-dim: #93a89e;
-  --text-faint: #6c7f76;
-  --shadow: 0 18px 48px rgba(2, 8, 6, 0.5);
-  --shadow-soft: 0 10px 30px rgba(2, 8, 6, 0.35);
+  /* Les variables de la carte héritent des tokens de thème (src/index.css)
+     pour suivre le mode jour/nuit. Les surfaces translucides ont une valeur
+     jour (noir translucide) surchargée en nuit (blanc translucide) plus bas. */
+  --bg: var(--c-bg);
+  --accent: var(--c-accent);
+  --accent-strong: var(--c-accent-strong);
+  --accent-ink: var(--c-accent-ink);
+  --accent-soft: var(--c-accent-soft);
+  --accent-border: var(--c-accent);
+  --glass: var(--c-glass);
+  --glass-strong: var(--c-glass-strong);
+  --glass-border: var(--c-glass-border);
+  --glass-border-strong: rgba(0, 0, 0, 0.18);
+  --surface: rgba(0, 0, 0, 0.04);
+  --surface-hover: rgba(0, 0, 0, 0.07);
+  --text: var(--c-text);
+  --text-dim: var(--c-text-dim);
+  --text-faint: var(--c-text-faint);
+  --shadow: 0 18px 48px var(--c-shadow);
+  --shadow-soft: 0 10px 30px var(--c-shadow);
 
   position: fixed;
   inset: 0;
   overflow: hidden;
   color: var(--text);
   background: var(--bg);
+}
+
+/* Surfaces translucides de la carte : sombres (sur fond clair) en jour,
+   blanches translucides en nuit. */
+:root[data-theme='dark'] .app-shell {
+  --glass-border-strong: rgba(255, 255, 255, 0.2);
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.09);
 }
 
 /* ── Topbar flottante ───────────────────────────────────────── */
@@ -206,7 +217,7 @@
 
 .map-stage {
   overflow: hidden;
-  background: #101b16;
+  background: var(--c-surface);
 }
 
 .trail-map,
@@ -242,7 +253,7 @@
   overflow: hidden;
   border: 2px solid rgba(255, 255, 255, 0.96);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--c-surface);
   box-shadow: 0 5px 16px rgba(3, 10, 7, 0.42);
   cursor: pointer;
   transform-origin: center;
@@ -275,7 +286,7 @@
   bottom: 5px;
   padding: 2px 4px;
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--c-text);
   background: rgba(7, 14, 11, 0.78);
   font-size: 9px;
   font-weight: 850;
@@ -295,7 +306,7 @@
 }
 
 .maplibregl-ctrl-attrib {
-  color: #1a2822;
+  color: var(--c-surface);
   font-size: 10px;
   opacity: 0.76;
 }
@@ -499,7 +510,7 @@
   gap: 8px;
   border: 1px solid rgba(255, 122, 138, 0.4);
   border-radius: 11px;
-  color: #ffd9de;
+  color: var(--c-danger);
   background: rgba(74, 18, 26, 0.88);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(16px);
@@ -561,7 +572,7 @@
   width: 64px;
   height: 64px;
   border-radius: 18px;
-  color: #fff;
+  color: var(--c-text);
   background: var(--accent);
   box-shadow: var(--shadow-soft);
   animation: pulse 1.6s ease-in-out infinite;
@@ -678,7 +689,7 @@
   height: 68px;
   overflow: hidden;
   border-radius: 8px;
-  background: #1a2620;
+  background: var(--c-surface);
 }
 
 .media-tile-visual img,
@@ -695,7 +706,7 @@
 .media-tile-fallback {
   display: grid;
   place-items: center;
-  color: #ffffff;
+  color: var(--c-text);
 }
 
 .media-kind-badge {
@@ -708,7 +719,7 @@
   align-items: center;
   border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 6px;
-  color: #ffffff;
+  color: var(--c-text);
   font-size: 0.58rem;
   font-weight: 900;
   line-height: 1;
@@ -740,7 +751,7 @@
 }
 
 .type-poi {
-  background: #2aa377;
+  background: var(--c-accent);
 }
 
 /* ── Panneau latéral / bottom sheet ─────────────────────────── */
@@ -848,7 +859,7 @@
   max-width: none;
   display: block;
   object-fit: contain;
-  background: #060d0a;
+  background: var(--c-bg);
 }
 
 .panel-video {
@@ -936,7 +947,7 @@
   min-height: 34px;
   padding: 0 10px;
   border: 1px solid rgba(255, 122, 138, 0.36);
-  color: #ff96a4;
+  color: var(--c-danger);
   background: rgba(255, 122, 138, 0.1);
 }
 
@@ -969,7 +980,7 @@
   margin: 18px -20px 0;
   padding: 0;
   border: 0;
-  background: #060d0a;
+  background: var(--c-bg);
   cursor: zoom-in;
   overflow: hidden;
 }
@@ -988,7 +999,7 @@
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  color: #fff;
+  color: var(--c-text);
   background: rgba(8, 14, 11, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1006,7 +1017,7 @@
   position: relative;
   width: calc(100% + 40px);
   margin: 18px -20px 0;
-  background: #060d0a;
+  background: var(--c-bg);
   overflow: hidden;
 }
 
@@ -1026,7 +1037,7 @@
   height: 30px;
   border-radius: 9px;
   border: 0;
-  color: #fff;
+  color: var(--c-text);
   background: rgba(8, 14, 11, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1065,7 +1076,7 @@
   height: 44px;
   border: 1px solid var(--glass-border-strong);
   border-radius: 12px;
-  color: #fff;
+  color: var(--c-text);
   background: rgba(8, 14, 11, 0.55);
   cursor: pointer;
   transition: background 140ms ease, border-color 140ms ease;
@@ -1106,7 +1117,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #fff;
+  color: var(--c-text);
   font-size: 0.86rem;
   font-weight: 800;
   text-align: center;
@@ -1129,7 +1140,7 @@
   transform: translateY(-50%);
   border: 1px solid var(--glass-border-strong);
   border-radius: 50%;
-  color: #fff;
+  color: var(--c-text);
   background: rgba(8, 14, 11, 0.55);
   cursor: pointer;
   transition: background 140ms ease;
@@ -1267,7 +1278,7 @@
 }
 
 .color-swatch.selected {
-  border-color: #fff;
+  border-color: var(--c-text);
   box-shadow: 0 0 0 2px rgba(8, 14, 11, 0.6);
 }
 
@@ -1298,7 +1309,7 @@
   flex: 0 0 28px;
   border: 0;
   border-radius: 8px;
-  color: #ff96a4;
+  color: var(--c-danger);
   background: transparent;
   cursor: pointer;
   transition: background 140ms ease;
@@ -1317,7 +1328,7 @@
   display: grid;
   place-items: center;
   padding: 22px;
-  background: var(--bg, #0c1512);
+  background: var(--bg, var(--c-bg));
   background-image: radial-gradient(
     120% 100% at 50% 0%,
     rgba(60, 220, 140, 0.12),
@@ -1392,7 +1403,7 @@
 
 .access-error {
   margin: 0;
-  color: #ff96a4;
+  color: var(--c-danger);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -1439,7 +1450,7 @@
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: #1a2620;
+  background: var(--c-surface);
 }
 
 .point-row-visual img {
@@ -1486,7 +1497,7 @@
   display: grid;
   place-items: center;
   border-radius: 9px;
-  color: #ffffff;
+  color: var(--c-text);
 }
 
 /* ── Profil d'altitude ──────────────────────────────────────── */
@@ -1638,8 +1649,8 @@
 }
 
 .point-form select option {
-  color: #17201d;
-  background: #ffffff;
+  color: var(--c-surface);
+  background: var(--c-surface);
 }
 
 .studio-password input::placeholder,
@@ -1941,7 +1952,7 @@
 }
 
 .import-report-section.tone-error {
-  border-left-color: #ff7a8a;
+  border-left-color: var(--c-danger);
 }
 
 .import-report-section-head {
@@ -1958,7 +1969,7 @@
 }
 
 .import-report-section.tone-error .import-report-section-head {
-  color: #ff96a4;
+  color: var(--c-danger);
 }
 
 .import-report-section ul {
@@ -1995,7 +2006,7 @@
 }
 
 .form-error {
-  color: #ff96a4;
+  color: var(--c-danger);
 }
 
 .save-status {

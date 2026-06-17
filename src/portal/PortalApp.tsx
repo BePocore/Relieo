@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react'
 import {
   ArrowRight,
@@ -31,6 +32,8 @@ import {
   MailCheck,
   Map,
   Menu,
+  Monitor,
+  Moon,
   Mountain,
   Pencil,
   Plus,
@@ -39,6 +42,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Sun,
   Trash2,
   UserRound,
   Wallet,
@@ -87,9 +91,14 @@ import {
 } from './plans'
 import { AdminApp } from './admin/AdminView'
 import HeroSlideshow from './HeroSlideshow'
+import {
+  getThemePreference,
+  setThemePreference,
+  type ThemePreference,
+} from '../lib/theme'
 import './Portal.css'
 
-type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'notifications' | 'admin'
+type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'notifications' | 'admin' | 'settings'
 
 // Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
@@ -139,6 +148,7 @@ const currentView = (): PortalView => {
   if (window.location.pathname.endsWith('/hikes')) return 'hikes'
   if (window.location.pathname.endsWith('/plans')) return 'plans'
   if (window.location.pathname.endsWith('/notifications')) return 'notifications'
+  if (window.location.pathname.endsWith('/settings')) return 'settings'
   if (window.location.pathname.endsWith('/admin')) return 'admin'
   return 'dashboard'
 }
@@ -693,6 +703,62 @@ function ProfileView({
   )
 }
 
+function SettingsView() {
+  const [pref, setPref] = useState<ThemePreference>(() => getThemePreference())
+
+  const choose = (next: ThemePreference) => {
+    setPref(next)
+    setThemePreference(next)
+  }
+
+  const options: {
+    id: ThemePreference
+    label: string
+    desc: string
+    icon: ReactNode
+  }[] = [
+    { id: 'light', label: 'Clair', desc: 'Thème lumineux', icon: <Sun size={22} /> },
+    { id: 'dark', label: 'Nuit', desc: 'Thème sombre', icon: <Moon size={22} /> },
+    {
+      id: 'auto',
+      label: 'Auto',
+      desc: 'Selon votre appareil',
+      icon: <Monitor size={22} />,
+    },
+  ]
+
+  return (
+    <section className="settings-view">
+      <header className="page-heading">
+        <div>
+          <p className="portal-kicker">Paramètres</p>
+          <h1>Apparence</h1>
+          <p>Choisissez le thème de votre espace.</p>
+        </div>
+      </header>
+      <div className="theme-options">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={`theme-option${pref === option.id ? ' is-active' : ''}`}
+            onClick={() => choose(option.id)}
+          >
+            <span className="theme-option-icon">{option.icon}</span>
+            <strong>{option.label}</strong>
+            <small>{option.desc}</small>
+            {pref === option.id ? (
+              <span className="theme-option-check">
+                <Check size={15} />
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 type StorageUsage = { usedBytes: number; limitBytes: number }
 
 // Grille des cartes de forfait, partagée par l'onboarding (post-inscription) et
@@ -1057,6 +1123,7 @@ function DashboardShell({
           <button className={view === 'hikes' ? 'active' : ''} type="button" onClick={() => setPortalView('hikes')}><Map size={18} /> Mes cartes <span>{hikes.length}</span></button>
           <button className={view === 'profile' ? 'active' : ''} type="button" onClick={() => setPortalView('profile')}><UserRound size={18} /> Mon profil</button>
           <button className={view === 'plans' ? 'active' : ''} type="button" onClick={() => setPortalView('plans')}><Wallet size={18} /> Forfait</button>
+          <button className={view === 'settings' ? 'active' : ''} type="button" onClick={() => setPortalView('settings')}><Settings size={18} /> Paramètres</button>
           <p>OUTILS</p>
           <button type="button"><BarChart3 size={18} /> Statistiques</button>
           <button type="button"><Settings size={18} /> Paramètres</button>
@@ -1123,7 +1190,9 @@ function DashboardShell({
         </header>
 
         <div className="portal-content">
-          {view === 'profile' ? (
+          {view === 'settings' ? (
+            <SettingsView />
+          ) : view === 'profile' ? (
             <ProfileView user={profile} onSave={saveProfile} onSavePhoto={savePhoto} />
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
