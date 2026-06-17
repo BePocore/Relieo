@@ -301,17 +301,75 @@
 .notif-menu-all:hover { background: #e9f4ee; }
 
 /* Onglet Notifications (liste complète) */
-.notif-page { display: flex; flex-direction: column; gap: 12px; }
-.notif-page-empty { color: #748079; padding: 24px 0; }
+.notif-page { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+.notif-page-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 56px 24px;
+  background: #fff;
+  border: 1px dashed #d7e0db;
+  border-radius: 18px;
+}
+.notif-page-empty span {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #f1f6f3;
+  color: #6d7c74;
+}
+.notif-page-empty strong { font-size: 17px; }
+.notif-page-empty p { margin: 0; font-size: 14px; color: #748079; max-width: 360px; }
+
 .notif-page-card {
+  display: flex;
+  gap: 14px;
   padding: 16px 18px;
   background: #fff;
   border: 1px solid #e6ebe7;
-  border-radius: 14px;
+  border-radius: 16px;
+  transition: box-shadow 160ms ease;
 }
-.notif-page-card strong { display: block; font-size: 15px; margin-bottom: 4px; }
-.notif-page-card p { margin: 0; font-size: 14px; color: #44514a; line-height: 1.5; white-space: pre-wrap; }
+.notif-page-card:hover { box-shadow: 0 12px 26px -18px rgba(6, 22, 14, 0.35); }
+.notif-page-card.unread { border-color: #cfe3d7; background: #fbfdfc; }
+.notif-page-card.unread.danger { border-color: #f3c9c4; background: #fff8f7; }
+.notif-page-card.unread.warn { border-color: #f0dcb4; background: #fffdf6; }
+.notif-page-icon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: #eef4f0;
+  color: #4f6a5b;
+}
+.notif-page-icon.danger { background: #fdecec; color: #b3261e; }
+.notif-page-icon.warn { background: #fbe9d8; color: #9a4d07; }
+.notif-page-icon.info { background: #e7eefb; color: #2f5bd0; }
+.notif-page-body { min-width: 0; flex: 1; }
+.notif-page-titleline { display: flex; align-items: center; gap: 8px; }
+.notif-page-titleline strong { font-size: 15px; }
+.notif-page-dot { width: 9px; height: 9px; border-radius: 50%; background: #e8513a; flex: 0 0 auto; }
+.notif-page-card p { margin: 4px 0 0; font-size: 14px; color: #44514a; line-height: 1.5; white-space: pre-wrap; }
 .notif-page-card time { display: block; margin-top: 8px; font-size: 12px; color: #8a958f; }
+
+.portal-modal-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #dff3e9;
+  color: #126b47;
+}
+.portal-notif-item { display: flex; gap: 12px; align-items: flex-start; }
+.portal-notif-item > div { min-width: 0; }
 
 .profile-button {
   display: flex;

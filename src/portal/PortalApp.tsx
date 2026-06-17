@@ -39,6 +39,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
   Wallet,
   X,
@@ -148,7 +149,7 @@ const formatDate = (value: string): string =>
   }).format(new Date(value))
 
 // Titre court d'une notification utilisateur selon son type.
-const notifTitle = (item: PortalNotification): string | null => {
+const notifTitle = (item: PortalNotification): string => {
   if (item.type === 'block') return 'Compte bloqué'
   if (item.type === 'delete-account') return 'Compte supprimé'
   if (item.mapTitle && item.type !== 'info') {
@@ -156,7 +157,32 @@ const notifTitle = (item: PortalNotification): string | null => {
       item.type === 'delete' ? 'supprimée' : 'dépubliée'
     }`
   }
-  return null
+  return 'Notification'
+}
+
+// Types de notifications affichés en plein écran à l'arrivée (popup), en plus
+// du centre de notifications. Liste volontairement explicite : ajouter ici les
+// futurs types à mettre en avant.
+const POPUP_NOTIF_TYPES: ReadonlyArray<PortalNotification['type']> = [
+  'block',
+  'delete-account',
+  'unpublish',
+  'delete',
+]
+
+// Icône + teinte (classe CSS) d'une notification selon son type.
+const notifVisual = (type: PortalNotification['type']) => {
+  switch (type) {
+    case 'block':
+      return { icon: <Ban size={18} />, tone: 'danger' }
+    case 'delete-account':
+    case 'delete':
+      return { icon: <Trash2 size={18} />, tone: 'danger' }
+    case 'unpublish':
+      return { icon: <EyeOff size={18} />, tone: 'warn' }
+    default:
+      return { icon: <Bell size={18} />, tone: 'info' }
+  }
 }
 
 const userInitials = (name: string): string =>
@@ -666,6 +692,8 @@ function DashboardShell({
   const [usage, setUsage] = useState<StorageUsage | null>(null)
   const [notifications, setNotifications] = useState<PortalNotification[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
+  // Acquittement du popup plein écran des notifications critiques (sanctions).
+  const [criticalAck, setCriticalAck] = useState(false)
 
   useEffect(() => {
     const syncView = () => setView(currentView())
@@ -759,6 +787,11 @@ function DashboardShell({
   }, [user.id])
 
   const unreadCount = notifications.filter((n) => !n.read).length
+  // Notifications non lues d'un type mis en avant : affichées en plein écran à
+  // l'arrivée (cf. POPUP_NOTIF_TYPES).
+  const popupNotifs = notifications.filter(
+    (n) => !n.read && POPUP_NOTIF_TYPES.includes(n.type),
+  )
 
   // Ouvre le menu de notifications et marque les non-lues comme lues (la pastille
   // rouge disparaît une fois la cloche consultée). Les notifs restent listées.
@@ -771,6 +804,16 @@ function DashboardShell({
       )
       void markUserNotificationsRead(user.id, unreadIds).catch(() => undefined)
     }
+  }
+
+  // Acquittement du popup : marque ces notifs lues (conservées dans l'historique).
+  const ackCritical = () => {
+    const ids = popupNotifs.map((n) => n.id)
+    setNotifications((current) =>
+      current.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n)),
+    )
+    setCriticalAck(true)
+    void markUserNotificationsRead(user.id, ids).catch(() => undefined)
   }
 
   const setPortalView = (next: PortalView) => {
@@ -917,15 +960,31 @@ function DashboardShell({
               </header>
               <section className="notif-page">
                 {notifications.length === 0 ? (
-                  <p className="notif-page-empty">Vous n’avez aucune notification.</p>
+                  <div className="notif-page-empty">
+                    <span><Bell size={26} /></span>
+                    <strong>Aucune notification</strong>
+                    <p>Les messages de l’administrateur et les événements de vos cartes apparaîtront ici.</p>
+                  </div>
                 ) : (
-                  notifications.map((item) => (
-                    <article className="notif-page-card" key={item.id}>
-                      {notifTitle(item) ? <strong>{notifTitle(item)}</strong> : null}
-                      <p>{item.message}</p>
-                      <time>{formatDate(item.createdAt)}</time>
-                    </article>
-                  ))
+                  notifications.map((item) => {
+                    const visual = notifVisual(item.type)
+                    return (
+                      <article
+                        className={`notif-page-card ${visual.tone}${item.read ? '' : ' unread'}`}
+                        key={item.id}
+                      >
+                        <span className={`notif-page-icon ${visual.tone}`}>{visual.icon}</span>
+                        <div className="notif-page-body">
+                          <div className="notif-page-titleline">
+                            <strong>{notifTitle(item)}</strong>
+                            {item.read ? null : <span className="notif-page-dot" />}
+                          </div>
+                          <p>{item.message}</p>
+                          <time>{formatDate(item.createdAt)}</time>
+                        </div>
+                      </article>
+                    )
+                  })
                 )}
               </section>
             </>
@@ -1008,6 +1067,33 @@ function DashboardShell({
       </main>
       {mobileMenu ? <button aria-label="Fermer le menu" className="sidebar-scrim" type="button" onClick={() => setMobileMenu(false)} /> : null}
       {createOpen ? <CreateHikeDialog onClose={() => setCreateOpen(false)} onCreate={createHike} /> : null}
+
+      {!criticalAck && popupNotifs.length > 0 ? (
+        <div className="portal-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="portal-modal">
+            <span className="portal-modal-icon"><Bell size={24} /></span>
+            <h2>{popupNotifs.length > 1 ? 'Vous avez de nouvelles notifications' : 'Nouvelle notification'}</h2>
+            <ul className="portal-notif-list">
+              {popupNotifs.map((item) => {
+                const visual = notifVisual(item.type)
+                return (
+                  <li className="portal-notif-item" key={item.id}>
+                    <span className={`notif-page-icon ${visual.tone}`}>{visual.icon}</span>
+                    <div>
+                      <p className="portal-notif-title">{notifTitle(item)}</p>
+                      <p className="portal-notif-message">{item.message}</p>
+                      <span className="portal-notif-date">{formatDate(item.createdAt)}</span>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+            <button className="portal-notif-ok" type="button" onClick={ackCritical}>
+              J’ai compris
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
