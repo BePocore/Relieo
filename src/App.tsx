@@ -1515,6 +1515,10 @@ function App() {
 
   // Carte protégée : on saisit le code avant de charger le moteur cartographique.
   const needsAccess = !isStudioMode && Boolean(accessCode) && !accessGranted
+  // On lève le voile plein écran dès que la carte est prête, que la porte de
+  // code la couvre, ou qu'on bascule sur l'écran « indisponible » (MapLibre
+  // n'étant alors jamais monté, `mapReady` ne passerait jamais à true).
+  const loaderDone = mapReady || needsAccess || (!isStudioMode && loadFailed)
 
   return (
     <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
@@ -1870,10 +1874,8 @@ function App() {
       ) : null}
 
       <div
-        className={
-          mapReady || needsAccess ? 'app-loader app-loader--done' : 'app-loader'
-        }
-        aria-hidden={mapReady || needsAccess}
+        className={loaderDone ? 'app-loader app-loader--done' : 'app-loader'}
+        aria-hidden={loaderDone}
         role="status"
       >
         <div className="app-loader-inner">
