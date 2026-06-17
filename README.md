@@ -61,6 +61,30 @@ requetes `GET` publiques. Les uploads utilisent une URL signee temporaire : les
 cles R2 ne sont jamais envoyees au navigateur. Une empreinte de fichier evite
 de renvoyer deux fois le meme original.
 
+En plus des projets, R2 stocke quelques fichiers JSON transverses :
+`relieo/index.json` (registre des cartes), `relieo/active.json` (carte publique
+par défaut), `relieo/sanctions.json` (journal de modération admin) et
+`relieo/admin-notifications.json` (messages d'appel des comptes bloqués).
+
+## Console admin & modération
+
+Les comptes listés dans `ADMIN_UIDS` accèdent à une console plein écran
+(`/api/admin/*`, `src/portal/admin/`) : vue d'ensemble (stats + revenus +
+graphe d'évolution des inscriptions), utilisateurs, cartes (god-view), journal
+des sanctions et notifications. Un admin peut **dépublier/supprimer** une carte
+et **bloquer/supprimer** un compte, toujours avec un message transmis au
+propriétaire (affiché à sa prochaine connexion). La suppression de compte n'est
+possible qu'après 3 bannissements : elle efface le contenu R2 mais **conserve
+l'authentification et l'email** (réservés, recréation impossible).
+
+L'état de modération vit dans la collection Firestore `moderation/<uid>`
+(écriture réservée à l'Admin SDK, lecture par le propriétaire). **Important :**
+`firestore.rules` n'est pas déployé automatiquement (pas de `firebase.json`).
+Publier la règle `moderation/{userId}` via la console Firebase ou
+`firebase deploy --only firestore:rules`, sinon les écrans de blocage/suppression
+ne s'affichent pas. Les emails de notification sont prévus mais pas encore
+branchés (in-app uniquement pour l'instant).
+
 Le Studio est disponible avec `/?mode=studio`. Le bouton `Publier en ligne`
 partage la derniere copie avec le telephone, l'iPad et l'ordinateur.
 
