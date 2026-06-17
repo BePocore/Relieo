@@ -52,4 +52,6 @@ export type PortalNotification = {
   message: string
   mapTitle?: string
   createdAt: string
+  // Lue par l'utilisateur (absent/false = non lue → pastille rouge sur la cloche).
+  read?: boolean
 }

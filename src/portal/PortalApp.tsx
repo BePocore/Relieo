@@ -63,11 +63,11 @@ import {
   type ProfileExtras,
 } from './portalStore'
 import {
-  dismissUserNotifications,
   finalizeAccountDeletion,
   getFirebaseAuth,
   getIdToken,
   googleProvider,
+  markUserNotificationsRead,
   readAccountStatus,
   readUserNotifications,
   readUserProfile,
@@ -86,7 +86,7 @@ import {
 import { AdminApp } from './admin/AdminView'
 import './Portal.css'
 
-type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'admin'
+type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'notifications' | 'admin'
 
 // Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
@@ -135,6 +135,7 @@ const currentView = (): PortalView => {
   if (window.location.pathname.endsWith('/profile')) return 'profile'
   if (window.location.pathname.endsWith('/hikes')) return 'hikes'
   if (window.location.pathname.endsWith('/plans')) return 'plans'
+  if (window.location.pathname.endsWith('/notifications')) return 'notifications'
   if (window.location.pathname.endsWith('/admin')) return 'admin'
   return 'dashboard'
 }
@@ -145,6 +146,18 @@ const formatDate = (value: string): string =>
     month: 'short',
     year: 'numeric',
   }).format(new Date(value))
+
+// Titre court d'une notification utilisateur selon son type.
+const notifTitle = (item: PortalNotification): string | null => {
+  if (item.type === 'block') return 'Compte bloqué'
+  if (item.type === 'delete-account') return 'Compte supprimé'
+  if (item.mapTitle && item.type !== 'info') {
+    return `Carte « ${item.mapTitle} » ${
+      item.type === 'delete' ? 'supprimée' : 'dépubliée'
+    }`
+  }
+  return null
+}
 
 const userInitials = (name: string): string =>
   name
@@ -651,6 +664,8 @@ function DashboardShell({
   const [mobileMenu, setMobileMenu] = useState(false)
   const [profile, setProfile] = useState(user)
   const [usage, setUsage] = useState<StorageUsage | null>(null)
+  const [notifications, setNotifications] = useState<PortalNotification[]>([])
+  const [notifOpen, setNotifOpen] = useState(false)
 
   useEffect(() => {
     const syncView = () => setView(currentView())
@@ -729,11 +744,41 @@ function DashboardShell({
     }
   }, [user.id])
 
+  useEffect(() => {
+    let cancelled = false
+    void readUserNotifications(user.id)
+      .then((items) => {
+        if (!cancelled) setNotifications(items)
+      })
+      .catch(() => {
+        if (!cancelled) setNotifications([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user.id])
+
+  const unreadCount = notifications.filter((n) => !n.read).length
+
+  // Ouvre le menu de notifications et marque les non-lues comme lues (la pastille
+  // rouge disparaît une fois la cloche consultée). Les notifs restent listées.
+  const openNotifications = () => {
+    setNotifOpen((open) => !open)
+    if (!notifOpen && unreadCount > 0) {
+      const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id)
+      setNotifications((current) =>
+        current.map((n) => ({ ...n, read: true })),
+      )
+      void markUserNotificationsRead(user.id, unreadIds).catch(() => undefined)
+    }
+  }
+
   const setPortalView = (next: PortalView) => {
     const path = next === 'dashboard' ? '/dashboard' : `/dashboard/${next}`
     navigate(path)
     setView(next)
     setMobileMenu(false)
+    setNotifOpen(false)
   }
 
   const filteredHikes = useMemo(() => {
@@ -803,7 +848,57 @@ function DashboardShell({
         <header className="portal-topbar">
           <button aria-label="Menu" className="icon-button mobile-menu-button" type="button" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={20} /></button>
           <label className="portal-search"><Search size={18} /><input placeholder="Rechercher une carte" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
-          <div className="topbar-actions"><button aria-label="Notifications" className="icon-button" type="button"><Bell size={19} /></button><button className="profile-button" type="button" onClick={() => setPortalView('profile')}><span className="profile-avatar" style={avatarStyle(profile.photoURL)}>{profile.photoURL ? '' : userInitials(profile.name)}</span><span><strong>{profile.name}</strong><small>{profile.email}</small></span></button></div>
+          <div className="topbar-actions">
+            <div className="notif-bell-wrap">
+              <button
+                aria-label="Notifications"
+                className="icon-button notif-bell"
+                type="button"
+                onClick={openNotifications}
+              >
+                <Bell size={19} />
+                {unreadCount > 0 ? (
+                  <span className="notif-bell-badge">{unreadCount}</span>
+                ) : null}
+              </button>
+              {notifOpen ? (
+                <>
+                  <button
+                    aria-label="Fermer"
+                    className="notif-menu-scrim"
+                    type="button"
+                    onClick={() => setNotifOpen(false)}
+                  />
+                  <div className="notif-menu">
+                    <header className="notif-menu-head">Notifications</header>
+                    {notifications.length === 0 ? (
+                      <p className="notif-menu-empty">Aucune notification.</p>
+                    ) : (
+                      <ul className="notif-menu-list">
+                        {notifications.slice(0, 3).map((item) => (
+                          <li key={item.id}>
+                            {notifTitle(item) ? (
+                              <strong>{notifTitle(item)}</strong>
+                            ) : null}
+                            <p>{item.message}</p>
+                            <time>{formatDate(item.createdAt)}</time>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      className="notif-menu-all"
+                      type="button"
+                      onClick={() => setPortalView('notifications')}
+                    >
+                      Voir toutes les notifications <ChevronRight size={15} />
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <button className="profile-button" type="button" onClick={() => setPortalView('profile')}><span className="profile-avatar" style={avatarStyle(profile.photoURL)}>{profile.photoURL ? '' : userInitials(profile.name)}</span><span><strong>{profile.name}</strong><small>{profile.email}</small></span></button>
+          </div>
         </header>
 
         <div className="portal-content">
@@ -811,6 +906,29 @@ function DashboardShell({
             <ProfileView user={profile} onSave={saveProfile} onSavePhoto={savePhoto} />
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
+          ) : view === 'notifications' ? (
+            <>
+              <header className="page-heading">
+                <div>
+                  <p className="portal-kicker">Notifications</p>
+                  <h1>Vos notifications</h1>
+                  <p>Les messages de l’administrateur et les événements de vos cartes.</p>
+                </div>
+              </header>
+              <section className="notif-page">
+                {notifications.length === 0 ? (
+                  <p className="notif-page-empty">Vous n’avez aucune notification.</p>
+                ) : (
+                  notifications.map((item) => (
+                    <article className="notif-page-card" key={item.id}>
+                      {notifTitle(item) ? <strong>{notifTitle(item)}</strong> : null}
+                      <p>{item.message}</p>
+                      <time>{formatDate(item.createdAt)}</time>
+                    </article>
+                  ))
+                )}
+              </section>
+            </>
           ) : (
             <>
               <header className="page-heading">
@@ -1349,8 +1467,6 @@ function FirebasePortal() {
     checked: false,
     isAdmin: false,
   })
-  // Messages déposés par l'admin (ex : carte dépubliée), affichés à la connexion.
-  const [notifications, setNotifications] = useState<PortalNotification[]>([])
   // État de modération du compte (actif / bloqué / supprimé).
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
 
@@ -1382,22 +1498,6 @@ function FirebasePortal() {
       cancelled = true
     }
   }, [session, emailVerified])
-
-  // Charge les notifications admin une fois l'utilisateur (non-admin) identifié.
-  useEffect(() => {
-    if (!session || !emailVerified || !admin.checked || admin.isAdmin) return
-    let cancelled = false
-    void readUserNotifications(session.firebaseUser.uid)
-      .then((items) => {
-        if (!cancelled) setNotifications(items)
-      })
-      .catch(() => {
-        if (!cancelled) setNotifications([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [session, emailVerified, admin])
 
   // Charge l'état de modération du compte (bloqué / supprimé) après l'admin check.
   useEffect(() => {
@@ -1552,64 +1652,11 @@ function FirebasePortal() {
     )
   }
 
-  // Popup des messages admin (ex : carte dépubliée), affiché par-dessus le
-  // dashboard à la connexion. Acquittement = suppression côté Firestore.
-  const notificationsModal =
-    notifications.length > 0 ? (
-      <div className="portal-modal-backdrop" role="dialog" aria-modal="true">
-        <div className="portal-modal">
-          <h2>
-            {notifications.length > 1
-              ? 'Messages de l’administrateur'
-              : 'Message de l’administrateur'}
-          </h2>
-          <ul className="portal-notif-list">
-            {notifications.map((item) => (
-              <li key={item.id}>
-                {item.type === 'block' ? (
-                  <p className="portal-notif-title">Compte bloqué</p>
-                ) : item.type === 'delete-account' ? (
-                  <p className="portal-notif-title">Compte supprimé</p>
-                ) : item.mapTitle && item.type !== 'info' ? (
-                  <p className="portal-notif-title">
-                    Carte « {item.mapTitle} »{' '}
-                    {item.type === 'delete' ? 'supprimée' : 'dépubliée'}
-                  </p>
-                ) : null}
-                <p className="portal-notif-message">{item.message}</p>
-                <span className="portal-notif-date">
-                  {new Date(item.createdAt).toLocaleDateString('fr-FR', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <button
-            className="portal-notif-ok"
-            type="button"
-            onClick={() => {
-              const ids = notifications.map((item) => item.id)
-              setNotifications([])
-              void dismissUserNotifications(session.firebaseUser.uid, ids).catch(
-                () => undefined,
-              )
-            }}
-          >
-            J’ai compris
-          </button>
-        </div>
-      </div>
-    ) : null
-
   // Étape post-inscription : tant qu'aucun forfait n'est choisi, on affiche
   // l'écran de sélection avant de donner accès au dashboard.
   if (!session.portalUser.plan) {
     return (
       <>
-        {notificationsModal}
         {profileError ? <p className="auth-error">{profileError}</p> : null}
         <PlanOnboarding
           user={session.portalUser}
@@ -1628,7 +1675,6 @@ function FirebasePortal() {
 
   return (
     <>
-      {notificationsModal}
       {profileError ? <p className="auth-error">{profileError}</p> : null}
       <DashboardShell
         user={session.portalUser}

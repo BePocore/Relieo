@@ -152,25 +152,32 @@ export const readUserNotifications = async (
   if (!snapshot.exists()) return []
   const raw = snapshot.data().notifications
   if (!Array.isArray(raw)) return []
-  return raw.filter(
-    (item): item is PortalNotification =>
-      Boolean(item) && typeof item.message === 'string' && typeof item.id === 'string',
-  )
+  return raw
+    .filter(
+      (item): item is PortalNotification =>
+        Boolean(item) && typeof item.message === 'string' && typeof item.id === 'string',
+    )
+    .map((item) => ({ ...item, read: Boolean(item.read) }))
+    .sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
 }
 
-// Acquittement : on retire les notifications affichées (par id) du profil.
-export const dismissUserNotifications = async (
+// Marque des notifications (par id) comme lues, sans les supprimer (elles
+// restent consultables dans l'onglet Notifications).
+export const markUserNotificationsRead = async (
   uid: string,
   ids: string[],
 ): Promise<void> => {
   const reference = profileDocument(uid)
   if (!reference) return
-  const remaining = (await readUserNotifications(uid)).filter(
-    (item) => !ids.includes(item.id),
+  const idSet = new Set(ids)
+  const next = (await readUserNotifications(uid)).map((item) =>
+    idSet.has(item.id) ? { ...item, read: true } : item,
   )
   await setDoc(
     reference,
-    { notifications: remaining, updatedAt: serverTimestamp() },
+    { notifications: next, updatedAt: serverTimestamp() },
     { merge: true },
   )
 }
