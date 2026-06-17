@@ -1123,10 +1123,9 @@ function DashboardShell({
           <button className={view === 'hikes' ? 'active' : ''} type="button" onClick={() => setPortalView('hikes')}><Map size={18} /> Mes cartes <span>{hikes.length}</span></button>
           <button className={view === 'profile' ? 'active' : ''} type="button" onClick={() => setPortalView('profile')}><UserRound size={18} /> Mon profil</button>
           <button className={view === 'plans' ? 'active' : ''} type="button" onClick={() => setPortalView('plans')}><Wallet size={18} /> Forfait</button>
-          <button className={view === 'settings' ? 'active' : ''} type="button" onClick={() => setPortalView('settings')}><Settings size={18} /> Paramètres</button>
           <p>OUTILS</p>
           <button type="button"><BarChart3 size={18} /> Statistiques</button>
-          <button type="button"><Settings size={18} /> Paramètres</button>
+          <button className={view === 'settings' ? 'active' : ''} type="button" onClick={() => setPortalView('settings')}><Settings size={18} /> Paramètres</button>
         </nav>
         <div className="sidebar-status"><span><ShieldCheck size={16} /></span><div><strong>Cloud synchronisé</strong><small>Firebase + Cloudflare R2</small></div></div>
         <button className="logout-button" type="button" onClick={onLogout}><LogOut size={18} /> Déconnexion</button>

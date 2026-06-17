@@ -40,14 +40,14 @@
   --c-surface: #1a2433;
   --c-surface-2: #232f42;
   --c-border: #2a3648;
-  --c-text: #eef2f8;
+  --c-text: #cdd7e1;
   --c-text-dim: #8b97ab;
   --c-text-faint: #5d6878;
-  --c-accent: #2fd18a;
+  --c-accent: #2bc684;
   --c-accent-strong: #25b074;
   --c-accent-ink: #06281a;
-  --c-accent-soft: rgba(47, 209, 138, 0.14);
-  --c-danger: #ff6b5e;
+  --c-accent-soft: rgba(43, 198, 132, 0.14);
+  --c-danger: #e05a4f;
   --c-shadow: rgba(0, 0, 0, 0.45);
   --c-glass: rgba(16, 24, 36, 0.74);
   --c-glass-strong: rgba(15, 22, 33, 0.92);
@@ -56,6 +56,29 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* Barres de défilement discrètes, accordées au thème. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-text-faint);
+  background-clip: padding-box;
 }
 
 html,

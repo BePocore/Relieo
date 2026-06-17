@@ -838,7 +838,8 @@
 
 .storage-panel .portal-kicker,
 .storage-panel p {
-  color: var(--c-accent-soft);
+  color: var(--c-accent-ink);
+  opacity: 0.72;
 }
 
 .storage-panel h2 {
@@ -864,7 +865,8 @@
   margin-top: 10px;
   display: flex;
   justify-content: space-between;
-  color: var(--c-accent-soft);
+  color: var(--c-accent-ink);
+  opacity: 0.85;
   font-size: 11px;
 }
 
@@ -1185,6 +1187,19 @@
   border: 0;
   outline: 0;
   color: var(--c-text);
+  background: transparent;
+}
+
+/* Champs remplis par le navigateur (autofill) : on masque le fond clair que
+   Chrome impose, pour qu'il suive le thème au lieu d'un « carré gris ». */
+.input-shell input:-webkit-autofill,
+.input-shell input:-webkit-autofill:hover,
+.input-shell input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--c-text);
+  caret-color: var(--c-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--c-surface) inset;
+  box-shadow: 0 0 0 1000px var(--c-surface) inset;
+  transition: background-color 9999s ease-in-out 0s;
 }
 
 .password-visibility {

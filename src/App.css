@@ -5,9 +5,27 @@
    ───────────────────────────────────────────────────────────── */
 
 .app-shell {
-  /* Les variables de la carte héritent des tokens de thème (src/index.css)
-     pour suivre le mode jour/nuit. Les surfaces translucides ont une valeur
-     jour (noir translucide) surchargée en nuit (blanc translucide) plus bas. */
+  /* La carte garde TOUJOURS son ambiance sombre : meilleure lisibilité sur la
+     carte, et surtout pas de panneaux clairs translucides avec backdrop-filter
+     au-dessus du canvas WebGL (qui effondrent le FPS). On force donc la palette
+     nuit ici, indépendamment du thème global du site. */
+  --c-bg: #0f1623;
+  --c-surface: #1a2433;
+  --c-surface-2: #232f42;
+  --c-border: #2a3648;
+  --c-text: #cdd7e1;
+  --c-text-dim: #8b97ab;
+  --c-text-faint: #5d6878;
+  --c-accent: #2bc684;
+  --c-accent-strong: #25b074;
+  --c-accent-ink: #06281a;
+  --c-accent-soft: rgba(47, 209, 138, 0.14);
+  --c-danger: #e05a4f;
+  --c-shadow: rgba(0, 0, 0, 0.45);
+  --c-glass: rgba(16, 24, 36, 0.74);
+  --c-glass-strong: rgba(15, 22, 33, 0.92);
+  --c-glass-border: rgba(255, 255, 255, 0.12);
+
   --bg: var(--c-bg);
   --accent: var(--c-accent);
   --accent-strong: var(--c-accent-strong);
@@ -17,9 +35,9 @@
   --glass: var(--c-glass);
   --glass-strong: var(--c-glass-strong);
   --glass-border: var(--c-glass-border);
-  --glass-border-strong: rgba(0, 0, 0, 0.18);
-  --surface: rgba(0, 0, 0, 0.04);
-  --surface-hover: rgba(0, 0, 0, 0.07);
+  --glass-border-strong: rgba(255, 255, 255, 0.2);
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.09);
   --text: var(--c-text);
   --text-dim: var(--c-text-dim);
   --text-faint: var(--c-text-faint);
@@ -31,14 +49,6 @@
   overflow: hidden;
   color: var(--text);
   background: var(--bg);
-}
-
-/* Surfaces translucides de la carte : sombres (sur fond clair) en jour,
-   blanches translucides en nuit. */
-:root[data-theme='dark'] .app-shell {
-  --glass-border-strong: rgba(255, 255, 255, 0.2);
-  --surface: rgba(255, 255, 255, 0.05);
-  --surface-hover: rgba(255, 255, 255, 0.09);
 }
 
 /* ── Topbar flottante ───────────────────────────────────────── */
