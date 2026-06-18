@@ -3,7 +3,6 @@ import type { FormEvent, ReactNode } from 'react'
 import {
   Camera,
   Download,
-  FileJson,
   FileUp,
   HardDrive,
   Image,
@@ -47,7 +46,6 @@ type StudioPanelProps = {
   traces: Trace[]
   stats: TrailStats
   mediaLibrary: ImportedMedia[]
-  pointsSourceName: string
   accessCode: string
   onSelectPoint: (point: TrailPoint) => void
   onClose: () => void
@@ -55,7 +53,7 @@ type StudioPanelProps = {
   onDeleteTrace: (traceId: string) => void
   onRenameTrace: (traceId: string, name: string) => void
   onSetTraceColor: (traceId: string, color: string) => void
-  onImportPoints: (file: File) => Promise<void>
+  onImportDriveMedia: () => Promise<void>
   onImportMedia: (files: File[]) => Promise<void>
   onAttachMedia: (pointId: string, file: File) => Promise<void>
   onAddPoint: (point: TrailPoint) => void
@@ -69,6 +67,8 @@ type StudioPanelProps = {
   adminPassword: string
   isSaving: boolean
   isUploading: boolean
+  isDriveImporting: boolean
+  googleDriveConfigured: boolean
   uploadProgress: UploadProgress | null
   importReport: ImportReport | null
   onDismissReport: () => void
@@ -491,7 +491,6 @@ export function StudioPanel({
   traces,
   stats,
   mediaLibrary,
-  pointsSourceName,
   accessCode,
   onSelectPoint,
   onClose,
@@ -499,7 +498,7 @@ export function StudioPanel({
   onDeleteTrace,
   onRenameTrace,
   onSetTraceColor,
-  onImportPoints,
+  onImportDriveMedia,
   onImportMedia,
   onAttachMedia,
   onAddPoint,
@@ -514,6 +513,8 @@ export function StudioPanel({
   adminPassword,
   isSaving,
   isUploading,
+  isDriveImporting,
+  googleDriveConfigured,
   uploadProgress,
   importReport,
   onDismissReport,
@@ -527,6 +528,21 @@ export function StudioPanel({
   const [formError, setFormError] = useState<string | null>(null)
   const [paletteTraceId, setPaletteTraceId] = useState<string | null>(null)
   const writeAuthReady = firebaseEnabled || Boolean(adminPassword)
+  const driveImportDisabled =
+    !googleDriveConfigured ||
+    !writeAuthReady ||
+    !accessCode.trim() ||
+    isUploading ||
+    isDriveImporting
+  const driveImportHint = !googleDriveConfigured
+    ? 'Configuration Google requise'
+    : isDriveImporting
+      ? 'Ouverture de Google Drive...'
+      : isUploading
+        ? 'Envoi vers le stockage...'
+        : writeAuthReady && accessCode.trim()
+          ? 'Choisir des photos / vidéos'
+          : 'Connexion et code carte requis'
 
   const selectedMedia = useMemo(
     () => mediaLibrary.find((media) => media.id === draft.mediaId),
@@ -673,7 +689,13 @@ export function StudioPanel({
         </label>
         <button
           className="primary-action"
-          disabled={!writeAuthReady || !accessCode.trim() || isSaving || isUploading}
+          disabled={
+            !writeAuthReady ||
+            !accessCode.trim() ||
+            isSaving ||
+            isUploading ||
+            isDriveImporting
+          }
           type="button"
           onClick={() => void onSaveProject()}
         >
@@ -847,22 +869,24 @@ export function StudioPanel({
             </div>
           ) : null}
 
-          <label className="upload-tile">
-            <FileJson aria-hidden="true" size={22} />
-            <span>
-              <strong>Points JSON</strong>
-              <small>{pointsSourceName}</small>
+          <button
+            className="drive-import-button"
+            type="button"
+            aria-label="Importer des médias depuis Google Drive"
+            disabled={driveImportDisabled}
+            title={driveImportHint}
+            onClick={() => void onImportDriveMedia()}
+          >
+            <span className="drive-import-icon" aria-hidden="true">
+              <span className="drive-import-mark mark-green" />
+              <span className="drive-import-mark mark-yellow" />
+              <span className="drive-import-mark mark-blue" />
             </span>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) void onImportPoints(file)
-                event.currentTarget.value = ''
-              }}
-            />
-          </label>
+            <span>
+              <strong>Google Drive</strong>
+              <small>{driveImportHint}</small>
+            </span>
+          </button>
 
           <label className="upload-tile">
             <Image aria-hidden="true" size={22} />

@@ -45,6 +45,10 @@ import {
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
+import {
+  googleDriveImportConfigured,
+  pickGoogleDriveMedia,
+} from './lib/googleDrive'
 import type {
   ImportedMedia,
   ImportReport,
@@ -416,6 +420,7 @@ function App() {
   const [isPublished, setIsPublished] = useState(false)
   const [isAutosaving, setIsAutosaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isDriveImporting, setIsDriveImporting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
     null,
   )
@@ -439,6 +444,7 @@ function App() {
   )
   const [hasPanelDraft, setHasPanelDraft] = useState(false)
   const [showDashboardConfirm, setShowDashboardConfirm] = useState(false)
+  const isGoogleDriveConfigured = googleDriveImportConfigured()
 
   const applyProject = useCallback((project: TrailProject) => {
     const loadedTraces =
@@ -961,30 +967,6 @@ function App() {
     [accessCode],
   )
 
-  const handleImportPoints = useCallback(async (file: File) => {
-    try {
-      const json = JSON.parse(await file.text()) as unknown
-      if (!Array.isArray(json)) {
-        throw new Error('Le fichier points.json doit contenir un tableau.')
-      }
-
-      const importedPoints = json
-        .map((point, index) => normalizePoint(point as TrailPoint, index))
-        .filter((point): point is TrailPoint => point !== null)
-
-      setPoints(importedPoints)
-      setPointsSourceName(file.name)
-      setSelectedPoint(null)
-      setError(null)
-    } catch (importError) {
-      setError(
-        importError instanceof Error
-          ? importError.message
-          : 'Import points.json impossible.',
-      )
-    }
-  }, [])
-
   const handleImportMedia = useCallback(async (files: File[]) => {
     if (!firebaseEnabled && !adminPassword) {
       setSaveStatus('Saisis le mot de passe Studio avant un import media.')
@@ -1222,6 +1204,42 @@ function App() {
     )
     if (importedMedia.length > 0) scheduleAutosave()
   }, [accessCode, adminPassword, points, combinedPoints, mediaLibrary, scheduleAutosave])
+
+  const handleImportDriveMedia = useCallback(async () => {
+    if (!isGoogleDriveConfigured) {
+      setSaveStatus(
+        'Configure Google Drive dans Vercel avant d’utiliser cet import.',
+      )
+      return
+    }
+    if (!firebaseEnabled && !adminPassword) {
+      setSaveStatus('Saisis le mot de passe Studio avant un import média.')
+      return
+    }
+    if (!accessCode.trim()) {
+      setSaveStatus('Renseigne le code de la carte avant un import média.')
+      return
+    }
+
+    setIsDriveImporting(true)
+    setSaveStatus('Ouverture de Google Drive...')
+    try {
+      const files = await pickGoogleDriveMedia()
+      if (files.length === 0) {
+        setSaveStatus('Aucun média Google Drive sélectionné.')
+        return
+      }
+      await handleImportMedia(files)
+    } catch (driveError) {
+      setSaveStatus(
+        driveError instanceof Error
+          ? driveError.message
+          : 'Import Google Drive impossible.',
+      )
+    } finally {
+      setIsDriveImporting(false)
+    }
+  }, [accessCode, adminPassword, handleImportMedia, isGoogleDriveConfigured])
 
   const handleDismissReport = useCallback(() => {
     setImportReport(null)
@@ -1780,7 +1798,6 @@ function App() {
                   traces={traces}
                   stats={stats}
                   mediaLibrary={mediaLibrary}
-                  pointsSourceName={pointsSourceName}
                   accessCode={accessCode}
                   onSelectPoint={handleSelectPoint}
                   onClose={handleClosePoint}
@@ -1788,7 +1805,7 @@ function App() {
                   onDeleteTrace={handleDeleteTrace}
                   onRenameTrace={handleRenameTrace}
                   onSetTraceColor={handleSetTraceColor}
-                  onImportPoints={handleImportPoints}
+                  onImportDriveMedia={handleImportDriveMedia}
                   onImportMedia={handleImportMedia}
                   onAttachMedia={handleAttachMedia}
                   onAddPoint={handleAddPoint}
@@ -1803,6 +1820,8 @@ function App() {
                   adminPassword={adminPassword}
                   isSaving={isSaving}
                   isUploading={isUploading}
+                  isDriveImporting={isDriveImporting}
+                  googleDriveConfigured={isGoogleDriveConfigured}
                   uploadProgress={uploadProgress}
                   importReport={importReport}
                   onDismissReport={handleDismissReport}
