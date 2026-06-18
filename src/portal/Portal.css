@@ -831,15 +831,14 @@
 }
 
 .storage-panel {
-  color: var(--c-accent-ink);
+  color: #fff;
   border-color: var(--c-accent-strong);
   background: var(--c-accent-strong);
 }
 
 .storage-panel .portal-kicker,
 .storage-panel p {
-  color: var(--c-accent-ink);
-  opacity: 0.72;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .storage-panel h2 {
@@ -865,8 +864,7 @@
   margin-top: 10px;
   display: flex;
   justify-content: space-between;
-  color: var(--c-accent-ink);
-  opacity: 0.85;
+  color: rgba(255, 255, 255, 0.85);
   font-size: 11px;
 }
 

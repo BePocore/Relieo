@@ -1,54 +1,56 @@
 /* ─────────────────────────────────────────────────────────────
    Relieo — design system "forêt nuit"
-   Fond var(--c-bg) · accent var(--c-accent) (lichen électrique) · surfaces
+   Fond #0c1512 · accent #3cdc8c (lichen électrique) · surfaces
    glassmorphism, topbar flottante, panneau bottom-sheet mobile.
    ───────────────────────────────────────────────────────────── */
 
 .app-shell {
-  /* La carte garde TOUJOURS son ambiance sombre : meilleure lisibilité sur la
-     carte, et surtout pas de panneaux clairs translucides avec backdrop-filter
-     au-dessus du canvas WebGL (qui effondrent le FPS). On force donc la palette
-     nuit ici, indépendamment du thème global du site. */
-  --c-bg: #0f1623;
-  --c-surface: #1a2433;
-  --c-surface-2: #232f42;
-  --c-border: #2a3648;
-  --c-text: #cdd7e1;
-  --c-text-dim: #8b97ab;
-  --c-text-faint: #5d6878;
-  --c-accent: #2bc684;
-  --c-accent-strong: #25b074;
-  --c-accent-ink: #06281a;
-  --c-accent-soft: rgba(47, 209, 138, 0.14);
-  --c-danger: #e05a4f;
-  --c-shadow: rgba(0, 0, 0, 0.45);
-  --c-glass: rgba(16, 24, 36, 0.74);
-  --c-glass-strong: rgba(15, 22, 33, 0.92);
-  --c-glass-border: rgba(255, 255, 255, 0.12);
-
-  --bg: var(--c-bg);
-  --accent: var(--c-accent);
-  --accent-strong: var(--c-accent-strong);
-  --accent-ink: var(--c-accent-ink);
-  --accent-soft: var(--c-accent-soft);
-  --accent-border: var(--c-accent);
-  --glass: var(--c-glass);
-  --glass-strong: var(--c-glass-strong);
-  --glass-border: var(--c-glass-border);
+  --bg: #0c1512;
+  --accent: #3cdc8c;
+  --accent-strong: #2bc97a;
+  --accent-ink: #06281a;
+  --accent-soft: rgba(60, 220, 140, 0.14);
+  --accent-border: rgba(60, 220, 140, 0.38);
+  --glass: rgba(14, 24, 20, 0.74);
+  --glass-strong: rgba(12, 21, 18, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.12);
   --glass-border-strong: rgba(255, 255, 255, 0.2);
   --surface: rgba(255, 255, 255, 0.05);
   --surface-hover: rgba(255, 255, 255, 0.09);
-  --text: var(--c-text);
-  --text-dim: var(--c-text-dim);
-  --text-faint: var(--c-text-faint);
-  --shadow: 0 18px 48px var(--c-shadow);
-  --shadow-soft: 0 10px 30px var(--c-shadow);
+  --text: #eaf5ef;
+  --text-dim: #93a89e;
+  --text-faint: #6c7f76;
+  --shadow: 0 18px 48px rgba(2, 8, 6, 0.5);
+  --shadow-soft: 0 10px 30px rgba(2, 8, 6, 0.35);
 
   position: fixed;
   inset: 0;
   overflow: hidden;
   color: var(--text);
   background: var(--bg);
+}
+
+/* Mode JOUR : la carte passe en clair. On ne change QUE les variables locales
+   de `.app-shell` (déjà utilisées partout) — aucune autre règle de la carte
+   n'est touchée, donc le rendu reste identique côté perf (FPS préservé). */
+:root:not([data-theme='dark']) .app-shell {
+  --bg: #eef2f0;
+  --accent: #126b47;
+  --accent-strong: #0b4a32;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(18, 107, 71, 0.12);
+  --accent-border: rgba(18, 107, 71, 0.34);
+  --glass: rgba(255, 255, 255, 0.82);
+  --glass-strong: rgba(255, 255, 255, 0.93);
+  --glass-border: rgba(20, 40, 30, 0.12);
+  --glass-border-strong: rgba(20, 40, 30, 0.18);
+  --surface: rgba(20, 40, 30, 0.05);
+  --surface-hover: rgba(20, 40, 30, 0.09);
+  --text: #14201b;
+  --text-dim: #5a6b62;
+  --text-faint: #8a978f;
+  --shadow: 0 18px 48px rgba(20, 40, 30, 0.14);
+  --shadow-soft: 0 10px 30px rgba(20, 40, 30, 0.1);
 }
 
 /* ── Topbar flottante ───────────────────────────────────────── */
@@ -227,7 +229,7 @@
 
 .map-stage {
   overflow: hidden;
-  background: var(--c-surface);
+  background: #101b16;
 }
 
 .trail-map,
@@ -263,7 +265,7 @@
   overflow: hidden;
   border: 2px solid rgba(255, 255, 255, 0.96);
   border-radius: 8px;
-  background: var(--c-surface);
+  background: #ffffff;
   box-shadow: 0 5px 16px rgba(3, 10, 7, 0.42);
   cursor: pointer;
   transform-origin: center;
@@ -296,7 +298,7 @@
   bottom: 5px;
   padding: 2px 4px;
   border-radius: 4px;
-  color: var(--c-text);
+  color: #ffffff;
   background: rgba(7, 14, 11, 0.78);
   font-size: 9px;
   font-weight: 850;
@@ -316,7 +318,7 @@
 }
 
 .maplibregl-ctrl-attrib {
-  color: var(--c-surface);
+  color: #1a2822;
   font-size: 10px;
   opacity: 0.76;
 }
@@ -520,7 +522,7 @@
   gap: 8px;
   border: 1px solid rgba(255, 122, 138, 0.4);
   border-radius: 11px;
-  color: var(--c-danger);
+  color: #ffd9de;
   background: rgba(74, 18, 26, 0.88);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(16px);
@@ -582,7 +584,7 @@
   width: 64px;
   height: 64px;
   border-radius: 18px;
-  color: var(--c-text);
+  color: #fff;
   background: var(--accent);
   box-shadow: var(--shadow-soft);
   animation: pulse 1.6s ease-in-out infinite;
@@ -699,7 +701,7 @@
   height: 68px;
   overflow: hidden;
   border-radius: 8px;
-  background: var(--c-surface);
+  background: #1a2620;
 }
 
 .media-tile-visual img,
@@ -716,7 +718,7 @@
 .media-tile-fallback {
   display: grid;
   place-items: center;
-  color: var(--c-text);
+  color: #ffffff;
 }
 
 .media-kind-badge {
@@ -729,7 +731,7 @@
   align-items: center;
   border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 6px;
-  color: var(--c-text);
+  color: #ffffff;
   font-size: 0.58rem;
   font-weight: 900;
   line-height: 1;
@@ -761,7 +763,7 @@
 }
 
 .type-poi {
-  background: var(--c-accent);
+  background: #2aa377;
 }
 
 /* ── Panneau latéral / bottom sheet ─────────────────────────── */
@@ -869,7 +871,7 @@
   max-width: none;
   display: block;
   object-fit: contain;
-  background: var(--c-bg);
+  background: #060d0a;
 }
 
 .panel-video {
@@ -957,7 +959,7 @@
   min-height: 34px;
   padding: 0 10px;
   border: 1px solid rgba(255, 122, 138, 0.36);
-  color: var(--c-danger);
+  color: #ff96a4;
   background: rgba(255, 122, 138, 0.1);
 }
 
@@ -990,7 +992,7 @@
   margin: 18px -20px 0;
   padding: 0;
   border: 0;
-  background: var(--c-bg);
+  background: #060d0a;
   cursor: zoom-in;
   overflow: hidden;
 }
@@ -1009,7 +1011,7 @@
   width: 30px;
   height: 30px;
   border-radius: 9px;
-  color: var(--c-text);
+  color: #fff;
   background: rgba(8, 14, 11, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1027,7 +1029,7 @@
   position: relative;
   width: calc(100% + 40px);
   margin: 18px -20px 0;
-  background: var(--c-bg);
+  background: #060d0a;
   overflow: hidden;
 }
 
@@ -1047,7 +1049,7 @@
   height: 30px;
   border-radius: 9px;
   border: 0;
-  color: var(--c-text);
+  color: #fff;
   background: rgba(8, 14, 11, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1086,7 +1088,7 @@
   height: 44px;
   border: 1px solid var(--glass-border-strong);
   border-radius: 12px;
-  color: var(--c-text);
+  color: #fff;
   background: rgba(8, 14, 11, 0.55);
   cursor: pointer;
   transition: background 140ms ease, border-color 140ms ease;
@@ -1127,7 +1129,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: var(--c-text);
+  color: #fff;
   font-size: 0.86rem;
   font-weight: 800;
   text-align: center;
@@ -1150,7 +1152,7 @@
   transform: translateY(-50%);
   border: 1px solid var(--glass-border-strong);
   border-radius: 50%;
-  color: var(--c-text);
+  color: #fff;
   background: rgba(8, 14, 11, 0.55);
   cursor: pointer;
   transition: background 140ms ease;
@@ -1288,7 +1290,7 @@
 }
 
 .color-swatch.selected {
-  border-color: var(--c-text);
+  border-color: #fff;
   box-shadow: 0 0 0 2px rgba(8, 14, 11, 0.6);
 }
 
@@ -1319,7 +1321,7 @@
   flex: 0 0 28px;
   border: 0;
   border-radius: 8px;
-  color: var(--c-danger);
+  color: #ff96a4;
   background: transparent;
   cursor: pointer;
   transition: background 140ms ease;
@@ -1338,7 +1340,7 @@
   display: grid;
   place-items: center;
   padding: 22px;
-  background: var(--bg, var(--c-bg));
+  background: var(--bg, #0c1512);
   background-image: radial-gradient(
     120% 100% at 50% 0%,
     rgba(60, 220, 140, 0.12),
@@ -1413,7 +1415,7 @@
 
 .access-error {
   margin: 0;
-  color: var(--c-danger);
+  color: #ff96a4;
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -1460,7 +1462,7 @@
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: var(--c-surface);
+  background: #1a2620;
 }
 
 .point-row-visual img {
@@ -1507,7 +1509,7 @@
   display: grid;
   place-items: center;
   border-radius: 9px;
-  color: var(--c-text);
+  color: #ffffff;
 }
 
 /* ── Profil d'altitude ──────────────────────────────────────── */
@@ -1659,8 +1661,8 @@
 }
 
 .point-form select option {
-  color: var(--c-surface);
-  background: var(--c-surface);
+  color: #17201d;
+  background: #ffffff;
 }
 
 .studio-password input::placeholder,
@@ -1962,7 +1964,7 @@
 }
 
 .import-report-section.tone-error {
-  border-left-color: var(--c-danger);
+  border-left-color: #ff7a8a;
 }
 
 .import-report-section-head {
@@ -1979,7 +1981,7 @@
 }
 
 .import-report-section.tone-error .import-report-section-head {
-  color: var(--c-danger);
+  color: #ff96a4;
 }
 
 .import-report-section ul {
@@ -2016,7 +2018,7 @@
 }
 
 .form-error {
-  color: var(--c-danger);
+  color: #ff96a4;
 }
 
 .save-status {
