@@ -37,7 +37,7 @@ import { StatsBar } from './components/StatsBar'
 import type { CameraCommand } from './components/MapLibreTrailMap'
 import { computeTrailStats, distanceBetween } from './lib/geo'
 import { parseGpx } from './lib/gpx'
-import { fileFingerprint, uploadMedia } from './lib/cloudUpload'
+import { deleteUploadedMedia, fileFingerprint, uploadMedia } from './lib/cloudUpload'
 import { firebaseEnabled, getIdToken } from './portal/firebase'
 import {
   createImportedMedia,
@@ -374,6 +374,18 @@ const formatKilometers = (meters: number): string => {
   return `${(meters / 1_000).toLocaleString('fr-FR', {
     maximumFractionDigits: 1,
   })} km`
+}
+
+const mediaAlreadyInLibrary = (
+  library: ImportedMedia[],
+  media: ImportedMedia,
+): boolean => {
+  return library.some(
+    (item) =>
+      item.id === media.id ||
+      item.url === media.url ||
+      Boolean(media.fingerprint && item.fingerprint === media.fingerprint),
+  )
 }
 
 function App() {
@@ -1198,11 +1210,10 @@ function App() {
 
     if (importedMedia.length > 0) {
       setMediaLibrary((current) => {
-        const names = new Set(current.map((media) => media.name.toLowerCase()))
-        const uniqueMedia = importedMedia.filter(
-          (media) => !names.has(media.name.toLowerCase()),
+        const newMedia = importedMedia.filter(
+          (media) => !mediaAlreadyInLibrary(current, media),
         )
-        return [...current, ...uniqueMedia]
+        return [...current, ...newMedia]
       })
     }
 
@@ -1291,26 +1302,69 @@ function App() {
     setImportReport(null)
   }, [])
 
+  const findImportReportMedia = useCallback(
+    (mediaId: string): ImportedMedia | undefined => {
+      const directMedia = mediaLibrary.find((item) => item.id === mediaId)
+      if (directMedia) return directMedia
+
+      const reportEntry = [
+        ...(importReport?.noGps ?? []),
+        ...(importReport?.offTrack ?? []),
+      ].find((entry) => entry.mediaId === mediaId)
+      if (!reportEntry) return undefined
+
+      return mediaLibrary.find(
+        (item) => item.name.toLowerCase() === reportEntry.name.toLowerCase(),
+      )
+    },
+    [importReport, mediaLibrary],
+  )
+
+  const repairImportReportMediaId = useCallback(
+    (oldMediaId: string, media: ImportedMedia) => {
+      if (oldMediaId === media.id) return
+      setImportReport((current) =>
+        current
+          ? {
+              ...current,
+              noGps: current.noGps.map((entry) =>
+                entry.mediaId === oldMediaId
+                  ? { ...entry, mediaId: media.id }
+                  : entry,
+              ),
+              offTrack: current.offTrack.map((entry) =>
+                entry.mediaId === oldMediaId
+                  ? { ...entry, mediaId: media.id }
+                  : entry,
+              ),
+            }
+          : current,
+      )
+    },
+    [],
+  )
+
   const handlePlaceImportedMedia = useCallback(
     (mediaId: string) => {
-      const media = mediaLibrary.find((item) => item.id === mediaId)
+      const media = findImportReportMedia(mediaId)
       if (!media) {
         setSaveStatus('Média introuvable dans la bibliothèque.')
         return
       }
-      setManualPlacementMediaId(mediaId)
+      repairImportReportMediaId(mediaId, media)
+      setManualPlacementMediaId(media.id)
       setSelectedPoint(null)
       setIsPanelOpen(false)
       setSaveStatus(
         `Clique sur la carte pour placer ${media.name}.`,
       )
     },
-    [mediaLibrary],
+    [findImportReportMedia, repairImportReportMediaId],
   )
 
   const handleEstimateImportedMedia = useCallback(
     (mediaId: string) => {
-      const media = mediaLibrary.find((item) => item.id === mediaId)
+      const media = findImportReportMedia(mediaId)
       if (!media) {
         setSaveStatus('Média introuvable dans la bibliothèque.')
         return
@@ -1381,6 +1435,7 @@ function App() {
       updateNoGpsEntry({
         detail: undefined,
         estimateUnavailable: false,
+        mediaId: media.id,
         placementEstimate: {
           lat: nearest.lat,
           lng: nearest.lng,
@@ -1388,36 +1443,41 @@ function App() {
         },
       })
     },
-    [mediaLibrary, timedTracePoints],
+    [findImportReportMedia, timedTracePoints],
   )
 
   const handleIgnoreImportEntry = useCallback(
-    (
+    async (
       section: 'noGps' | 'offTrack' | 'duplicates' | 'failed',
       entry: ImportReport['placed'][number],
     ) => {
+      let ignoredMedia: ImportedMedia | undefined
       if (entry.mediaId) {
-        const ignoredMedia = mediaLibrary.find(
+        ignoredMedia = mediaLibrary.find(
           (media) => media.id === entry.mediaId,
         )
         setMediaLibrary((current) =>
           current.filter((media) => media.id !== entry.mediaId),
         )
-        setPoints((current) =>
-          ignoredMedia
-            ? current.filter(
-                (point) =>
-                  point.mediaName?.toLowerCase() !==
-                  ignoredMedia.name.toLowerCase(),
-              )
-            : current,
-        )
-        setSelectedPoint((current) =>
-          ignoredMedia &&
-          current?.mediaName?.toLowerCase() === ignoredMedia.name.toLowerCase()
-            ? null
-            : current,
-        )
+        if (ignoredMedia) {
+          const mediaToIgnore = ignoredMedia
+          setPoints((current) =>
+            current.filter(
+              (point) =>
+                point.image !== mediaToIgnore.url &&
+                point.video !== mediaToIgnore.url &&
+                point.mediaName?.toLowerCase() !==
+                  mediaToIgnore.name.toLowerCase(),
+            ),
+          )
+          setSelectedPoint((current) =>
+            current?.image === mediaToIgnore.url ||
+            current?.video === mediaToIgnore.url ||
+            current?.mediaName?.toLowerCase() === mediaToIgnore.name.toLowerCase()
+              ? null
+              : current,
+          )
+        }
         setManualPlacementMediaId((current) =>
           current === entry.mediaId ? null : current,
         )
@@ -1444,9 +1504,32 @@ function App() {
       })
 
       setSaveStatus('Fichier ignoré pour cette carte.')
-      if (entry.mediaId) scheduleAutosave()
+      if (!ignoredMedia) {
+        return
+      }
+
+      setSaveStatus('Fichier ignore. Suppression du stockage...')
+      scheduleAutosave()
+
+      try {
+        const idToken = (await getIdToken()) ?? undefined
+        await deleteUploadedMedia({
+          mediaUrl: ignoredMedia.url,
+          thumbnailUrl: ignoredMedia.thumbnailUrl,
+          adminPassword,
+          idToken,
+          trailCode: accessCode,
+        })
+        setSaveStatus('Fichier ignore et supprime du stockage.')
+      } catch (deleteError) {
+        const message =
+          deleteError instanceof Error
+            ? deleteError.message
+            : 'suppression R2 impossible'
+        setSaveStatus(`Fichier ignore, mais suppression R2 impossible : ${message}`)
+      }
     },
-    [mediaLibrary, scheduleAutosave],
+    [accessCode, adminPassword, mediaLibrary, scheduleAutosave],
   )
 
   // Import depuis la fiche d'un point : upload du fichier puis rattachement

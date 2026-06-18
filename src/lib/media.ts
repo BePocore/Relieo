@@ -34,6 +34,21 @@ export const resolvePointMedia = (
   const kind: MediaKind =
     point.mediaKind ?? (point.video || point.type === 'video' ? 'video' : 'image')
 
+  if (source) {
+    const mediaByUrl = mediaLibrary.find((item) => item.url === source)
+    if (mediaByUrl) {
+      return {
+        src: mediaByUrl.url,
+        kind: mediaByUrl.kind,
+        name: mediaByUrl.name,
+        thumbnailSrc: mediaByUrl.thumbnailUrl,
+        width: mediaByUrl.width,
+        height: mediaByUrl.height,
+        durationSeconds: mediaByUrl.durationSeconds,
+      }
+    }
+  }
+
   if (point.mediaName) {
     const media = mediaLibrary.find(
       (item) => item.name.toLowerCase() === point.mediaName?.toLowerCase(),
@@ -52,19 +67,6 @@ export const resolvePointMedia = (
   }
 
   if (!source) return null
-
-  const mediaByUrl = mediaLibrary.find((item) => item.url === source)
-  if (mediaByUrl) {
-    return {
-      src: mediaByUrl.url,
-      kind: mediaByUrl.kind,
-      name: mediaByUrl.name,
-      thumbnailSrc: mediaByUrl.thumbnailUrl,
-      width: mediaByUrl.width,
-      height: mediaByUrl.height,
-      durationSeconds: mediaByUrl.durationSeconds,
-    }
-  }
 
   const sourceName = fileNameFromPath(source).toLowerCase()
   const media = mediaLibrary.find(

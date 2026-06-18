@@ -7,6 +7,10 @@ type PreparedUpload = {
   url: string
 }
 
+type DeletedUpload = {
+  deleted: true
+}
+
 export const fileFingerprint = async (file: File): Promise<string> => {
   const source = `${file.name}\u0000${file.size}\u0000${file.lastModified}`
   const digest = await crypto.subtle.digest(
@@ -91,4 +95,44 @@ export const uploadMedia = async ({
     await putWithProgress(result.uploadUrl, file, contentType, onProgress)
   }
   return { url: result.url, alreadyExists: result.alreadyExists }
+}
+
+export const deleteUploadedMedia = async ({
+  mediaUrl,
+  thumbnailUrl,
+  adminPassword,
+  idToken,
+  trailCode,
+}: {
+  mediaUrl: string
+  thumbnailUrl?: string
+  adminPassword: string
+  idToken?: string
+  trailCode: string
+}): Promise<void> => {
+  if (!trailCode.trim()) {
+    throw new Error('Renseigne le code de la carte avant la suppression.')
+  }
+  const authHeader: Record<string, string> = idToken
+    ? { Authorization: `Bearer ${idToken}` }
+    : { 'x-admin-password': adminPassword }
+  const response = await fetch('/api/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader,
+    },
+    body: JSON.stringify({
+      type: 'relieo.delete-media',
+      mediaUrl,
+      thumbnailUrl,
+      trailCode,
+    }),
+  })
+  const result = (await response.json().catch(() => null)) as
+    | (DeletedUpload & { message?: string })
+    | null
+  if (!response.ok || result?.deleted !== true) {
+    throw new Error(result?.message ?? 'Suppression R2 impossible.')
+  }
 }
