@@ -1,18 +1,19 @@
 /* ─────────────────────────────────────────────────────────────
    Relieo — design system "forêt nuit"
-   Fond #0c1512 · accent #3cdc8c (lichen électrique) · surfaces
+   Fond #0f1623 (bleu nuit, aligné dashboard) · accent #3cdc8c (lichen électrique) · surfaces
    glassmorphism, topbar flottante, panneau bottom-sheet mobile.
    ───────────────────────────────────────────────────────────── */
 
 .app-shell {
-  --bg: #0c1512;
+  /* Fond aligné sur le dashboard (bleu nuit) — cf. index.css :root[data-theme='dark']. */
+  --bg: #0f1623;
   --accent: #3cdc8c;
   --accent-strong: #2bc97a;
   --accent-ink: #06281a;
   --accent-soft: rgba(60, 220, 140, 0.14);
   --accent-border: rgba(60, 220, 140, 0.38);
-  --glass: rgba(14, 24, 20, 0.74);
-  --glass-strong: rgba(12, 21, 18, 0.92);
+  --glass: rgba(16, 24, 36, 0.74);
+  --glass-strong: rgba(15, 22, 33, 0.92);
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-border-strong: rgba(255, 255, 255, 0.2);
   --surface: rgba(255, 255, 255, 0.05);
@@ -1340,7 +1341,7 @@
   display: grid;
   place-items: center;
   padding: 22px;
-  background: var(--bg, #0c1512);
+  background: var(--bg, #0f1623);
   background-image: radial-gradient(
     120% 100% at 50% 0%,
     rgba(60, 220, 140, 0.12),

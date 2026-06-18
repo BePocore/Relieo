@@ -46,6 +46,12 @@ The map, terrain, route layers, clusters and HTML media markers live in this com
 
 Both hooks generate data-URL images on the fly and cache them. `useVideoPosters` captures a video's first non-black frame (uses `requestVideoFrameCallback` + a DOM-attached muted/playsinline element for iOS Safari, which won't decode frames from a detached/unplayed video). `useFramedThumbnails` draws the photo/poster into a canvas with a white frame. Both rely on the public R2 domain serving permissive CORS headers so cross-origin images can be drawn to canvas without tainting.
 
+### Theming (jour / nuit / auto)
+
+Semantic color tokens live in `src/index.css` (light by default, a blue-night palette under `:root[data-theme='dark']`). `src/lib/theme.ts` stores the preference (`light | dark | auto`) in localStorage, sets it as `data-theme` on `<html>` (applied at boot in `main.tsx`), and `auto` follows the OS setting; the picker (sun / moon / auto) is in the Settings tab. The admin console keeps its own variables and is unaffected.
+
+**FPS gotcha (`.app-shell` in `App.css`)**: the map (public consultation **and** Studio) stays dark regardless of theme — light translucent panels + `backdrop-filter` over the WebGL canvas tank the framerate. Theme switching on the map must only swap the **global** local variables on `.app-shell` (`--bg`, `--text`, `--glass`, `--glass-strong`...), **never** per-element colors of animated MapLibre markers: those markers are repositioned every frame, and resolving `var()` on every style recalc (dozens of markers × 60 fps) collapses the render — so animated-element colors are kept as literals. The dark background is unified (blue-night `#0f1623`, matching the dashboard) across dashboard and Studio.
+
 ### Access control
 
 The `accessCode` gate (`components/AccessGate.tsx`) is **client-side only** — the project JSON is still readable in the `/api/project` response, so this is a light barrier for sharing, not real security. Studio mode bypasses it. Studio is reachable from the public view by a hidden gesture: long-press the compass logo for 1.5s.

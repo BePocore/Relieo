@@ -46,6 +46,10 @@ The map, terrain, route layers, clusters and HTML media markers live in this com
 
 Both hooks generate data-URL images on the fly and cache them. `useVideoPosters` captures a video's first non-black frame (uses `requestVideoFrameCallback` + a DOM-attached muted/playsinline element for iOS Safari, which won't decode frames from a detached/unplayed video). `useFramedThumbnails` draws the photo/poster into a canvas with a white frame. Both rely on the public R2 domain serving permissive CORS headers so cross-origin images can be drawn to canvas without tainting.
 
+### Theming (jour / nuit / auto)
+
+Semantic tokens in `src/index.css` (light default, blue-night `[data-theme='dark']`); `src/lib/theme.ts` keeps the preference (`light|dark|auto`, auto follows the OS) in localStorage and sets `data-theme` on `<html>` (applied at boot in `main.tsx`); picker is in Settings. Admin keeps its own colors. **FPS gotcha**: the map (consultation + Studio) stays dark always (light translucent panels + `backdrop-filter` over the WebGL canvas tank FPS), and theme switching on the map only swaps the global `.app-shell` variables (`--bg`, `--text`, `--glass`...), **never** per-element colors of animated MapLibre markers (repositioned every frame — resolving `var()` per recalc across dozens of markers collapses the render, so those stay literal). Dark background unified to blue-night `#0f1623` across dashboard and Studio.
+
 ### Access control
 
 The `accessCode` gate (`components/AccessGate.tsx`) is **client-side only** — the project JSON is still readable in the `/api/project` response, so this is a light barrier for sharing, not real security. Studio mode bypasses it. Studio is reachable from the public view by a hidden gesture: long-press the compass logo for 1.5s. The portal uses **local** Firebase persistence with a **7-day sliding sign-out** (`src/portal/firebase.ts`); the login hero is a landscape **slideshow** (`HeroSlideshow.tsx`, photos in `public/hero/`).
