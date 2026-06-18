@@ -33,6 +33,7 @@ export type MapLibreTrailMapProps = {
   selectedPoint: TrailPoint | null
   cameraCommand: CameraCommand | null
   editable?: boolean
+  createPointOnClick?: boolean
   flat2D?: boolean
   videoPosters?: Record<string, string>
   framedThumbnails?: Record<string, string>
@@ -209,6 +210,7 @@ export function MapLibreTrailMap({
   selectedPoint,
   cameraCommand,
   editable = false,
+  createPointOnClick = false,
   flat2D = false,
   videoPosters = {},
   onMovePoint,
@@ -223,6 +225,7 @@ export function MapLibreTrailMap({
   const pointsRef = useRef(points)
   const basemapRef = useRef(basemap)
   const flat2DRef = useRef(flat2D)
+  const createPointOnClickRef = useRef(createPointOnClick)
   const callbacksRef = useRef({
     onMovePoint,
     onCreatePoint,
@@ -250,6 +253,7 @@ export function MapLibreTrailMap({
     pointsRef.current = points
     basemapRef.current = basemap
     flat2DRef.current = flat2D
+    createPointOnClickRef.current = createPointOnClick
     callbacksRef.current = {
       onMovePoint,
       onCreatePoint,
@@ -261,6 +265,7 @@ export function MapLibreTrailMap({
     points,
     basemap,
     flat2D,
+    createPointOnClick,
     onMovePoint,
     onCreatePoint,
     onMarkerClick,
@@ -454,7 +459,16 @@ export function MapLibreTrailMap({
 
       if (editable) {
         map.doubleClickZoom.disable()
+        map.on('click', (event) => {
+          if (!createPointOnClickRef.current) return
+          const blockedFeatures = map.queryRenderedFeatures(event.point, {
+            layers: [clusterLayerId, pointLayerId],
+          })
+          if (blockedFeatures.length > 0) return
+          callbacksRef.current.onCreatePoint?.(event.lngLat.lat, event.lngLat.lng)
+        })
         map.on('dblclick', (event) => {
+          if (createPointOnClickRef.current) return
           callbacksRef.current.onCreatePoint?.(event.lngLat.lat, event.lngLat.lng)
         })
       }
@@ -710,7 +724,13 @@ export function MapLibreTrailMap({
   }, [cameraCommand])
 
   return (
-    <div className="trail-map maplibre-trail-map">
+    <div
+      className={
+        createPointOnClick
+          ? 'trail-map maplibre-trail-map placement-active'
+          : 'trail-map maplibre-trail-map'
+      }
+    >
       <div ref={containerRef} className="trail-map-canvas" />
       <div className="maplibre-metrics" aria-label="Performances MapLibre">
         <strong>MapLibre 3D</strong>

@@ -18,6 +18,7 @@ import {
   LocateFixed,
   LoaderCircle,
   Map as MapIcon,
+  MapPin,
   Minus,
   Mountain,
   Play,
@@ -593,6 +594,14 @@ function App() {
     [combinedPoints],
   )
   const canEstimatePlacement = timedTracePoints.length > 0
+  const manualPlacementMedia = useMemo(
+    () =>
+      manualPlacementMediaId
+        ? mediaLibrary.find((media) => media.id === manualPlacementMediaId) ??
+          null
+        : null,
+    [manualPlacementMediaId, mediaLibrary],
+  )
   const stats = useMemo(() => combineStats(traces), [traces])
   const currentProjectSignature = useMemo(
     () =>
@@ -1291,8 +1300,9 @@ function App() {
       }
       setManualPlacementMediaId(mediaId)
       setSelectedPoint(null)
+      setIsPanelOpen(false)
       setSaveStatus(
-        `Double-clique sur la carte pour placer ${media.name}.`,
+        `Clique sur la carte pour placer ${media.name}.`,
       )
     },
     [mediaLibrary],
@@ -1876,6 +1886,27 @@ function App() {
 
           <BasemapControl basemap={basemap} onChange={handleBasemapChange} />
 
+          {manualPlacementMedia ? (
+            <div className="manual-placement-banner" role="status">
+              <MapPin aria-hidden="true" size={18} />
+              <span>
+                <strong>Placement manuel</strong>
+                <small>Clique sur la carte pour placer {manualPlacementMedia.name}</small>
+              </span>
+              <button
+                aria-label="Annuler le placement manuel"
+                title="Annuler"
+                type="button"
+                onClick={() => {
+                  setManualPlacementMediaId(null)
+                  setSaveStatus('Placement manuel annulé.')
+                }}
+              >
+                <X aria-hidden="true" size={15} />
+              </button>
+            </div>
+          ) : null}
+
           <div className="map-action-stack">
             <button
               aria-label="Recentrer la vue sur la trace"
@@ -1994,6 +2025,7 @@ function App() {
                 selectedPoint={selectedPoint}
                 cameraCommand={cameraCommand}
                 editable={isStudioMode}
+                createPointOnClick={Boolean(manualPlacementMedia)}
                 videoPosters={videoPosters}
                 framedThumbnails={framedThumbnails}
                 onMovePoint={handleMovePoint}

@@ -351,6 +351,10 @@
   font-size: 0.7rem;
 }
 
+.maplibre-trail-map.placement-active .maplibregl-canvas {
+  cursor: crosshair !important;
+}
+
 /* ── Contrôles flottants sur la carte ───────────────────────── */
 
 .terrain-badge,
@@ -438,6 +442,74 @@
 .basemap-button.active {
   color: var(--accent-ink);
   background: var(--accent);
+}
+
+.manual-placement-banner {
+  position: absolute;
+  top: 148px;
+  left: 50%;
+  z-index: 12;
+  max-width: min(430px, calc(100vw - 32px));
+  min-height: 48px;
+  padding: 8px 9px 8px 12px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--glass-strong);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  transform: translateX(-50%);
+}
+
+.manual-placement-banner > svg {
+  color: var(--accent);
+}
+
+.manual-placement-banner span {
+  min-width: 0;
+}
+
+.manual-placement-banner strong,
+.manual-placement-banner small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manual-placement-banner strong {
+  font-size: 0.8rem;
+  line-height: 1.1;
+}
+
+.manual-placement-banner small {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.manual-placement-banner button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.manual-placement-banner button:hover {
+  color: var(--text);
+  background: var(--surface-hover);
 }
 
 .map-action-stack {
