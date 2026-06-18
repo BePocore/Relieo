@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import type { FormEvent, KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import {
   Camera,
   Download,
   FileUp,
+  GripVertical,
   HardDrive,
   Image,
   KeyRound,
@@ -12,7 +13,6 @@ import {
   MapPinOff,
   Mountain,
   Plus,
-  Route,
   Save,
   Trash2,
   TriangleAlert,
@@ -52,6 +52,7 @@ type StudioPanelProps = {
   onImportGpx: (files: File[]) => Promise<void>
   onDeleteTrace: (traceId: string) => void
   onRenameTrace: (traceId: string, name: string) => void
+  onReorderTrace: (draggedTraceId: string, targetTraceId: string) => void
   onSetTraceColor: (traceId: string, color: string) => void
   onImportDriveMedia: () => Promise<void>
   onImportMedia: (files: File[]) => Promise<void>
@@ -579,6 +580,7 @@ export function StudioPanel({
   onImportGpx,
   onDeleteTrace,
   onRenameTrace,
+  onReorderTrace,
   onSetTraceColor,
   onImportDriveMedia,
   onImportMedia,
@@ -614,6 +616,8 @@ export function StudioPanel({
   const [draft, setDraft] = useState<DraftPoint>(initialDraft)
   const [formError, setFormError] = useState<string | null>(null)
   const [paletteTraceId, setPaletteTraceId] = useState<string | null>(null)
+  const [dragTraceId, setDragTraceId] = useState<string | null>(null)
+  const [dragOverTraceId, setDragOverTraceId] = useState<string | null>(null)
   const writeAuthReady = firebaseEnabled || Boolean(adminPassword)
   const driveImportDisabled =
     !googleDriveConfigured ||
@@ -705,6 +709,66 @@ export function StudioPanel({
     onAddPoint(point)
     setDraft(initialDraft)
     setActiveTab('points')
+  }
+
+  const handleTraceHandleKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    traceId: string,
+    index: number,
+  ) => {
+    if (event.key === 'ArrowUp' && index > 0) {
+      event.preventDefault()
+      onReorderTrace(traceId, traces[index - 1].id)
+    }
+    if (event.key === 'ArrowDown' && index < traces.length - 1) {
+      event.preventDefault()
+      onReorderTrace(traceId, traces[index + 1].id)
+    }
+  }
+
+  const traceIdFromPointer = (clientX: number, clientY: number) => {
+    const element = document.elementFromPoint(clientX, clientY)
+    return (
+      element?.closest<HTMLElement>('[data-trace-id]')?.dataset.traceId ?? null
+    )
+  }
+
+  const handleTracePointerDown = (
+    event: PointerEvent<HTMLButtonElement>,
+    traceId: string,
+  ) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setDragTraceId(traceId)
+    setDragOverTraceId(null)
+  }
+
+  const handleTracePointerMove = (
+    event: PointerEvent<HTMLButtonElement>,
+    sourceTraceId: string,
+  ) => {
+    if (dragTraceId !== sourceTraceId) return
+    event.preventDefault()
+    const targetTraceId = traceIdFromPointer(event.clientX, event.clientY)
+    setDragOverTraceId(
+      targetTraceId && targetTraceId !== sourceTraceId ? targetTraceId : null,
+    )
+  }
+
+  const handleTracePointerEnd = (
+    event: PointerEvent<HTMLButtonElement>,
+    sourceTraceId: string,
+  ) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    const targetTraceId = traceIdFromPointer(event.clientX, event.clientY)
+    setDragTraceId(null)
+    setDragOverTraceId(null)
+    if (!targetTraceId || targetTraceId === sourceTraceId) return
+    onReorderTrace(sourceTraceId, targetTraceId)
   }
 
   if (selectedPoint) {
@@ -912,7 +976,17 @@ export function StudioPanel({
               {traces.map((trace, index) => {
                 const color = trace.color ?? traceColor(index)
                 return (
-                  <div className="trace-item" key={trace.id}>
+                  <div
+                    className={[
+                      'trace-item',
+                      dragTraceId === trace.id ? 'dragging' : '',
+                      dragOverTraceId === trace.id ? 'drag-over' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    data-trace-id={trace.id}
+                    key={trace.id}
+                  >
                     <div className="trace-row">
                       <button
                         className="trace-color"
@@ -926,7 +1000,30 @@ export function StudioPanel({
                           )
                         }
                       />
-                      <Route aria-hidden="true" size={15} />
+                      <button
+                        className="trace-drag-handle"
+                        type="button"
+                        aria-label={`Deplacer ${trace.name}`}
+                        title="Glisser pour reordonner"
+                        onPointerDown={(event) =>
+                          handleTracePointerDown(event, trace.id)
+                        }
+                        onPointerMove={(event) =>
+                          handleTracePointerMove(event, trace.id)
+                        }
+                        onPointerUp={(event) =>
+                          handleTracePointerEnd(event, trace.id)
+                        }
+                        onPointerCancel={() => {
+                          setDragTraceId(null)
+                          setDragOverTraceId(null)
+                        }}
+                        onKeyDown={(event) =>
+                          handleTraceHandleKeyDown(event, trace.id, index)
+                        }
+                      >
+                        <GripVertical aria-hidden="true" size={17} />
+                      </button>
                       <input
                         className="trace-name"
                         value={trace.name}

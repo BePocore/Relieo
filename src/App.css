@@ -1249,6 +1249,19 @@
   border: 1px solid var(--glass-border);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.03);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    opacity 140ms ease;
+}
+
+.trace-item.dragging {
+  opacity: 0.55;
+}
+
+.trace-item.drag-over {
+  border-color: rgba(102, 214, 145, 0.7);
+  background: rgba(102, 214, 145, 0.08);
 }
 
 .trace-row {
@@ -1266,6 +1279,35 @@
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 5px;
   cursor: pointer;
+}
+
+.trace-drag-handle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.trace-drag-handle:hover,
+.trace-drag-handle:focus-visible {
+  color: var(--accent);
+  background: rgba(72, 187, 120, 0.12);
+  outline: none;
+}
+
+.trace-drag-handle:active {
+  cursor: grabbing;
 }
 
 /* ── Palette de couleurs (traces & points) ──────────────────── */

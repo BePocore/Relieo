@@ -950,6 +950,28 @@ function App() {
     setTraces((current) => current.filter((trace) => trace.id !== traceId))
   }, [])
 
+  const handleReorderTrace = useCallback(
+    (draggedTraceId: string, targetTraceId: string) => {
+      if (draggedTraceId === targetTraceId) return
+
+      setTraces((current) => {
+        const fromIndex = current.findIndex(
+          (trace) => trace.id === draggedTraceId,
+        )
+        const toIndex = current.findIndex((trace) => trace.id === targetTraceId)
+
+        if (fromIndex < 0 || toIndex < 0) return current
+
+        const next = [...current]
+        const [movedTrace] = next.splice(fromIndex, 1)
+        if (!movedTrace) return current
+        next.splice(toIndex, 0, movedTrace)
+        return next
+      })
+    },
+    [],
+  )
+
   const handleRenameTrace = useCallback((traceId: string, name: string) => {
     setTraces((current) =>
       current.map((trace) =>
@@ -2031,6 +2053,7 @@ function App() {
                   onImportGpx={handleImportGpx}
                   onDeleteTrace={handleDeleteTrace}
                   onRenameTrace={handleRenameTrace}
+                  onReorderTrace={handleReorderTrace}
                   onSetTraceColor={handleSetTraceColor}
                   onImportDriveMedia={handleImportDriveMedia}
                   onImportMedia={handleImportMedia}
