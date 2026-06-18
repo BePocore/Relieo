@@ -2088,12 +2088,25 @@
 
 .import-report-section li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   font-size: 0.74rem;
   font-weight: 600;
   color: var(--text-faint);
+}
+
+.import-report-item-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.import-report-entry-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .import-report-name {
@@ -2107,6 +2120,61 @@
   flex: 0 0 auto;
   font-weight: 700;
   opacity: 0.85;
+}
+
+.import-report-action {
+  min-height: 28px;
+  padding: 0 9px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid rgba(244, 200, 121, 0.42);
+  border-radius: 999px;
+  color: #f4c879;
+  background: rgba(244, 200, 121, 0.1);
+  font-size: 0.7rem;
+  font-weight: 850;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.import-report-action:hover {
+  border-color: rgba(244, 200, 121, 0.7);
+  color: #ffe0a0;
+  background: rgba(244, 200, 121, 0.16);
+}
+
+.import-report-action.secondary {
+  border-color: var(--glass-border);
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.import-report-action.secondary:hover {
+  border-color: var(--glass-border-strong);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.import-report-ignore {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-faint);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.import-report-ignore:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .form-error {

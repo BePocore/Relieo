@@ -55,6 +55,13 @@ type StudioPanelProps = {
   onSetTraceColor: (traceId: string, color: string) => void
   onImportDriveMedia: () => Promise<void>
   onImportMedia: (files: File[]) => Promise<void>
+  onAcceptEstimatedMedia: (mediaId: string) => void
+  onEstimateImportedMedia: (mediaId: string) => void
+  onIgnoreImportEntry: (
+    section: 'noGps' | 'offTrack' | 'duplicates' | 'failed',
+    entry: ImportReport['placed'][number],
+  ) => void
+  onPlaceImportedMedia: (mediaId: string) => void
   onAttachMedia: (pointId: string, file: File) => Promise<void>
   onAddPoint: (point: TrailPoint) => void
   onUpdatePoint: (point: TrailPoint) => void
@@ -68,6 +75,7 @@ type StudioPanelProps = {
   isSaving: boolean
   isUploading: boolean
   isDriveImporting: boolean
+  canEstimatePlacement: boolean
   googleDriveConfigured: boolean
   uploadProgress: UploadProgress | null
   importReport: ImportReport | null
@@ -80,7 +88,7 @@ type StudioPanelProps = {
 }
 
 type ReportSection = {
-  key: string
+  key: 'noGps' | 'offTrack' | 'duplicates' | 'failed'
   title: string
   icon: ReactNode
   tone: 'ok' | 'warn' | 'error'
@@ -90,9 +98,22 @@ type ReportSection = {
 function ImportReportCard({
   report,
   onDismiss,
+  canEstimatePlacement,
+  onAcceptEstimate,
+  onEstimateMedia,
+  onIgnoreEntry,
+  onPlaceMedia,
 }: {
   report: ImportReport
   onDismiss: () => void
+  canEstimatePlacement: boolean
+  onAcceptEstimate: (mediaId: string) => void
+  onEstimateMedia: (mediaId: string) => void
+  onIgnoreEntry: (
+    section: 'noGps' | 'offTrack' | 'duplicates' | 'failed',
+    entry: ImportReport['placed'][number],
+  ) => void
+  onPlaceMedia: (mediaId: string) => void
 }) {
   const allSections: ReportSection[] = [
     {
@@ -161,10 +182,71 @@ function ImportReportCard({
             <ul>
               {section.entries.map((entry) => (
                 <li key={entry.name}>
-                  <span className="import-report-name">{entry.name}</span>
-                  {entry.detail ? (
-                    <small>{entry.detail}</small>
-                  ) : null}
+                  <span className="import-report-item-main">
+                    <span className="import-report-name">{entry.name}</span>
+                    {entry.placementEstimate ? (
+                      <small>{entry.placementEstimate.detail}</small>
+                    ) : null}
+                    {entry.detail ? (
+                      <small>{entry.detail}</small>
+                    ) : null}
+                  </span>
+                  <span className="import-report-entry-actions">
+                    {section.key === 'noGps' && entry.mediaId ? (
+                      entry.placementEstimate ? (
+                        <>
+                          <button
+                            className="import-report-action"
+                            type="button"
+                            onClick={() =>
+                              onAcceptEstimate(entry.mediaId as string)
+                            }
+                          >
+                            Valider
+                          </button>
+                          <button
+                            className="import-report-action secondary"
+                            type="button"
+                            onClick={() =>
+                              onPlaceMedia(entry.mediaId as string)
+                            }
+                          >
+                            Placement manuel
+                          </button>
+                        </>
+                      ) : canEstimatePlacement && !entry.estimateUnavailable ? (
+                        <button
+                          className="import-report-action"
+                          type="button"
+                          onClick={() =>
+                            onEstimateMedia(entry.mediaId as string)
+                          }
+                        >
+                          Déduire
+                        </button>
+                      ) : (
+                        <button
+                          className="import-report-action"
+                          type="button"
+                          onClick={() =>
+                            onPlaceMedia(entry.mediaId as string)
+                          }
+                        >
+                          <Plus aria-hidden="true" size={13} />
+                          Placement manuel
+                        </button>
+                      )
+                    ) : null}
+                    <button
+                      className="import-report-ignore"
+                      type="button"
+                      aria-label={`Ignorer ${entry.name}`}
+                      title="Ignorer ce fichier"
+                      onClick={() => onIgnoreEntry(section.key, entry)}
+                    >
+                      <X aria-hidden="true" size={13} />
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -500,6 +582,10 @@ export function StudioPanel({
   onSetTraceColor,
   onImportDriveMedia,
   onImportMedia,
+  onAcceptEstimatedMedia,
+  onEstimateImportedMedia,
+  onIgnoreImportEntry,
+  onPlaceImportedMedia,
   onAttachMedia,
   onAddPoint,
   onUpdatePoint,
@@ -514,6 +600,7 @@ export function StudioPanel({
   isSaving,
   isUploading,
   isDriveImporting,
+  canEstimatePlacement,
   googleDriveConfigured,
   uploadProgress,
   importReport,
@@ -735,6 +822,11 @@ export function StudioPanel({
           <ImportReportCard
             report={importReport}
             onDismiss={onDismissReport}
+            canEstimatePlacement={canEstimatePlacement}
+            onAcceptEstimate={onAcceptEstimatedMedia}
+            onEstimateMedia={onEstimateImportedMedia}
+            onIgnoreEntry={onIgnoreImportEntry}
+            onPlaceMedia={onPlaceImportedMedia}
           />
         ) : null}
       </div>

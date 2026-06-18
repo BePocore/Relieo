@@ -74,6 +74,13 @@ export type UploadProgress = {
 export type ImportReportEntry = {
   name: string
   detail?: string
+  mediaId?: string
+  placementEstimate?: {
+    lat: number
+    lng: number
+    detail: string
+  }
+  estimateUnavailable?: boolean
 }
 
 export type ImportReport = {

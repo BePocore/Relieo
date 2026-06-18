@@ -425,6 +425,9 @@ function App() {
     null,
   )
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
+  const [manualPlacementMediaId, setManualPlacementMediaId] = useState<
+    string | null
+  >(null)
   const [lightbox, setLightbox] = useState<{
     items: LightboxMedia[]
     index: number
@@ -579,6 +582,17 @@ function App() {
     () => traces.flatMap((trace) => trace.points),
     [traces],
   )
+  const timedTracePoints = useMemo(
+    () =>
+      combinedPoints
+        .map((point) => ({
+          point,
+          timestamp: point.time ? Date.parse(point.time) : Number.NaN,
+        }))
+        .filter(({ timestamp }) => Number.isFinite(timestamp)),
+    [combinedPoints],
+  )
+  const canEstimatePlacement = timedTracePoints.length > 0
   const stats = useMemo(() => combineStats(traces), [traces])
   const currentProjectSignature = useMemo(
     () =>
@@ -1132,7 +1146,7 @@ function App() {
 
     for (const media of importedMedia) {
       if (media.lat === undefined || media.lng === undefined) {
-        noGps.push({ name: media.name })
+        noGps.push({ name: media.name, mediaId: media.id })
         continue
       }
       const distance = distanceToTrack(
@@ -1142,6 +1156,7 @@ function App() {
       if (distance > threshold) {
         offTrack.push({
           name: media.name,
+          mediaId: media.id,
           detail: `à ${formatKilometers(distance)} du tracé`,
         })
         continue
@@ -1244,6 +1259,163 @@ function App() {
   const handleDismissReport = useCallback(() => {
     setImportReport(null)
   }, [])
+
+  const handlePlaceImportedMedia = useCallback(
+    (mediaId: string) => {
+      const media = mediaLibrary.find((item) => item.id === mediaId)
+      if (!media) {
+        setSaveStatus('Média introuvable dans la bibliothèque.')
+        return
+      }
+      setManualPlacementMediaId(mediaId)
+      setSelectedPoint(null)
+      setSaveStatus(
+        `Double-clique sur la carte pour placer ${media.name}.`,
+      )
+    },
+    [mediaLibrary],
+  )
+
+  const handleEstimateImportedMedia = useCallback(
+    (mediaId: string) => {
+      const media = mediaLibrary.find((item) => item.id === mediaId)
+      if (!media) {
+        setSaveStatus('Média introuvable dans la bibliothèque.')
+        return
+      }
+
+      const updateNoGpsEntry = (
+        patch: Partial<ImportReport['noGps'][number]>,
+      ) => {
+        setImportReport((current) =>
+          current
+            ? {
+                ...current,
+                noGps: current.noGps.map((entry) =>
+                  entry.mediaId === mediaId ? { ...entry, ...patch } : entry,
+                ),
+              }
+            : current,
+        )
+      }
+
+      if (!media.takenAt) {
+        updateNoGpsEntry({
+          detail: 'Date EXIF introuvable',
+          estimateUnavailable: true,
+          placementEstimate: undefined,
+        })
+        return
+      }
+
+      const mediaTime = Date.parse(media.takenAt)
+      if (!Number.isFinite(mediaTime) || timedTracePoints.length === 0) {
+        updateNoGpsEntry({
+          detail: 'Trace horodatée indisponible',
+          estimateUnavailable: true,
+          placementEstimate: undefined,
+        })
+        return
+      }
+
+      const nearest = timedTracePoints.reduce<{
+        lat: number
+        lng: number
+        deltaMs: number
+      } | null>((best, item) => {
+        const deltaMs = Math.abs(item.timestamp - mediaTime)
+        if (best && best.deltaMs <= deltaMs) return best
+        return {
+          lat: item.point.lat,
+          lng: item.point.lng,
+          deltaMs,
+        }
+      }, null)
+
+      if (!nearest) {
+        updateNoGpsEntry({
+          detail: 'Trace horodatée indisponible',
+          estimateUnavailable: true,
+          placementEstimate: undefined,
+        })
+        return
+      }
+
+      const deltaMinutes = Math.round(nearest.deltaMs / 60_000)
+      const detail =
+        deltaMinutes <= 1
+          ? 'Proposition proche de l’heure photo'
+          : `Proposition à ${deltaMinutes} min de l’heure photo`
+      updateNoGpsEntry({
+        detail: undefined,
+        estimateUnavailable: false,
+        placementEstimate: {
+          lat: nearest.lat,
+          lng: nearest.lng,
+          detail,
+        },
+      })
+    },
+    [mediaLibrary, timedTracePoints],
+  )
+
+  const handleIgnoreImportEntry = useCallback(
+    (
+      section: 'noGps' | 'offTrack' | 'duplicates' | 'failed',
+      entry: ImportReport['placed'][number],
+    ) => {
+      if (entry.mediaId) {
+        const ignoredMedia = mediaLibrary.find(
+          (media) => media.id === entry.mediaId,
+        )
+        setMediaLibrary((current) =>
+          current.filter((media) => media.id !== entry.mediaId),
+        )
+        setPoints((current) =>
+          ignoredMedia
+            ? current.filter(
+                (point) =>
+                  point.mediaName?.toLowerCase() !==
+                  ignoredMedia.name.toLowerCase(),
+              )
+            : current,
+        )
+        setSelectedPoint((current) =>
+          ignoredMedia &&
+          current?.mediaName?.toLowerCase() === ignoredMedia.name.toLowerCase()
+            ? null
+            : current,
+        )
+        setManualPlacementMediaId((current) =>
+          current === entry.mediaId ? null : current,
+        )
+      }
+
+      setImportReport((current) => {
+        if (!current) return current
+        const next = {
+          ...current,
+          total: Math.max(current.total - 1, 0),
+          [section]: current[section].filter((candidate) =>
+            entry.mediaId
+              ? candidate.mediaId !== entry.mediaId
+              : candidate.name !== entry.name,
+          ),
+        }
+        const remaining =
+          next.placed.length +
+          next.noGps.length +
+          next.offTrack.length +
+          next.duplicates.length +
+          next.failed.length
+        return remaining > 0 ? next : null
+      })
+
+      setSaveStatus('Fichier ignoré pour cette carte.')
+      if (entry.mediaId) scheduleAutosave()
+    },
+    [mediaLibrary, scheduleAutosave],
+  )
 
   // Import depuis la fiche d'un point : upload du fichier puis rattachement
   // immédiat comme média du point (photo du haut de la fiche).
@@ -1361,8 +1533,48 @@ function App() {
   }, [])
 
   // Appui long sur la carte (Studio) : crée un point à éditer.
+  const placeImportedMediaAt = useCallback(
+    (media: ImportedMedia, lat: number, lng: number, detail: string) => {
+      const point: TrailPoint = {
+        id: `manual-${media.id}-${Date.now()}`,
+        lat,
+        lng,
+        title: media.name.replace(/\.[^.]+$/, ''),
+        type: media.kind === 'video' ? 'video' : 'photo',
+        mediaName: media.name,
+        mediaKind: media.kind,
+        ...(media.kind === 'video' ? { video: media.url } : { image: media.url }),
+      }
+      handleAddPoint(point)
+      setManualPlacementMediaId(null)
+      setImportReport((current) =>
+        current
+          ? {
+              ...current,
+              placed: [...current.placed, { name: media.name, detail }],
+              noGps: current.noGps.filter((entry) => entry.mediaId !== media.id),
+              offTrack: current.offTrack.filter(
+                (entry) => entry.mediaId !== media.id,
+              ),
+            }
+          : current,
+      )
+      setSaveStatus('Média placé sur la carte. Sauvegarde la carte pour partager.')
+      scheduleAutosave()
+    },
+    [handleAddPoint, scheduleAutosave],
+  )
+
   const handleCreatePoint = useCallback(
     (lat: number, lng: number) => {
+      const mediaToPlace = manualPlacementMediaId
+        ? mediaLibrary.find((media) => media.id === manualPlacementMediaId)
+        : null
+      if (mediaToPlace) {
+        placeImportedMediaAt(mediaToPlace, lat, lng, 'placé manuellement')
+        return
+      }
+
       handleAddPoint({
         id: `point-${Date.now()}`,
         lat,
@@ -1371,7 +1583,22 @@ function App() {
         type: 'poi',
       })
     },
-    [handleAddPoint],
+    [handleAddPoint, manualPlacementMediaId, mediaLibrary, placeImportedMediaAt],
+  )
+
+  const handleAcceptEstimatedMedia = useCallback(
+    (mediaId: string) => {
+      const media = mediaLibrary.find((item) => item.id === mediaId)
+      const estimate = importReport?.noGps.find(
+        (entry) => entry.mediaId === mediaId,
+      )?.placementEstimate
+      if (!media || !estimate) {
+        setSaveStatus('Aucune proposition à valider pour ce média.')
+        return
+      }
+      placeImportedMediaAt(media, estimate.lat, estimate.lng, 'placé par heure')
+    },
+    [importReport, mediaLibrary, placeImportedMediaAt],
   )
 
   const handleUpdatePoint = useCallback((point: TrailPoint) => {
@@ -1807,6 +2034,10 @@ function App() {
                   onSetTraceColor={handleSetTraceColor}
                   onImportDriveMedia={handleImportDriveMedia}
                   onImportMedia={handleImportMedia}
+                  onAcceptEstimatedMedia={handleAcceptEstimatedMedia}
+                  onEstimateImportedMedia={handleEstimateImportedMedia}
+                  onIgnoreImportEntry={handleIgnoreImportEntry}
+                  onPlaceImportedMedia={handlePlaceImportedMedia}
                   onAttachMedia={handleAttachMedia}
                   onAddPoint={handleAddPoint}
                   onUpdatePoint={handleUpdatePoint}
@@ -1821,6 +2052,7 @@ function App() {
                   isSaving={isSaving}
                   isUploading={isUploading}
                   isDriveImporting={isDriveImporting}
+                  canEstimatePlacement={canEstimatePlacement}
                   googleDriveConfigured={isGoogleDriveConfigured}
                   uploadProgress={uploadProgress}
                   importReport={importReport}

@@ -315,11 +315,16 @@ const extractImageMetadata = async (
       safeNumber(tags?.ImageHeight) ??
       safeNumber(tags?.ExifImageHeight) ??
       safeNumber(tags?.PixelYDimension)
+    const takenAt =
+      safeDateString(tags?.DateTimeOriginal) ??
+      safeDateString(tags?.CreateDate) ??
+      safeDateString(tags?.ModifyDate)
 
     if (!gps || !isValidCoordinate(gps.latitude, gps.longitude)) {
       return {
         ...(width ? { width } : {}),
         ...(height ? { height } : {}),
+        ...(takenAt ? { takenAt } : {}),
       }
     }
 
@@ -328,10 +333,7 @@ const extractImageMetadata = async (
       ...(height ? { height } : {}),
       lat: gps.latitude,
       lng: gps.longitude,
-      takenAt:
-        safeDateString(tags?.DateTimeOriginal) ??
-        safeDateString(tags?.CreateDate) ??
-        safeDateString(tags?.ModifyDate),
+      ...(takenAt ? { takenAt } : {}),
       locationSource: 'exif',
     }
   } catch {
