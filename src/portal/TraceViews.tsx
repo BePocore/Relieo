@@ -514,6 +514,15 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
     lastCloudSaveAtRef.current = lastCloudSaveAt
   }, [lastCloudSaveAt])
 
+  useEffect(() => {
+    document.documentElement.classList.add('tracker-scroll-active')
+    document.body.classList.add('tracker-scroll-active')
+    return () => {
+      document.documentElement.classList.remove('tracker-scroll-active')
+      document.body.classList.remove('tracker-scroll-active')
+    }
+  }, [])
+
   const releaseWakeLock = async () => {
     if (!wakeLockRef.current) return
     const current = wakeLockRef.current
@@ -912,6 +921,15 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
               <dd>{averagePace}<small>/km</small></dd>
             </div>
           </dl>
+          {status === 'idle' && !localDraft ? (
+            <button
+              className="trace-start-inline"
+              type="button"
+              onClick={startRecording}
+            >
+              <Play size={18} /> Demarrer le trace
+            </button>
+          ) : null}
           <TracePreview points={points} />
         </section>
 

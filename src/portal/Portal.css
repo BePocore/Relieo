@@ -11,6 +11,27 @@
   overflow: hidden;
 }
 
+body.portal-active.tracker-scroll-active {
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+html.tracker-scroll-active {
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+body.portal-active.tracker-scroll-active #root {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+
 .portal-active button,
 .portal-active input,
 .portal-active textarea {
@@ -1063,27 +1084,24 @@
 .trace-recorder-screen {
   min-height: 100dvh;
   display: grid;
-  place-items: center;
+  align-items: start;
+  justify-items: center;
   padding: 14px;
-  color: #f7f5ef;
-  background:
-    linear-gradient(180deg, rgba(18, 26, 31, 0.96), rgba(6, 8, 10, 1)),
-    #07090b;
+  color: var(--c-text);
+  background: var(--c-bg);
 }
 
 .trace-recorder-panel {
   width: min(520px, 100%);
   min-height: min(760px, calc(100dvh - 28px));
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto auto auto auto auto auto;
   gap: 16px;
   padding: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c-border);
   border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(18, 23, 26, 0.98), rgba(9, 10, 11, 0.98)),
-    #0b0d0f;
-  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.75);
+  background: var(--c-surface);
+  box-shadow: 0 30px 80px -30px var(--c-shadow);
 }
 
 .trace-recorder-head {
@@ -1103,7 +1121,7 @@
 }
 
 .trace-recorder-head .portal-kicker {
-  color: rgba(255, 184, 74, 0.78);
+  color: var(--c-accent);
 }
 
 .trace-icon-button {
@@ -1111,16 +1129,16 @@
   height: 44px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--c-border);
   border-radius: 15px;
-  color: #f7f5ef;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--c-text);
+  background: var(--c-surface);
   cursor: pointer;
 }
 
 .trace-icon-button:hover {
-  color: #ffbd55;
-  background: rgba(255, 189, 85, 0.12);
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
 }
 
 .trace-icon-button:disabled {
@@ -1134,21 +1152,21 @@
   align-items: center;
   padding: 6px 10px;
   border-radius: 999px;
-  color: rgba(255, 255, 255, 0.68);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--c-text-dim);
+  background: var(--c-surface-2);
   font-size: 12px;
   font-weight: 850;
 }
 
 .trace-status-pill.recording {
-  color: #160b02;
-  background: #ffbd55;
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
 }
 
 .trace-status-pill.saving,
 .trace-status-pill.saved {
-  color: #7ff0b0;
-  background: rgba(127, 240, 176, 0.12);
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
 }
 
 .trace-draft-resume {
@@ -1157,9 +1175,9 @@
   align-items: center;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--c-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--c-surface);
 }
 
 .trace-draft-resume > span {
@@ -1168,19 +1186,19 @@
   display: grid;
   place-items: center;
   border-radius: 14px;
-  color: #ffbd55;
-  background: rgba(255, 189, 85, 0.12);
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
 }
 
 .trace-draft-resume strong {
   display: block;
-  color: #f7f5ef;
+  color: var(--c-text);
   font-size: 14px;
 }
 
 .trace-draft-resume p {
   margin: 2px 0 0;
-  color: rgba(255, 255, 255, 0.64);
+  color: var(--c-text-dim);
   font-size: 12px;
 }
 
@@ -1194,8 +1212,8 @@
 .trace-sport-dashboard {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(260px, 1fr);
-  gap: 18px;
+  grid-template-rows: auto auto auto auto;
+  gap: 14px;
 }
 
 .trace-duration-block {
@@ -1206,13 +1224,13 @@
 }
 
 .trace-duration-block span {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--c-text-dim);
   font-size: 12px;
   font-weight: 700;
 }
 
 .trace-duration-block strong {
-  color: #fff;
+  color: var(--c-text);
   font-size: clamp(46px, 13vw, 70px);
   font-weight: 500;
   line-height: 0.96;
@@ -1234,14 +1252,14 @@
 }
 
 .trace-sport-metrics dt {
-  color: rgba(255, 255, 255, 0.52);
+  color: var(--c-text-dim);
   font-size: 12px;
   font-weight: 750;
 }
 
 .trace-sport-metrics dd {
   margin: 0;
-  color: #fff;
+  color: var(--c-text);
   font-size: clamp(22px, 6vw, 30px);
   font-weight: 500;
   line-height: 1;
@@ -1249,9 +1267,28 @@
 
 .trace-sport-metrics small {
   margin-left: 2px;
-  color: #b6d975;
+  color: var(--c-accent);
   font-size: 12px;
   font-weight: 700;
+}
+
+.trace-start-inline {
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid var(--c-accent);
+  border-radius: 999px;
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 10px 24px -18px var(--c-shadow);
+}
+
+.trace-start-inline:hover {
+  background: var(--c-accent-strong);
 }
 
 .trace-preview {
@@ -1259,11 +1296,11 @@
   position: relative;
   overflow: hidden;
   border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c-border);
   background:
-    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    #101315;
+    linear-gradient(var(--c-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--c-border) 1px, transparent 1px),
+    var(--c-surface-2);
   background-size: 42px 42px;
 }
 
@@ -1273,7 +1310,7 @@
   inset: auto -20% -22% -20%;
   height: 55%;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 125, 35, 0), rgba(255, 104, 28, 0.48));
+  background: linear-gradient(180deg, transparent, var(--c-accent-soft));
 }
 
 .trace-preview-svg {
@@ -1293,29 +1330,29 @@
 }
 
 .trace-preview-path-shadow {
-  stroke: rgba(255, 111, 36, 0.28);
+  stroke: var(--c-accent-soft);
   stroke-width: 14;
 }
 
 .trace-preview-path {
-  stroke: #ffc052;
+  stroke: var(--c-accent);
   stroke-width: 6;
-  filter: drop-shadow(0 0 10px rgba(255, 174, 64, 0.66));
+  filter: drop-shadow(0 0 10px var(--c-accent-soft));
 }
 
 .trace-preview-start {
-  fill: #7ff0b0;
-  stroke: rgba(7, 9, 10, 0.7);
+  fill: var(--c-accent-strong);
+  stroke: var(--c-surface);
   stroke-width: 4;
 }
 
 .trace-preview-end-pulse {
-  fill: rgba(255, 111, 50, 0.22);
+  fill: var(--c-accent-soft);
 }
 
 .trace-preview-end {
-  fill: #ff6b32;
-  stroke: rgba(255, 255, 255, 0.7);
+  fill: var(--c-danger);
+  stroke: var(--c-surface);
   stroke-width: 2;
 }
 
@@ -1327,16 +1364,16 @@
   place-items: center;
   align-content: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--c-text-dim);
   text-align: center;
 }
 
 .trace-preview-empty svg {
-  color: #ffbd55;
+  color: var(--c-accent);
 }
 
 .trace-preview-empty strong {
-  color: #fff;
+  color: var(--c-text);
 }
 
 .trace-preview-empty span {
@@ -1344,79 +1381,14 @@
   font-size: 12px;
 }
 
-.trace-live-card {
-  min-height: 188px;
-  display: grid;
-  place-items: center;
-  justify-items: center;
-  gap: 7px;
-  padding: 26px;
-  border-radius: 20px;
-  color: var(--c-accent-ink);
-  background: var(--c-accent-strong);
-}
-
-.trace-live-icon {
-  width: 58px;
-  height: 58px;
-  display: grid;
-  place-items: center;
-  border-radius: 18px;
-  color: var(--c-accent-ink);
-  background: rgba(255, 255, 255, 0.13);
-}
-
-.trace-live-card strong {
-  font-size: 44px;
-  line-height: 1;
-}
-
-.trace-live-card p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.trace-recorder-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.trace-recorder-stats article {
-  min-width: 0;
-  padding: 14px;
-  display: grid;
-  gap: 6px;
-  border: 1px solid var(--c-border);
-  border-radius: 16px;
-  background: var(--c-surface);
-}
-
-.trace-recorder-stats svg {
-  color: var(--c-accent);
-}
-
-.trace-recorder-stats span {
-  color: var(--c-text-dim);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.trace-recorder-stats strong {
-  color: var(--c-text);
-  font-size: 20px;
-}
-
 .trace-recorder-signal {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c-border);
   border-radius: 16px;
-  color: rgba(255, 255, 255, 0.62);
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--c-text-dim);
+  background: var(--c-surface);
   font-size: 12px;
 }
 
@@ -1430,7 +1402,7 @@
 
 .trace-recorder-signal svg {
   flex: 0 0 auto;
-  color: #ffbd55;
+  color: var(--c-accent);
 }
 
 .trace-success {
@@ -1438,17 +1410,17 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #7ff0b0;
+  color: var(--c-accent);
   font-weight: 750;
 }
 
 .trace-warning {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid rgba(255, 189, 85, 0.2);
+  border: 1px solid var(--c-border);
   border-radius: 14px;
-  color: rgba(255, 229, 184, 0.82);
-  background: rgba(255, 189, 85, 0.1);
+  color: var(--c-text-dim);
+  background: var(--c-surface-2);
   font-size: 13px;
   font-weight: 700;
 }
@@ -1465,15 +1437,15 @@
 }
 
 .trace-recorder-actions .portal-primary {
-  border-color: #7ff0b0;
-  color: #07100c;
-  background: #7ff0b0;
+  border-color: var(--c-accent);
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
 }
 
 .trace-recorder-actions .portal-secondary {
-  border-color: rgba(255, 255, 255, 0.1);
-  color: #f7f5ef;
-  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--c-border);
+  color: var(--c-text);
+  background: var(--c-surface);
 }
 
 .trace-stop-button {
@@ -1484,11 +1456,11 @@
   padding: 12px 18px;
   border: 0;
   border-radius: 999px;
-  color: #fff;
-  background: #ff6b32;
+  color: var(--c-accent-ink);
+  background: var(--c-danger);
   font-weight: 850;
   cursor: pointer;
-  box-shadow: 0 0 0 10px rgba(255, 107, 50, 0.1);
+  box-shadow: 0 0 0 10px var(--c-surface-2);
 }
 
 .profile-layout {
@@ -2246,18 +2218,6 @@
   .trace-status-pill {
     grid-column: 2;
     justify-self: start;
-  }
-
-  .trace-live-card {
-    min-height: 170px;
-  }
-
-  .trace-live-card strong {
-    font-size: 36px;
-  }
-
-  .trace-recorder-stats {
-    grid-template-columns: 1fr;
   }
 
   .user-trace-actions {
