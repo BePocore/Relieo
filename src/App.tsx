@@ -1355,15 +1355,27 @@ function App() {
     setSaveStatus('Recherche des fichiers R2 inutilisés...')
     try {
       const idToken = (await getIdToken()) ?? undefined
-      const deletedCount = await cleanupUnusedUploadedMedia({
+      const cleanup = await cleanupUnusedUploadedMedia({
         usedUrls: usedMediaUrls,
         adminPassword,
         idToken,
         trailCode: accessCode,
       })
+      const cleanupDetails = [
+        cleanup.mediaDeletedCount
+          ? `${cleanup.mediaDeletedCount} média(s)`
+          : null,
+        cleanup.previewDeletedCount
+          ? `${cleanup.previewDeletedCount} aperçu(s)`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(' + ')
       setSaveStatus(
-        deletedCount > 0
-          ? `${deletedCount} fichier(s) inutilisé(s) supprimé(s) de R2.`
+        cleanup.deletedCount > 0
+          ? `${cleanup.deletedCount} fichier(s) R2 inutilisé(s) supprimé(s)${
+              cleanupDetails ? ` : ${cleanupDetails}.` : '.'
+            }`
           : 'Aucun fichier inutilisé trouvé dans R2.',
       )
     } catch (cleanupError) {

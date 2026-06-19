@@ -2079,11 +2079,89 @@
   gap: 9px;
 }
 
-.form-error,
-.save-status {
+.form-error {
   margin: 0;
   font-size: 0.8rem;
   font-weight: 800;
+}
+
+.save-status {
+  min-height: 48px;
+  margin: 0;
+  padding: 11px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(12, 22, 28, 0.88);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  font-size: 0.82rem;
+  font-weight: 850;
+  line-height: 1.38;
+}
+
+.save-status svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.save-status span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.save-status.tone-success {
+  border-color: rgba(116, 244, 165, 0.58);
+  color: #d9ffe8;
+  background:
+    linear-gradient(135deg, rgba(53, 211, 128, 0.26), transparent 58%),
+    rgba(8, 35, 23, 0.92);
+}
+
+.save-status.tone-success svg {
+  color: #79f2a7;
+}
+
+.save-status.tone-error {
+  border-color: rgba(255, 122, 138, 0.55);
+  color: #ffe1e5;
+  background:
+    linear-gradient(135deg, rgba(255, 122, 138, 0.24), transparent 58%),
+    rgba(58, 16, 24, 0.94);
+}
+
+.save-status.tone-error svg {
+  color: #ff96a4;
+}
+
+.save-status.tone-busy {
+  border-color: rgba(125, 180, 255, 0.52);
+  color: #e5f0ff;
+  background:
+    linear-gradient(135deg, rgba(66, 133, 244, 0.24), transparent 58%),
+    rgba(13, 28, 48, 0.92);
+}
+
+.save-status.tone-busy svg {
+  color: #9bc4ff;
+}
+
+.save-status.tone-info {
+  border-color: rgba(236, 205, 136, 0.48);
+  color: #fff6df;
+  background:
+    linear-gradient(135deg, rgba(236, 205, 136, 0.2), transparent 58%),
+    rgba(44, 34, 17, 0.92);
+}
+
+.save-status.tone-info svg {
+  color: #f4d68a;
+}
+
+.save-status-spinner {
+  animation: spin 900ms linear infinite;
 }
 
 .upload-progress {
@@ -2312,10 +2390,6 @@
 
 .form-error {
   color: #ff96a4;
-}
-
-.save-status {
-  color: var(--accent);
 }
 
 .empty-state {

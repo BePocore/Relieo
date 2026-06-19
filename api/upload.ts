@@ -150,15 +150,21 @@ export async function POST(request: Request) {
       const [mediaKeys, previewKeys] = await Promise.all(
         allowedPrefixes.map((prefix) => r2ListKeys(prefix)),
       )
-      const keysToDelete = [...mediaKeys, ...previewKeys].filter(
+      const mediaKeysToDelete = mediaKeys.filter(
         (key) => !usedKeys.has(key),
       )
+      const previewKeysToDelete = previewKeys.filter((key) => !usedKeys.has(key))
+      const keysToDelete = [...mediaKeysToDelete, ...previewKeysToDelete]
 
       for (const key of keysToDelete) {
         await r2DeleteObject(key)
       }
 
-      return Response.json({ deletedCount: keysToDelete.length })
+      return Response.json({
+        deletedCount: keysToDelete.length,
+        mediaDeletedCount: mediaKeysToDelete.length,
+        previewDeletedCount: previewKeysToDelete.length,
+      })
     }
 
     const fingerprint = body.fingerprint?.replace(/[^a-f0-9]/gi, '')

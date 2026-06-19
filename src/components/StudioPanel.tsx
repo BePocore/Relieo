@@ -2,14 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import {
   Camera,
+  CheckCircle2,
   Download,
   FileUp,
   GripVertical,
   HardDrive,
   Image,
+  Info,
   KeyRound,
   List,
   LockKeyhole,
+  LoaderCircle,
   MapPinOff,
   Mountain,
   Plus,
@@ -96,6 +99,62 @@ type ReportSection = {
   icon: ReactNode
   tone: 'ok' | 'warn' | 'error'
   entries: ImportReport['placed']
+}
+
+type SaveStatusTone = 'success' | 'error' | 'busy' | 'info'
+
+const getSaveStatusTone = (status: string): SaveStatusTone => {
+  const normalized = status.toLocaleLowerCase('fr-FR')
+
+  if (
+    [
+      'impossible',
+      'introuvable',
+      'requis',
+      'obligatoire',
+      'non reconnu',
+      'refus',
+      'erreur',
+      'échec',
+      'echec',
+    ].some((pattern) => normalized.includes(pattern))
+  ) {
+    return 'error'
+  }
+
+  if (
+    [
+      'analyse',
+      'envoi',
+      'recherche',
+      'ouverture',
+      'suppression',
+      'sauvegarde...',
+      'sauvegarde automatique',
+      'nettoyage',
+    ].some((pattern) => normalized.includes(pattern))
+  ) {
+    return 'busy'
+  }
+
+  if (
+    [
+      'sauvegard',
+      'enregistr',
+      'supprim',
+      'placé',
+      'place',
+      'attaché',
+      'attache',
+      'copié',
+      'copie',
+      'aucun fichier inutilisé',
+    ].some((pattern) => normalized.includes(pattern))
+  ) {
+    return 'success'
+  }
+
+  return 'info'
 }
 
 function ImportReportCard({
@@ -638,6 +697,17 @@ export function StudioPanel({
         : writeAuthReady && accessCode.trim()
           ? 'Choisir des photos / vidéos'
           : 'Connexion et code carte requis'
+  const saveStatusTone = saveStatus ? getSaveStatusTone(saveStatus) : null
+  const saveStatusIcon =
+    saveStatusTone === 'error' ? (
+      <TriangleAlert aria-hidden="true" size={18} />
+    ) : saveStatusTone === 'success' ? (
+      <CheckCircle2 aria-hidden="true" size={18} />
+    ) : saveStatusTone === 'busy' ? (
+      <LoaderCircle aria-hidden="true" className="save-status-spinner" size={18} />
+    ) : (
+      <Info aria-hidden="true" size={18} />
+    )
 
   const selectedMedia = useMemo(
     () => mediaLibrary.find((media) => media.id === draft.mediaId),
@@ -885,7 +955,16 @@ export function StudioPanel({
             </div>
           </div>
         ) : null}
-        {saveStatus ? <p className="save-status">{saveStatus}</p> : null}
+        {saveStatus && saveStatusTone ? (
+          <div
+            className={`save-status tone-${saveStatusTone}`}
+            role={saveStatusTone === 'error' ? 'alert' : 'status'}
+            aria-live={saveStatusTone === 'error' ? 'assertive' : 'polite'}
+          >
+            {saveStatusIcon}
+            <span>{saveStatus}</span>
+          </div>
+        ) : null}
         {importReport ? (
           <ImportReportCard
             report={importReport}

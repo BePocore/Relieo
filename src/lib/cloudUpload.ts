@@ -13,6 +13,8 @@ type DeletedUpload = {
 
 type CleanupUpload = {
   deletedCount: number
+  mediaDeletedCount?: number
+  previewDeletedCount?: number
 }
 
 const digestToHex = (digest: ArrayBuffer, bytes = 16): string => {
@@ -192,7 +194,7 @@ export const cleanupUnusedUploadedMedia = async ({
   adminPassword: string
   idToken?: string
   trailCode: string
-}): Promise<number> => {
+}): Promise<CleanupUpload> => {
   if (!trailCode.trim()) {
     throw new Error('Renseigne le code de la carte avant le nettoyage.')
   }
@@ -217,5 +219,5 @@ export const cleanupUnusedUploadedMedia = async ({
   if (!response.ok || typeof result?.deletedCount !== 'number') {
     throw new Error(result?.message ?? 'Nettoyage R2 impossible.')
   }
-  return result.deletedCount
+  return result
 }
