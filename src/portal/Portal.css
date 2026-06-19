@@ -1082,10 +1082,14 @@ body.portal-active.tracker-scroll-active #root {
 }
 
 .trace-recorder-screen {
+  height: 100dvh;
   min-height: 100dvh;
   display: grid;
   align-items: start;
   justify-items: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 14px;
   color: var(--c-text);
   background: var(--c-bg);

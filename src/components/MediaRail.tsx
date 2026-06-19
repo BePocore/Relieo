@@ -1,3 +1,4 @@
+import type { WheelEvent } from 'react'
 import { Camera, Play, Scan } from 'lucide-react'
 import { resolvePointMedia } from '../lib/media'
 import type { ImportedMedia, TrailPoint } from '../types'
@@ -8,6 +9,22 @@ type MediaRailProps = {
   videoPosters?: Record<string, string>
   selectedPoint: TrailPoint | null
   onSelectPoint: (point: TrailPoint) => void
+}
+
+const scrollRailWithWheel = (event: WheelEvent<HTMLDivElement>) => {
+  const rail = event.currentTarget
+  if (rail.scrollWidth <= rail.clientWidth) return
+
+  const delta =
+    Math.abs(event.deltaX) > Math.abs(event.deltaY)
+      ? event.deltaX
+      : event.deltaY
+
+  if (delta === 0) return
+
+  event.preventDefault()
+  event.stopPropagation()
+  rail.scrollLeft += delta
 }
 
 export function MediaRail({
@@ -21,7 +38,7 @@ export function MediaRail({
 
   return (
     <div className="media-rail" aria-label="Médias du parcours">
-      <div className="media-rail-track">
+      <div className="media-rail-track" onWheel={scrollRailWithWheel}>
         {points.map((point) => {
           const media = resolvePointMedia(point, mediaLibrary)
           const isSelected = selectedPoint?.id === point.id

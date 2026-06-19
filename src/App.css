@@ -725,6 +725,8 @@
   display: flex;
   gap: 7px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--glass-border);
   border-radius: 14px;
