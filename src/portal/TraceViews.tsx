@@ -8,6 +8,7 @@ import {
   HardDrive,
   MapPin,
   Mountain,
+  Pause,
   Play,
   Route,
   Satellite,
@@ -26,7 +27,7 @@ import {
   type UserTraceRecord,
 } from './userTraces'
 
-type RecorderStatus = 'idle' | 'recording' | 'saving' | 'saved'
+type RecorderStatus = 'idle' | 'recording' | 'paused' | 'saving' | 'saved'
 
 type ActiveTraceMeta = {
   id: string
@@ -488,6 +489,8 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
   const elapsedMsRef = useRef(0)
   const lastCloudSaveAtRef = useRef<string | null>(localDraft?.autosavedAt ?? null)
   const cloudSaveBusyRef = useRef(false)
+  const pausedAtMsRef = useRef<number | null>(null)
+  const ignoreNextPointRef = useRef(false)
 
   const stats = useMemo(() => computeTrailStats(points), [points])
   const elapsedSeconds = Math.round(elapsedMs / 1000)
@@ -495,6 +498,7 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
   const averagePace = formatPace(elapsedSeconds, stats.distanceMeters)
   const exitLocked =
     status === 'recording' ||
+    status === 'paused' ||
     status === 'saving' ||
     (status === 'idle' && Boolean(localDraft))
 
@@ -572,7 +576,7 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
       endedAt: now,
       durationSeconds: Math.max(
         1,
-        Math.round((Date.now() - meta.startedAtMs) / 1000),
+        Math.round(((pausedAtMsRef.current ?? Date.now()) - meta.startedAtMs) / 1000),
       ),
       points: currentPoints,
       stats: computeTrailStats(currentPoints),
@@ -589,7 +593,7 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
       ...meta,
       updatedAt: now,
       autosavedAt: lastCloudSaveAtRef.current ?? undefined,
-      elapsedMs: Math.max(0, Date.now() - meta.startedAtMs),
+      elapsedMs: Math.max(0, (pausedAtMsRef.current ?? Date.now()) - meta.startedAtMs),
       points: currentPoints,
     }
     writeLocalTraceDraft(draft)
@@ -641,7 +645,7 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
   }, [])
 
   useEffect(() => {
-    if (status !== 'recording') return undefined
+    if (status !== 'recording' && status !== 'paused') return undefined
     const onPageHide = () => persistLocalDraft()
     window.addEventListener('pagehide', onPageHide)
     document.addEventListener('visibilitychange', onPageHide)
@@ -702,6 +706,12 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
         const nextAccuracy = Math.round(position.coords.accuracy)
         setAccuracy(nextAccuracy)
         setError(null)
+        // Garde anti-parasite : on jette le point qui arrive pile au moment de
+        // la pause, ainsi que le premier point au redemarrage (souvent perime).
+        if (ignoreNextPointRef.current) {
+          ignoreNextPointRef.current = false
+          return
+        }
         const currentPoints = pointsRef.current
         const previous = currentPoints[currentPoints.length - 1]
 
@@ -773,6 +783,8 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
       startedAtMs: Date.now(),
     }
     traceMetaRef.current = meta
+    pausedAtMsRef.current = null
+    ignoreNextPointRef.current = false
     setPoints([])
     pointsRef.current = []
     setTraceMeta(meta)
@@ -803,6 +815,8 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
       startedAtMs: Date.now() - elapsedSinceStart,
     }
     traceMetaRef.current = meta
+    pausedAtMsRef.current = null
+    ignoreNextPointRef.current = false
     pointsRef.current = localDraft.points
     setTraceMeta(meta)
     setPoints(localDraft.points)
@@ -815,6 +829,48 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
     setSignalWarning(null)
     setStatus('recording')
     persistLocalDraft(meta, localDraft.points)
+    void requestWakeLock()
+  }
+
+  const pauseRecording = () => {
+    if (status !== 'recording') return
+    const pausedAt = Date.now()
+    pausedAtMsRef.current = pausedAt
+    // Un point GPS qui arriverait pile a l'instant de la pause est ignore.
+    ignoreNextPointRef.current = true
+    const meta = traceMetaRef.current
+    if (meta) {
+      setElapsedMs(Math.max(0, pausedAt - meta.startedAtMs))
+    }
+    setStatus('paused')
+    // On securise la trace : copie locale + autosave R2 au moment de la pause.
+    persistLocalDraft()
+    void persistCloudTrace('recording')
+    void releaseWakeLock()
+  }
+
+  const resumeRecording = () => {
+    if (status !== 'paused') return
+    const pausedAt = pausedAtMsRef.current
+    const meta = traceMetaRef.current
+    if (pausedAt != null && meta) {
+      // On decale le depart de la duree de la pause : le temps telephone pose
+      // ne compte ni dans le timer ni dans la duree finale enregistree.
+      const pausedDuration = Math.max(0, Date.now() - pausedAt)
+      const resumedMeta: ActiveTraceMeta = {
+        ...meta,
+        startedAtMs: meta.startedAtMs + pausedDuration,
+      }
+      traceMetaRef.current = resumedMeta
+      setTraceMeta(resumedMeta)
+      setStartedAtMs(resumedMeta.startedAtMs)
+    }
+    pausedAtMsRef.current = null
+    // Le premier point au redemarrage est souvent perime : on le laisse tomber.
+    ignoreNextPointRef.current = true
+    setError(null)
+    setSignalWarning(null)
+    setStatus('recording')
     void requestWakeLock()
   }
 
@@ -857,11 +913,13 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
   const statusLabel =
     status === 'recording'
       ? 'En cours'
-      : status === 'saving'
-        ? 'Sauvegarde'
-        : status === 'saved'
-          ? 'Sauvegardee'
-          : 'Pret'
+      : status === 'paused'
+        ? 'En pause'
+        : status === 'saving'
+          ? 'Sauvegarde'
+          : status === 'saved'
+            ? 'Sauvegardee'
+            : 'Pret'
 
   return (
     <main className="trace-recorder-screen">
@@ -948,10 +1006,23 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
         ) : null}
 
         <div className="trace-recorder-actions">
-          {status === 'recording' ? (
-            <button className="trace-stop-button" type="button" onClick={() => void stopRecording()}>
-              <Square size={18} /> Arreter et sauvegarder
-            </button>
+          {status === 'recording' || status === 'paused' ? (
+            <div className="trace-recorder-controls">
+              <button
+                className={`trace-pause-button${status === 'paused' ? ' is-paused' : ''}`}
+                type="button"
+                onClick={status === 'paused' ? resumeRecording : pauseRecording}
+              >
+                {status === 'paused' ? (
+                  <><Play size={18} /> Reprendre</>
+                ) : (
+                  <><Pause size={18} /> Pause</>
+                )}
+              </button>
+              <button className="trace-stop-button" type="button" onClick={() => void stopRecording()}>
+                <Square size={18} /> Arreter et sauvegarder
+              </button>
+            </div>
           ) : (
             <button
               className="portal-primary"
