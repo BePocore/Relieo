@@ -3,7 +3,6 @@ import type { FormEvent, KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import {
   Camera,
   CheckCircle2,
-  Download,
   FileUp,
   GripVertical,
   HardDrive,
@@ -16,6 +15,8 @@ import {
   MapPinOff,
   Mountain,
   Plus,
+  Route,
+  Satellite,
   Save,
   Trash2,
   TriangleAlert,
@@ -42,6 +43,7 @@ import { ColorSwatches } from './ColorSwatches'
 import { paletteColors, traceColor } from '../lib/mapStyles'
 import { newPointTitle } from '../App'
 import { firebaseEnabled } from '../portal/firebase'
+import type { UserTraceRecord } from '../portal/userTraces'
 
 type StudioPanelProps = {
   selectedPoint: TrailPoint | null
@@ -73,7 +75,8 @@ type StudioPanelProps = {
   onDeletePoint: (pointId: string) => void
   onToggleLock: (pointId: string) => void
   onSetPointColor: (pointId: string, color: string) => void
-  onExportPoints: () => void
+  onLoadRelioTraces: () => Promise<UserTraceRecord[]>
+  onImportRelioTrace: (trace: UserTraceRecord) => void
   onSaveProject: () => Promise<void>
   onShowMedia: (media: LightboxMedia) => void
   adminPassword: string
@@ -656,7 +659,8 @@ export function StudioPanel({
   onDeletePoint,
   onToggleLock,
   onSetPointColor,
-  onExportPoints,
+  onLoadRelioTraces,
+  onImportRelioTrace,
   onSaveProject,
   onShowMedia,
   onAccessCodeChange,
@@ -681,7 +685,29 @@ export function StudioPanel({
   const [paletteTraceId, setPaletteTraceId] = useState<string | null>(null)
   const [dragTraceId, setDragTraceId] = useState<string | null>(null)
   const [dragOverTraceId, setDragOverTraceId] = useState<string | null>(null)
+  const [relioPickerOpen, setRelioPickerOpen] = useState(false)
+  const [relioTraces, setRelioTraces] = useState<UserTraceRecord[]>([])
+  const [relioLoading, setRelioLoading] = useState(false)
+  const [relioError, setRelioError] = useState<string | null>(null)
   const writeAuthReady = firebaseEnabled || Boolean(adminPassword)
+
+  const toggleRelioPicker = () => {
+    const next = !relioPickerOpen
+    setRelioPickerOpen(next)
+    if (!next) return
+    setRelioLoading(true)
+    setRelioError(null)
+    onLoadRelioTraces()
+      .then((items) => setRelioTraces(items))
+      .catch((loadError: unknown) =>
+        setRelioError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Lecture des traces impossible.',
+        ),
+      )
+      .finally(() => setRelioLoading(false))
+  }
   const driveImportDisabled =
     !googleDriveConfigured ||
     !writeAuthReady ||
@@ -1054,6 +1080,61 @@ export function StudioPanel({
             />
           </label>
 
+          <button
+            className="upload-tile relieo-trace-tile"
+            type="button"
+            aria-expanded={relioPickerOpen}
+            onClick={toggleRelioPicker}
+          >
+            <Satellite aria-hidden="true" size={22} />
+            <span>
+              <strong>Importer une trace depuis Relieo</strong>
+              <small>
+                {relioLoading
+                  ? 'Lecture de vos traces...'
+                  : 'Vos enregistrements GPS sauvegardes'}
+              </small>
+            </span>
+          </button>
+
+          {relioPickerOpen ? (
+            <div className="relieo-trace-picker">
+              {relioError ? (
+                <p className="relieo-trace-picker-note error">{relioError}</p>
+              ) : relioLoading ? (
+                <p className="relieo-trace-picker-note">
+                  <LoaderCircle aria-hidden="true" size={15} /> Chargement...
+                </p>
+              ) : relioTraces.length === 0 ? (
+                <p className="relieo-trace-picker-note">
+                  Aucune trace enregistree. Lance un enregistrement depuis l'onglet
+                  Traces.
+                </p>
+              ) : (
+                relioTraces.map((trace) => (
+                  <button
+                    className="relieo-trace-option"
+                    type="button"
+                    key={trace.id}
+                    onClick={() => {
+                      onImportRelioTrace(trace)
+                      setRelioPickerOpen(false)
+                    }}
+                  >
+                    <Route aria-hidden="true" size={16} />
+                    <span>
+                      <strong>{trace.name}</strong>
+                      <small>
+                        {trace.stats.pointCount.toLocaleString('fr-FR')} points
+                      </small>
+                    </span>
+                    <Plus aria-hidden="true" size={16} />
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
+
           {traces.length > 0 ? (
             <div className="trace-list">
               {traces.map((trace, index) => {
@@ -1183,15 +1264,6 @@ export function StudioPanel({
               }}
             />
           </label>
-
-          <button
-            className="secondary-action"
-            type="button"
-            onClick={onExportPoints}
-          >
-            <Download aria-hidden="true" size={17} />
-            Exporter points.json
-          </button>
 
           <div className="cleanup-storage-action">
             <button

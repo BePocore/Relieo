@@ -6,6 +6,7 @@ import {
   Crosshair,
   Download,
   HardDrive,
+  Map,
   MapPin,
   Mountain,
   Pause,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react'
 import type { TrackPoint } from '../types'
 import { computeTrailStats, distanceBetween } from '../lib/geo'
+import { setPendingTraceImport } from '../lib/pendingTraceImport'
 import {
   deleteUserTrace,
   downloadTraceGpx,
@@ -283,10 +285,23 @@ function TracePreview({ points }: { points: TrackPoint[] }) {
   )
 }
 
-export function TracesView({ onStart }: { onStart: () => void }) {
+export type TraceMapTarget = {
+  code: string
+  title: string
+  status: 'published' | 'draft'
+}
+
+export function TracesView({
+  onStart,
+  hikes,
+}: {
+  onStart: () => void
+  hikes: TraceMapTarget[]
+}) {
   const [traces, setTraces] = useState<UserTraceRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [busyTrace, setBusyTrace] = useState<string | null>(null)
+  const [importTraceId, setImportTraceId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -329,6 +344,24 @@ export function TracesView({ onStart }: { onStart: () => void }) {
     }),
     [traces],
   )
+
+  const importOntoMap = (trace: UserTraceRecord, hike: TraceMapTarget) => {
+    if (trace.points.length < 2) {
+      setError('Cette trace ne contient pas assez de points GPS.')
+      return
+    }
+    setPendingTraceImport({
+      code: hike.code,
+      name: trace.name,
+      points: trace.points,
+    })
+    // Ouverture du Studio de la carte choisie : il consommera la trace en
+    // attente au montage (ajoutee mais non sauvegardee, a relire puis Sauvegarder).
+    window.location.assign(
+      `/?mode=studio&code=${encodeURIComponent(hike.code)}` +
+        `&title=${encodeURIComponent(hike.title)}`,
+    )
+  }
 
   const removeTrace = async (trace: UserTraceRecord) => {
     if (!window.confirm(`Supprimer "${trace.name}" de R2 ?`)) return
@@ -440,6 +473,22 @@ export function TracesView({ onStart }: { onStart: () => void }) {
                   <div><dt>Points</dt><dd>{trace.stats.pointCount.toLocaleString('fr-FR')}</dd></div>
                 </dl>
                 <div className="user-trace-actions">
+                  <button
+                    type="button"
+                    disabled={hikes.length === 0}
+                    title={
+                      hikes.length === 0
+                        ? "Cree d'abord une carte pour y importer une trace."
+                        : 'Importer cette trace sur une de vos cartes'
+                    }
+                    onClick={() =>
+                      setImportTraceId((current) =>
+                        current === trace.id ? null : trace.id,
+                      )
+                    }
+                  >
+                    <Map size={16} /> Importer
+                  </button>
                   <button type="button" onClick={() => downloadTraceGpx(trace)}>
                     <Download size={16} /> GPX
                   </button>
@@ -452,6 +501,27 @@ export function TracesView({ onStart }: { onStart: () => void }) {
                     <Trash2 size={16} /> Supprimer
                   </button>
                 </div>
+                {importTraceId === trace.id && hikes.length > 0 ? (
+                  <div className="trace-import-picker">
+                    <p>Importer sur quelle carte ?</p>
+                    <div className="trace-import-options">
+                      {hikes.map((hike) => (
+                        <button
+                          className="trace-import-option"
+                          type="button"
+                          key={hike.code}
+                          onClick={() => importOntoMap(trace, hike)}
+                        >
+                          <Map size={15} />
+                          <span>{hike.title}</span>
+                          <small className={`trace-import-status ${hike.status}`}>
+                            {hike.status === 'published' ? 'En ligne' : 'Brouillon'}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>

@@ -1234,7 +1234,14 @@ function DashboardShell({
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
           ) : view === 'traces' ? (
-            <TracesView onStart={() => setPortalView('tracker')} />
+            <TracesView
+              onStart={() => setPortalView('tracker')}
+              hikes={hikes.map((hike) => ({
+                code: hike.code,
+                title: hike.title,
+                status: hike.status,
+              }))}
+            />
           ) : view === 'notifications' ? (
             <>
               <header className="page-heading">

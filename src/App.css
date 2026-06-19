@@ -1888,6 +1888,72 @@
   pointer-events: none;
 }
 
+.relieo-trace-tile {
+  font: inherit;
+  text-align: left;
+}
+
+.relieo-trace-picker {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.relieo-trace-picker-note {
+  margin: 0;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.relieo-trace-picker-note.error {
+  color: #ff96a4;
+}
+
+.relieo-trace-option {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: 9px;
+  color: var(--text);
+  background: rgba(60, 220, 140, 0.06);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.relieo-trace-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.relieo-trace-option svg {
+  color: var(--accent);
+}
+
+.relieo-trace-option strong {
+  display: block;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.relieo-trace-option small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
 .drive-import-button {
   min-height: 74px;
   padding: 11px;

@@ -44,6 +44,8 @@ import {
   uploadMedia,
 } from './lib/cloudUpload'
 import { firebaseEnabled, getIdToken } from './portal/firebase'
+import { loadUserTraces, type UserTraceRecord } from './portal/userTraces'
+import { takePendingTraceImport } from './lib/pendingTraceImport'
 import {
   createImportedMedia,
   mediaKindFromFile,
@@ -582,6 +584,23 @@ function App() {
           throw new Error(onlineError ?? 'Aucune carte disponible dans Cloudflare R2.')
         }
         applyProject(onlineProject)
+        // Trace en attente depuis l'onglet Traces : ajoutee a CETTE carte (non
+        // sauvegardee), le proprietaire relit puis clique Sauvegarder.
+        const pending = takePendingTraceImport()
+        if (
+          pending &&
+          pending.code === hikeCode &&
+          pending.points.length >= 2
+        ) {
+          setTraces((current) => [
+            ...current,
+            {
+              id: createTraceId(),
+              name: pending.name,
+              points: pending.points,
+            },
+          ])
+        }
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -1874,17 +1893,24 @@ function App() {
     )
   }, [])
 
-  const handleExportPoints = useCallback(() => {
-    const blob = new Blob([JSON.stringify(exportablePoints(points), null, 2)], {
-      type: 'application/json',
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'points.json'
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [points])
+  // Import d'une trace GPS enregistree dans Relieo : meme principe que l'import
+  // GPX (chaque trace devient une trace distincte de la carte).
+  const handleImportRelioTrace = useCallback((trace: UserTraceRecord) => {
+    if (trace.points.length < 2) {
+      setError('Cette trace ne contient pas assez de points GPS.')
+      return
+    }
+    setTraces((current) => [
+      ...current,
+      {
+        id: createTraceId(),
+        name: trace.name,
+        points: trace.points,
+      },
+    ])
+    setSelectedPoint(null)
+    setError(null)
+  }, [])
 
   const handleSaveProject = useCallback(async () => {
     if (!accessCode.trim()) {
@@ -2286,7 +2312,8 @@ function App() {
                   onDeletePoint={handleDeletePoint}
                   onToggleLock={handleToggleLock}
                   onSetPointColor={handleSetPointColor}
-                  onExportPoints={handleExportPoints}
+                  onLoadRelioTraces={loadUserTraces}
+                  onImportRelioTrace={handleImportRelioTrace}
                   onSaveProject={handleSaveProject}
                   onShowMedia={handleOpenLightbox}
                   onAccessCodeChange={handleAccessCodeChange}
