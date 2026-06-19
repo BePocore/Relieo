@@ -182,6 +182,19 @@ const POPUP_NOTIF_TYPES: ReadonlyArray<PortalNotification['type']> = [
   'delete',
 ]
 
+const ADMIN_PHONE_NOTICE =
+  'Console admin indisponible sur téléphone. Connecte-toi depuis un ordinateur pour gérer Relieo.'
+const AUTH_NOTICE_STORAGE_KEY = 'relieo.auth.notice'
+
+const isAdminPhoneDevice = (): boolean => {
+  const touchLike =
+    window.matchMedia('(pointer: coarse)').matches ||
+    navigator.maxTouchPoints > 0
+  const shortestScreenSide = Math.min(window.screen.width, window.screen.height)
+
+  return touchLike && shortestScreenSide <= 640
+}
+
 // Icône + teinte (classe CSS) d'une notification selon son type.
 const notifVisual = (type: PortalNotification['type']) => {
   switch (type) {
@@ -1401,7 +1414,13 @@ const passwordChecks = (password: string) => [
   },
 ]
 
-function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth> }) {
+function FirebaseAuthScreen({
+  auth,
+  notice,
+}: {
+  auth: ReturnType<typeof getFirebaseAuth>
+  notice?: string | null
+}) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -1494,6 +1513,12 @@ function FirebaseAuthScreen({ auth }: { auth: ReturnType<typeof getFirebaseAuth>
         <div className="auth-form-wrap">
           <h2>{mode === 'signup' ? 'Créer votre espace' : 'Bon retour parmi nous'}</h2>
           <p>Connectez-vous pour retrouver vos cartes 3D.</p>
+          {notice ? (
+            <p className="auth-device-warning">
+              <Monitor aria-hidden="true" size={16} />
+              <span>{notice}</span>
+            </p>
+          ) : null}
 
           <button
             className="google-btn"
@@ -1801,6 +1826,10 @@ function FirebasePortal() {
   } | null>(null)
   const [emailVerified, setEmailVerified] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [loginNotice, setLoginNotice] = useState<string | null>(() =>
+    window.sessionStorage.getItem(AUTH_NOTICE_STORAGE_KEY),
+  )
+  const [adminPhoneDevice, setAdminPhoneDevice] = useState(isAdminPhoneDevice)
   // Détection admin remontée ici (avant le dashboard) pour pouvoir sauter
   // l'écran de choix de forfait : l'admin (Dieu) n'a pas de forfait.
   const [admin, setAdmin] = useState<{ checked: boolean; isAdmin: boolean }>({
@@ -1809,6 +1838,22 @@ function FirebasePortal() {
   })
   // État de modération du compte (actif / bloqué / supprimé).
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
+  const adminPhoneBlocked =
+    Boolean(session) && emailVerified && admin.checked && admin.isAdmin && adminPhoneDevice
+
+  useEffect(() => {
+    const refreshAdminPhoneDevice = () => {
+      setAdminPhoneDevice(isAdminPhoneDevice())
+    }
+
+    refreshAdminPhoneDevice()
+    window.addEventListener('resize', refreshAdminPhoneDevice)
+    window.addEventListener('orientationchange', refreshAdminPhoneDevice)
+    return () => {
+      window.removeEventListener('resize', refreshAdminPhoneDevice)
+      window.removeEventListener('orientationchange', refreshAdminPhoneDevice)
+    }
+  }, [])
 
   useEffect(() => {
     if (!session || !emailVerified) return
@@ -1875,9 +1920,14 @@ function FirebasePortal() {
         setSession(null)
         setEmailVerified(false)
         setProfileError(null)
+        setLoginNotice(window.sessionStorage.getItem(AUTH_NOTICE_STORAGE_KEY))
+        setAdmin({ checked: false, isAdmin: false })
+        setAccountStatus(null)
         setReady(true)
         return
       }
+      window.sessionStorage.removeItem(AUTH_NOTICE_STORAGE_KEY)
+      setLoginNotice(null)
       setEmailVerified(current.emailVerified)
       void readUserProfile(current.uid)
         .then((extras) => {
@@ -1906,6 +1956,12 @@ function FirebasePortal() {
     }
   }, [auth])
 
+  useEffect(() => {
+    if (!auth || !adminPhoneBlocked) return
+    window.sessionStorage.setItem(AUTH_NOTICE_STORAGE_KEY, ADMIN_PHONE_NOTICE)
+    void signOut(auth).finally(() => navigate('/login'))
+  }, [adminPhoneBlocked, auth])
+
   if (!auth) {
     return (
       <main className="portal-auth">
@@ -1919,7 +1975,7 @@ function FirebasePortal() {
     )
   }
   if (!ready) return null
-  if (!session) return <FirebaseAuthScreen auth={auth} />
+  if (!session) return <FirebaseAuthScreen auth={auth} notice={loginNotice} />
 
   // Vérification email : accès bloqué tant que l'adresse n'est pas validée.
   // Les comptes Google arrivent déjà vérifiés et passent directement.
@@ -1948,6 +2004,8 @@ function FirebasePortal() {
   // atterrir sur sa console dédiée, jamais (même brièvement) sur le dashboard
   // utilisateur classique.
   if (!admin.checked) return null
+
+  if (adminPhoneBlocked) return null
 
   // Admin : écran d'administration plein et totalement séparé. Pas de dashboard
   // utilisateur, pas de choix de forfait (le Dieu n'a pas de forfait).

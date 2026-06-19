@@ -1281,6 +1281,26 @@
   font-size: 12px;
 }
 
+.auth-device-warning {
+  margin: 0;
+  padding: 11px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px solid rgba(154, 98, 7, 0.28);
+  border-radius: 14px;
+  color: #84520a !important;
+  background: #fff6df;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.auth-device-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
 .auth-note {
   margin: 18px 0 0;
   color: var(--c-text-dim) !important;
