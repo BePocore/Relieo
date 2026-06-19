@@ -1977,6 +1977,25 @@
   transform: translateY(8px);
 }
 
+.cleanup-storage-action {
+  display: grid;
+  gap: 6px;
+}
+
+.cleanup-storage-button {
+  margin: 0;
+}
+
+.cleanup-storage-action p {
+  margin: 0;
+  padding: 0 6px;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.35;
+  text-align: center;
+}
+
 /* Import direct depuis la fiche d'un point (photo du haut). */
 .attach-media-action {
   display: flex;

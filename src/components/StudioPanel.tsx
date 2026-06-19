@@ -1114,21 +1114,31 @@ export function StudioPanel({
             Exporter points.json
           </button>
 
-          <button
-            className="secondary-action"
-            type="button"
-            disabled={
-              !writeAuthReady ||
-              !accessCode.trim() ||
-              isUploading ||
-              isDriveImporting ||
-              isCleaningUnusedMedia
-            }
-            onClick={() => void onCleanupUnusedMedia()}
-          >
-            <Trash2 aria-hidden="true" size={17} />
-            {isCleaningUnusedMedia ? 'Nettoyage...' : 'Nettoyer stockage'}
-          </button>
+          <div className="cleanup-storage-action">
+            <button
+              className="secondary-action cleanup-storage-button"
+              type="button"
+              aria-describedby="cleanup-unused-media-hint"
+              title="Supprime de R2 seulement les médias importés qui ne sont utilisés par aucun point."
+              disabled={
+                !writeAuthReady ||
+                !accessCode.trim() ||
+                isUploading ||
+                isDriveImporting ||
+                isCleaningUnusedMedia
+              }
+              onClick={() => void onCleanupUnusedMedia()}
+            >
+              <Trash2 aria-hidden="true" size={17} />
+              {isCleaningUnusedMedia
+                ? 'Suppression...'
+                : 'Supprimer les fichiers inutilisés'}
+            </button>
+            <p id="cleanup-unused-media-hint">
+              Retire de R2 uniquement les médias importés qui ne sont plus reliés à
+              aucun point.
+            </p>
+          </div>
 
           <div className="media-list">
             {mediaLibrary.length === 0 ? (

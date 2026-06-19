@@ -1352,7 +1352,7 @@ function App() {
     }
 
     setIsCleaningUnusedMedia(true)
-    setSaveStatus('Nettoyage des fichiers R2 inutilises...')
+    setSaveStatus('Recherche des fichiers R2 inutilisés...')
     try {
       const idToken = (await getIdToken()) ?? undefined
       const deletedCount = await cleanupUnusedUploadedMedia({
@@ -1363,8 +1363,8 @@ function App() {
       })
       setSaveStatus(
         deletedCount > 0
-          ? `${deletedCount} fichier(s) R2 inutilise(s) supprime(s).`
-          : 'Aucun fichier R2 inutilise a supprimer.',
+          ? `${deletedCount} fichier(s) inutilisé(s) supprimé(s) de R2.`
+          : 'Aucun fichier inutilisé trouvé dans R2.',
       )
     } catch (cleanupError) {
       setSaveStatus(

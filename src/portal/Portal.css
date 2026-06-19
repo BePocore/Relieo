@@ -846,18 +846,21 @@
 }
 
 .storage-meter {
-  height: 8px;
+  height: 10px;
   margin-top: 23px;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(7, 32, 21, 0.72);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
 .storage-meter span {
   height: 100%;
   display: block;
   border-radius: inherit;
-  background: var(--c-accent);
+  background: linear-gradient(90deg, #88f2b0 0%, #39d98a 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16), 0 0 14px rgba(92, 232, 143, 0.34);
 }
 
 .storage-legend {
