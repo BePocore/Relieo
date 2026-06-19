@@ -4,6 +4,7 @@ import {
   R2QuotaError,
   r2DeleteObject,
   r2KeyFromPublicUrl,
+  r2ListKeys,
   r2PrepareUpload,
   type StorageScope,
 } from '../server/r2.js'
@@ -42,7 +43,13 @@ type DeleteMediaBody = {
   trailCode?: string
 }
 
-type UploadBody = PrepareUploadBody | DeleteMediaBody
+type CleanupUnusedMediaBody = {
+  type: 'relieo.cleanup-unused-media'
+  usedUrls?: string[]
+  trailCode?: string
+}
+
+type UploadBody = PrepareUploadBody | DeleteMediaBody | CleanupUnusedMediaBody
 
 export async function POST(request: Request) {
   if (!hasR2Config()) {
@@ -86,7 +93,8 @@ export async function POST(request: Request) {
     const body = (await request.json()) as UploadBody
     if (
       body.type !== 'relieo.prepare-upload' &&
-      body.type !== 'relieo.delete-media'
+      body.type !== 'relieo.delete-media' &&
+      body.type !== 'relieo.cleanup-unused-media'
     ) {
       return Response.json({ message: 'Requete upload invalide.' }, { status: 400 })
     }
@@ -122,6 +130,35 @@ export async function POST(request: Request) {
       await r2DeleteObject(mediaKey)
       if (thumbnailKey) await r2DeleteObject(thumbnailKey)
       return Response.json({ deleted: true })
+    }
+
+    if (body.type === 'relieo.cleanup-unused-media') {
+      const allowedPrefixes = [
+        `${location.prefix}/media/`,
+        `${location.prefix}/previews/`,
+      ]
+      const usedKeys = new Set(
+        (body.usedUrls ?? [])
+          .map((url) => r2KeyFromPublicUrl(url))
+          .filter((key): key is string =>
+            Boolean(
+              key &&
+                allowedPrefixes.some((prefix) => key.startsWith(prefix)),
+            ),
+          ),
+      )
+      const [mediaKeys, previewKeys] = await Promise.all(
+        allowedPrefixes.map((prefix) => r2ListKeys(prefix)),
+      )
+      const keysToDelete = [...mediaKeys, ...previewKeys].filter(
+        (key) => !usedKeys.has(key),
+      )
+
+      for (const key of keysToDelete) {
+        await r2DeleteObject(key)
+      }
+
+      return Response.json({ deletedCount: keysToDelete.length })
     }
 
     const fingerprint = body.fingerprint?.replace(/[^a-f0-9]/gi, '')

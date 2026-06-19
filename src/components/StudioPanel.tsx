@@ -56,6 +56,7 @@ type StudioPanelProps = {
   onSetTraceColor: (traceId: string, color: string) => void
   onImportDriveMedia: () => Promise<void>
   onImportMedia: (files: File[]) => Promise<void>
+  onCleanupUnusedMedia: () => Promise<void>
   onAcceptEstimatedMedia: (mediaId: string) => void
   onEstimateImportedMedia: (mediaId: string) => void
   onIgnoreImportEntry: (
@@ -76,6 +77,7 @@ type StudioPanelProps = {
   isSaving: boolean
   isUploading: boolean
   isDriveImporting: boolean
+  isCleaningUnusedMedia: boolean
   canEstimatePlacement: boolean
   googleDriveConfigured: boolean
   uploadProgress: UploadProgress | null
@@ -584,6 +586,7 @@ export function StudioPanel({
   onSetTraceColor,
   onImportDriveMedia,
   onImportMedia,
+  onCleanupUnusedMedia,
   onAcceptEstimatedMedia,
   onEstimateImportedMedia,
   onIgnoreImportEntry,
@@ -602,6 +605,7 @@ export function StudioPanel({
   isSaving,
   isUploading,
   isDriveImporting,
+  isCleaningUnusedMedia,
   canEstimatePlacement,
   googleDriveConfigured,
   uploadProgress,
@@ -1108,6 +1112,22 @@ export function StudioPanel({
           >
             <Download aria-hidden="true" size={17} />
             Exporter points.json
+          </button>
+
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={
+              !writeAuthReady ||
+              !accessCode.trim() ||
+              isUploading ||
+              isDriveImporting ||
+              isCleaningUnusedMedia
+            }
+            onClick={() => void onCleanupUnusedMedia()}
+          >
+            <Trash2 aria-hidden="true" size={17} />
+            {isCleaningUnusedMedia ? 'Nettoyage...' : 'Nettoyer stockage'}
           </button>
 
           <div className="media-list">

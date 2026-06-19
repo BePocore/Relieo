@@ -37,7 +37,12 @@ import { StatsBar } from './components/StatsBar'
 import type { CameraCommand } from './components/MapLibreTrailMap'
 import { computeTrailStats, distanceBetween } from './lib/geo'
 import { parseGpx } from './lib/gpx'
-import { deleteUploadedMedia, fileFingerprint, uploadMedia } from './lib/cloudUpload'
+import {
+  cleanupUnusedUploadedMedia,
+  deleteUploadedMedia,
+  fileFingerprints,
+  uploadMedia,
+} from './lib/cloudUpload'
 import { firebaseEnabled, getIdToken } from './portal/firebase'
 import {
   createImportedMedia,
@@ -434,6 +439,7 @@ function App() {
   const [isAutosaving, setIsAutosaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [isDriveImporting, setIsDriveImporting] = useState(false)
+  const [isCleaningUnusedMedia, setIsCleaningUnusedMedia] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
     null,
   )
@@ -614,6 +620,16 @@ function App() {
         : null,
     [manualPlacementMediaId, mediaLibrary],
   )
+  useEffect(() => {
+    if (!manualPlacementMediaId) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setManualPlacementMediaId(null)
+      setSaveStatus('Placement manuel annule.')
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [manualPlacementMediaId])
   const stats = useMemo(() => combineStats(traces), [traces])
   const currentProjectSignature = useMemo(
     () =>
@@ -626,6 +642,18 @@ function App() {
       }),
     [accessCode, mediaLibrary, points, pointsSourceName, traces],
   )
+  const usedMediaUrls = useMemo(() => {
+    const urls = new Set<string>()
+    for (const media of mediaLibrary) {
+      urls.add(media.url)
+      if (media.thumbnailUrl) urls.add(media.thumbnailUrl)
+    }
+    for (const point of points) {
+      if (point.image) urls.add(point.image)
+      if (point.video) urls.add(point.video)
+    }
+    return Array.from(urls)
+  }, [mediaLibrary, points])
   const hasUnsavedProjectChanges =
     savedProjectSignature !== null &&
     currentProjectSignature !== savedProjectSignature
@@ -1049,16 +1077,27 @@ function App() {
     const duplicates: ImportReport['duplicates'] = []
     const uploadEntries: Array<{ file: File; fingerprint: string }> = []
 
+    setSaveStatus('Analyse des doublons...')
     for (const file of mediaFiles) {
-      const fingerprint = await fileFingerprint(file)
-      if (
-        knownFingerprints.has(fingerprint) ||
-        selectedFingerprints.has(fingerprint)
-      ) {
-        duplicates.push({ name: file.name, detail: 'deja importe' })
+      const fingerprints = await fileFingerprints(file)
+      const alreadyImported = fingerprints.all.some((fingerprint) =>
+        knownFingerprints.has(fingerprint),
+      )
+      const alreadySelected = fingerprints.all.some((fingerprint) =>
+        selectedFingerprints.has(fingerprint),
+      )
+      if (alreadyImported || alreadySelected) {
+        duplicates.push({
+          name: file.name,
+          detail: alreadyImported
+            ? 'deja dans la bibliotheque'
+            : 'doublon de la selection',
+        })
       } else {
-        selectedFingerprints.add(fingerprint)
-        uploadEntries.push({ file, fingerprint })
+        fingerprints.all.forEach((fingerprint) =>
+          selectedFingerprints.add(fingerprint),
+        )
+        uploadEntries.push({ file, fingerprint: fingerprints.primary })
       }
     }
 
@@ -1301,6 +1340,42 @@ function App() {
   const handleDismissReport = useCallback(() => {
     setImportReport(null)
   }, [])
+
+  const handleCleanupUnusedMedia = useCallback(async () => {
+    if (!firebaseEnabled && !adminPassword) {
+      setSaveStatus('Saisis le mot de passe Studio avant le nettoyage.')
+      return
+    }
+    if (!accessCode.trim()) {
+      setSaveStatus('Renseigne le code de la carte avant le nettoyage.')
+      return
+    }
+
+    setIsCleaningUnusedMedia(true)
+    setSaveStatus('Nettoyage des fichiers R2 inutilises...')
+    try {
+      const idToken = (await getIdToken()) ?? undefined
+      const deletedCount = await cleanupUnusedUploadedMedia({
+        usedUrls: usedMediaUrls,
+        adminPassword,
+        idToken,
+        trailCode: accessCode,
+      })
+      setSaveStatus(
+        deletedCount > 0
+          ? `${deletedCount} fichier(s) R2 inutilise(s) supprime(s).`
+          : 'Aucun fichier R2 inutilise a supprimer.',
+      )
+    } catch (cleanupError) {
+      setSaveStatus(
+        cleanupError instanceof Error
+          ? `Nettoyage R2 impossible : ${cleanupError.message}`
+          : 'Nettoyage R2 impossible.',
+      )
+    } finally {
+      setIsCleaningUnusedMedia(false)
+    }
+  }, [accessCode, adminPassword, usedMediaUrls])
 
   const findImportReportMedia = useCallback(
     (mediaId: string): ImportedMedia | undefined => {
@@ -1559,9 +1634,11 @@ function App() {
           setSaveStatus('Format non reconnu : photo ou vidéo attendue.')
           return
         }
-        const fingerprint = await fileFingerprint(file)
+        const fingerprints = await fileFingerprints(file)
+        const fingerprint = fingerprints.primary
         const existing = mediaLibrary.find(
-          (item) => item.fingerprint === fingerprint,
+          (item) =>
+            Boolean(item.fingerprint && fingerprints.all.includes(item.fingerprint)),
         )
         const original = existing
           ? { url: existing.url }
@@ -1587,20 +1664,34 @@ function App() {
                 kind: 'preview',
               }).catch(() => null)
             : null
-        const uploaded: ImportedMedia = {
-          ...media,
-          fingerprint,
-          url: original.url,
-          ...(previewUpload ? { thumbnailUrl: previewUpload.url } : {}),
-        }
+        const uploaded: ImportedMedia =
+          existing
+            ? {
+                ...existing,
+                fingerprint,
+                ...(previewUpload ? { thumbnailUrl: previewUpload.url } : {}),
+              }
+            : {
+                ...media,
+                fingerprint,
+                url: original.url,
+                ...(previewUpload ? { thumbnailUrl: previewUpload.url } : {}),
+              }
 
-        // Remplace une éventuelle entrée du même nom (URL fraîche).
-        setMediaLibrary((current) => [
-          ...current.filter(
-            (item) => item.name.toLowerCase() !== uploaded.name.toLowerCase(),
-          ),
-          uploaded,
-        ])
+        setMediaLibrary((current) =>
+          mediaAlreadyInLibrary(current, uploaded)
+            ? current.map((item) =>
+                item.id === uploaded.id ||
+                item.url === uploaded.url ||
+                Boolean(
+                  uploaded.fingerprint &&
+                    item.fingerprint === uploaded.fingerprint,
+                )
+                  ? uploaded
+                  : item,
+              )
+            : [...current, uploaded],
+        )
 
         const applyMedia = (point: TrailPoint): TrailPoint => ({
           ...point,
@@ -2172,6 +2263,7 @@ function App() {
                   onSetTraceColor={handleSetTraceColor}
                   onImportDriveMedia={handleImportDriveMedia}
                   onImportMedia={handleImportMedia}
+                  onCleanupUnusedMedia={handleCleanupUnusedMedia}
                   onAcceptEstimatedMedia={handleAcceptEstimatedMedia}
                   onEstimateImportedMedia={handleEstimateImportedMedia}
                   onIgnoreImportEntry={handleIgnoreImportEntry}
@@ -2190,6 +2282,7 @@ function App() {
                   isSaving={isSaving}
                   isUploading={isUploading}
                   isDriveImporting={isDriveImporting}
+                  isCleaningUnusedMedia={isCleaningUnusedMedia}
                   canEstimatePlacement={canEstimatePlacement}
                   googleDriveConfigured={isGoogleDriveConfigured}
                   uploadProgress={uploadProgress}
