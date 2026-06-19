@@ -151,6 +151,9 @@ const boundsFor = (
   return bounds
 }
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), Math.max(min, max))
+
 const loadImage = async (map: maplibregl.Map, id: string, src: string) => {
   if (map.hasImage(id)) return
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -248,6 +251,9 @@ export function MapLibreTrailMap({
     pitch: 0,
     thumbnails: 0,
   })
+  const selectedPointFocusId = selectedPoint?.id ?? selectedPoint?.title ?? null
+  const selectedPointLat = selectedPoint?.lat
+  const selectedPointLng = selectedPoint?.lng
 
   useEffect(() => {
     pointsRef.current = points
@@ -695,14 +701,95 @@ export function MapLibreTrailMap({
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !selectedPoint) return
+    if (
+      !styleReady ||
+      !map ||
+      selectedPointLat === undefined ||
+      selectedPointLng === undefined
+    ) {
+      return
+    }
+    const currentZoom = map.getZoom()
+    const focusLngLat: [number, number] = [selectedPointLng, selectedPointLat]
+    const terrainElevation = flat2D
+      ? 0
+      : Math.max(0, map.queryTerrainElevation(focusLngLat) ?? 0)
+    const reliefFactor = Math.min(1, terrainElevation / 1_100)
+    const minFocusZoom = compact ? 12.2 : 12.8
+    const maxFocusZoom = (compact ? 13.4 : 13.8) - reliefFactor * 0.55
+    const currentPitch = map.getPitch()
+    const maxFocusPitch = (compact ? 42 : 44) - reliefFactor * 7
+    const desktopPanelOffset = window.innerWidth >= 1000 ? -220 : 0
+    let correctionQueued = false
+    let cancelled = false
+    let fallbackTimer: number | null = null
+
+    const correctTerrainProjection = () => {
+      if (cancelled) return
+      const currentMap = mapRef.current
+      if (!currentMap) return
+
+      const container = currentMap.getContainer()
+      const width = container.clientWidth
+      const height = container.clientHeight
+      if (width <= 0 || height <= 0) return
+
+      const projectedPoint = currentMap.project(focusLngLat)
+      const targetX = clamp(
+        width / 2 + desktopPanelOffset,
+        compact ? 86 : 116,
+        width - (compact ? 86 : 116),
+      )
+      const targetY = clamp(
+        height * (compact ? 0.52 : 0.54),
+        compact ? 118 : 136,
+        height - (compact ? 150 : 124),
+      )
+      const deltaX = projectedPoint.x - targetX
+      const deltaY = projectedPoint.y - targetY
+
+      if (Math.abs(deltaX) < 24 && Math.abs(deltaY) < 24) return
+      currentMap.panBy([deltaX, deltaY], { duration: 240 })
+    }
+
+    const queueTerrainProjectionCorrection = () => {
+      if (correctionQueued) return
+      correctionQueued = true
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(correctTerrainProjection)
+      })
+    }
+
     map.easeTo({
-      center: [selectedPoint.lng, selectedPoint.lat],
-      zoom: Math.max(map.getZoom(), 15),
-      pitch: flat2D ? 0 : Math.max(map.getPitch(), 48),
-      duration: 650,
+      center: focusLngLat,
+      zoom:
+        currentZoom < minFocusZoom
+          ? minFocusZoom
+          : Math.min(currentZoom, maxFocusZoom),
+      pitch: flat2D
+        ? 0
+        : currentPitch > 0
+          ? Math.min(currentPitch, maxFocusPitch)
+          : maxFocusPitch,
+      offset: [desktopPanelOffset, 0],
+      duration: 520,
     })
-  }, [selectedPoint, flat2D])
+    map.once('moveend', queueTerrainProjectionCorrection)
+    fallbackTimer = window.setTimeout(queueTerrainProjectionCorrection, 620)
+
+    return () => {
+      cancelled = true
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer)
+      map.off('moveend', queueTerrainProjectionCorrection)
+    }
+  }, [
+    selectedPointFocusId,
+    selectedPointLat,
+    selectedPointLng,
+    flat2D,
+    compact,
+    styleReady,
+  ])
 
   useEffect(() => {
     const map = mapRef.current
