@@ -91,6 +91,7 @@ import {
 } from './plans'
 import { AdminApp } from './admin/AdminView'
 import HeroSlideshow from './HeroSlideshow'
+import { TraceRecorderScreen, TracesView } from './TraceViews'
 import {
   getThemePreference,
   setThemePreference,
@@ -98,7 +99,16 @@ import {
 } from '../lib/theme'
 import './Portal.css'
 
-type PortalView = 'dashboard' | 'hikes' | 'profile' | 'plans' | 'notifications' | 'admin' | 'settings'
+type PortalView =
+  | 'dashboard'
+  | 'hikes'
+  | 'profile'
+  | 'plans'
+  | 'notifications'
+  | 'admin'
+  | 'settings'
+  | 'traces'
+  | 'tracker'
 
 // Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
@@ -144,9 +154,11 @@ const navigate = (path: string): void => {
 }
 
 const currentView = (): PortalView => {
+  if (window.location.pathname === '/tracker') return 'tracker'
   if (window.location.pathname.endsWith('/profile')) return 'profile'
   if (window.location.pathname.endsWith('/hikes')) return 'hikes'
   if (window.location.pathname.endsWith('/plans')) return 'plans'
+  if (window.location.pathname.endsWith('/traces')) return 'traces'
   if (window.location.pathname.endsWith('/notifications')) return 'notifications'
   if (window.location.pathname.endsWith('/settings')) return 'settings'
   if (window.location.pathname.endsWith('/admin')) return 'admin'
@@ -1044,7 +1056,12 @@ function DashboardShell({
   }
 
   const setPortalView = (next: PortalView) => {
-    const path = next === 'dashboard' ? '/dashboard' : `/dashboard/${next}`
+    const path =
+      next === 'tracker'
+        ? '/tracker'
+        : next === 'dashboard'
+          ? '/dashboard'
+          : `/dashboard/${next}`
     navigate(path)
     setView(next)
     setMobileMenu(false)
@@ -1126,6 +1143,10 @@ function DashboardShell({
     setProfile((current) => ({ ...current, photoURL }))
   }
 
+  if (view === 'tracker') {
+    return <TraceRecorderScreen onClose={() => setPortalView('traces')} />
+  }
+
   return (
     <div className="portal-shell">
       <aside className={mobileMenu ? 'portal-sidebar open' : 'portal-sidebar'}>
@@ -1137,6 +1158,7 @@ function DashboardShell({
           <button className={view === 'profile' ? 'active' : ''} type="button" onClick={() => setPortalView('profile')}><UserRound size={18} /> Mon profil</button>
           <button className={view === 'plans' ? 'active' : ''} type="button" onClick={() => setPortalView('plans')}><Wallet size={18} /> Forfait</button>
           <p>OUTILS</p>
+          <button className={view === 'traces' ? 'active' : ''} type="button" onClick={() => setPortalView('traces')}><Route size={18} /> Mes traces</button>
           <button type="button"><BarChart3 size={18} /> Statistiques</button>
           <button className={view === 'settings' ? 'active' : ''} type="button" onClick={() => setPortalView('settings')}><Settings size={18} /> Paramètres</button>
         </nav>
@@ -1208,6 +1230,8 @@ function DashboardShell({
             <ProfileView user={profile} onSave={saveProfile} onSavePhoto={savePhoto} />
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
+          ) : view === 'traces' ? (
+            <TracesView onStart={() => setPortalView('tracker')} />
           ) : view === 'notifications' ? (
             <>
               <header className="page-heading">

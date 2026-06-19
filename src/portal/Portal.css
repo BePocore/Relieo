@@ -871,6 +871,363 @@
   font-size: 11px;
 }
 
+.trace-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.user-traces-section {
+  padding: 22px;
+  border: 1px solid var(--c-border);
+  border-radius: 18px;
+  background: var(--c-surface);
+}
+
+.user-traces-list {
+  display: grid;
+  gap: 12px;
+}
+
+.user-trace-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  background: var(--c-surface);
+}
+
+.user-trace-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-trace-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+}
+
+.user-trace-card h3 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-trace-card p {
+  margin: 3px 0 0;
+  color: var(--c-text-dim);
+  font-size: 12px;
+}
+
+.user-trace-metrics {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.user-trace-metrics div {
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--c-border);
+}
+
+.user-trace-metrics dt {
+  color: var(--c-text-dim);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.user-trace-metrics dd {
+  margin: 2px 0 0;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.user-trace-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-trace-actions button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 11px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.user-trace-actions button:hover:not(:disabled) {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+
+.user-trace-actions button.danger {
+  color: var(--c-danger);
+}
+
+.user-trace-actions button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.trace-empty-state {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px;
+  text-align: center;
+  border: 1px dashed var(--c-border);
+  border-radius: 16px;
+  background: var(--c-surface);
+}
+
+.trace-empty-state span {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 17px;
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+
+.trace-empty-state strong {
+  color: var(--c-text);
+  font-size: 16px;
+}
+
+.trace-empty-state p {
+  max-width: 340px;
+  margin: 0;
+  color: var(--c-text-dim);
+  font-size: 13px;
+}
+
+.trace-recorder-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(circle at top left, rgba(111, 207, 151, 0.2), transparent 34%),
+    var(--c-border);
+}
+
+.trace-recorder-panel {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--c-border);
+  border-radius: 24px;
+  background: var(--c-surface);
+  box-shadow: 0 24px 60px -28px rgba(6, 22, 14, 0.42);
+}
+
+.trace-recorder-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.trace-recorder-head h1 {
+  margin: 0;
+  font-size: 25px;
+  line-height: 1.1;
+}
+
+.trace-icon-button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--c-border);
+  border-radius: 15px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+
+.trace-icon-button:hover {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+
+.trace-status-pill {
+  min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: var(--c-text-dim);
+  background: var(--c-surface-2);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.trace-status-pill.recording {
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+}
+
+.trace-status-pill.saving,
+.trace-status-pill.saved {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+
+.trace-live-card {
+  min-height: 188px;
+  display: grid;
+  place-items: center;
+  justify-items: center;
+  gap: 7px;
+  padding: 26px;
+  border-radius: 20px;
+  color: var(--c-accent-ink);
+  background: var(--c-accent-strong);
+}
+
+.trace-live-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  color: var(--c-accent-ink);
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.trace-live-card strong {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.trace-live-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.trace-recorder-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trace-recorder-stats article {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  background: var(--c-surface);
+}
+
+.trace-recorder-stats svg {
+  color: var(--c-accent);
+}
+
+.trace-recorder-stats span {
+  color: var(--c-text-dim);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.trace-recorder-stats strong {
+  color: var(--c-text);
+  font-size: 20px;
+}
+
+.trace-recorder-signal {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  color: var(--c-text-dim);
+  background: var(--c-surface);
+  font-size: 12px;
+}
+
+.trace-recorder-signal span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  overflow-wrap: anywhere;
+}
+
+.trace-recorder-signal svg {
+  flex: 0 0 auto;
+  color: var(--c-accent);
+}
+
+.trace-success {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--c-accent);
+  font-weight: 750;
+}
+
+.trace-recorder-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.trace-recorder-actions .portal-primary,
+.trace-stop-button {
+  width: 100%;
+  min-height: 52px;
+}
+
+.trace-stop-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 15px;
+  color: var(--c-accent-ink);
+  background: var(--c-danger);
+  font-weight: 850;
+  cursor: pointer;
+}
+
 .profile-layout {
   display: grid;
   grid-template-columns: 280px minmax(0, 640px);
@@ -1361,12 +1718,22 @@
 }
 
 @media (max-width: 1120px) {
-  .summary-grid {
+  .summary-grid,
+  .trace-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .hikes-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .user-trace-card {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .user-trace-actions {
+    justify-content: flex-start;
   }
 
   .portal-auth {
@@ -1446,6 +1813,41 @@
     display: none;
   }
 
+  .notif-bell-wrap {
+    position: static;
+  }
+
+  .notif-menu-scrim {
+    z-index: 70;
+    background: rgba(10, 23, 17, 0.12);
+  }
+
+  .notif-menu {
+    position: fixed;
+    top: 88px;
+    left: 12px;
+    right: 12px;
+    z-index: 71;
+    width: auto;
+    max-height: calc(100dvh - 108px);
+    border-radius: 18px;
+    overflow: auto;
+    box-shadow: 0 24px 52px -22px rgba(6, 22, 14, 0.55);
+  }
+
+  .notif-menu-head {
+    padding: 15px 18px;
+    font-size: 15px;
+  }
+
+  .notif-menu-list li {
+    padding: 14px 18px;
+  }
+
+  .notif-menu-all {
+    min-height: 52px;
+  }
+
   .page-heading {
     align-items: stretch;
     flex-direction: column;
@@ -1456,6 +1858,7 @@
   }
 
   .summary-grid,
+  .trace-summary-grid,
   .hikes-grid,
   .dashboard-bottom-grid,
   .profile-layout,
@@ -1469,6 +1872,24 @@
 
   .hikes-section {
     padding: 14px;
+  }
+
+  .user-traces-section {
+    padding: 14px;
+  }
+
+  .user-trace-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .user-trace-metrics div {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .user-trace-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .new-hike-card {
@@ -1521,6 +1942,10 @@
     padding: 0 12px;
   }
 
+  .notif-menu {
+    top: 82px;
+  }
+
   .portal-search input::placeholder {
     color: transparent;
   }
@@ -1528,6 +1953,42 @@
   .hike-card-footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .trace-recorder-screen {
+    padding: 10px;
+  }
+
+  .trace-recorder-panel {
+    min-height: calc(100dvh - 20px);
+    align-content: start;
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .trace-recorder-head {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .trace-status-pill {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .trace-live-card {
+    min-height: 170px;
+  }
+
+  .trace-live-card strong {
+    font-size: 36px;
+  }
+
+  .trace-recorder-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .user-trace-actions {
+    grid-template-columns: 1fr;
   }
 }
 

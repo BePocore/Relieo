@@ -3,12 +3,15 @@ import {
   hasR2Config,
   R2QuotaError,
   r2DeleteObject,
+  r2DeletePrefix,
+  r2GetText,
   r2KeyFromPublicUrl,
   r2ListKeys,
   r2PrepareUpload,
+  r2PutText,
   type StorageScope,
 } from '../server/r2.js'
-import { cleanStorageName, STUDIO_OWNER, trailLocation } from '../server/trailStorage.js'
+import { cleanStorageName, STUDIO_OWNER, trailLocation, userStorageRoot } from '../server/trailStorage.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { readModeration } from '../server/moderation.js'
 import { userStorageScope } from '../server/userStorage.js'
@@ -49,7 +52,225 @@ type CleanupUnusedMediaBody = {
   trailCode?: string
 }
 
-type UploadBody = PrepareUploadBody | DeleteMediaBody | CleanupUnusedMediaBody
+type ListUserTracesBody = {
+  type: 'relieo.list-user-traces'
+}
+
+type SaveUserTraceBody = {
+  type: 'relieo.save-user-trace'
+  trace?: unknown
+}
+
+type DeleteUserTraceBody = {
+  type: 'relieo.delete-user-trace'
+  traceId?: string
+}
+
+type UploadBody =
+  | PrepareUploadBody
+  | DeleteMediaBody
+  | CleanupUnusedMediaBody
+  | ListUserTracesBody
+  | SaveUserTraceBody
+  | DeleteUserTraceBody
+
+type StoredTracePoint = {
+  lat: number
+  lng: number
+  ele?: number
+  time?: string
+}
+
+type StoredTrailStats = {
+  distanceMeters: number
+  elevationGainMeters: number
+  elevationLossMeters: number
+  maxElevationMeters: number | null
+  minElevationMeters: number | null
+  pointCount: number
+}
+
+type StoredUserTrace = {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
+  startedAt: string
+  endedAt: string
+  durationSeconds: number
+  points: StoredTracePoint[]
+  stats: StoredTrailStats
+}
+
+const TRACE_POINT_LIMIT = 20_000
+const earthRadiusMeters = 6_371_000
+
+const toRadians = (degrees: number): number => (degrees * Math.PI) / 180
+
+const distanceBetween = (from: StoredTracePoint, to: StoredTracePoint): number => {
+  const lat1 = toRadians(from.lat)
+  const lat2 = toRadians(to.lat)
+  const deltaLat = toRadians(to.lat - from.lat)
+  const deltaLng = toRadians(to.lng - from.lng)
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2
+
+  return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const finiteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
+
+const normalizeTracePoint = (value: unknown): StoredTracePoint | null => {
+  if (!value || typeof value !== 'object') return null
+  const input = value as Record<string, unknown>
+  if (
+    !finiteNumber(input.lat) ||
+    !finiteNumber(input.lng) ||
+    input.lat < -90 ||
+    input.lat > 90 ||
+    input.lng < -180 ||
+    input.lng > 180
+  ) {
+    return null
+  }
+  const point: StoredTracePoint = {
+    lat: input.lat,
+    lng: input.lng,
+  }
+  if (finiteNumber(input.ele)) point.ele = input.ele
+  if (typeof input.time === 'string' && Number.isFinite(Date.parse(input.time))) {
+    point.time = new Date(input.time).toISOString()
+  }
+  return point
+}
+
+const computeTraceStats = (points: StoredTracePoint[]): StoredTrailStats => {
+  let distanceMeters = 0
+  let elevationGainMeters = 0
+  let elevationLossMeters = 0
+  let maxElevationMeters: number | null = null
+  let minElevationMeters: number | null = null
+
+  points.forEach((point, index) => {
+    if (index > 0) {
+      const previous = points[index - 1]
+      distanceMeters += distanceBetween(previous, point)
+      if (previous.ele !== undefined && point.ele !== undefined) {
+        const diff = point.ele - previous.ele
+        if (diff > 0.5) elevationGainMeters += diff
+        if (diff < -0.5) elevationLossMeters += Math.abs(diff)
+      }
+    }
+    if (point.ele !== undefined) {
+      maxElevationMeters =
+        maxElevationMeters === null
+          ? point.ele
+          : Math.max(maxElevationMeters, point.ele)
+      minElevationMeters =
+        minElevationMeters === null
+          ? point.ele
+          : Math.min(minElevationMeters, point.ele)
+    }
+  })
+
+  return {
+    distanceMeters,
+    elevationGainMeters,
+    elevationLossMeters,
+    maxElevationMeters,
+    minElevationMeters,
+    pointCount: points.length,
+  }
+}
+
+const cleanTraceId = (value: unknown): string => {
+  if (typeof value !== 'string') return ''
+  const id = cleanStorageName(value).slice(0, 80)
+  return id === 'media' ? '' : id
+}
+
+const traceRoot = (owner: string): string => `${userStorageRoot(owner)}traces/`
+
+const traceKey = (owner: string, traceId: string): string =>
+  `${traceRoot(owner)}${traceId}/trace.json`
+
+const tracePrefix = (owner: string, traceId: string): string =>
+  `${traceRoot(owner)}${traceId}/`
+
+const normalizeTraceRecord = (
+  value: unknown,
+  options?: { touchUpdatedAt?: boolean },
+): StoredUserTrace => {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Trace invalide.')
+  }
+  const input = value as Record<string, unknown>
+  const rawPoints = Array.isArray(input.points) ? input.points : []
+  if (rawPoints.length > TRACE_POINT_LIMIT) {
+    throw new Error('Trace trop volumineuse.')
+  }
+  const points = rawPoints
+    .map((point) => normalizeTracePoint(point))
+    .filter((point): point is StoredTracePoint => Boolean(point))
+  if (points.length < 2) {
+    throw new Error('Trace trop courte.')
+  }
+
+  const now = new Date().toISOString()
+  const id =
+    cleanTraceId(input.id) ||
+    `trace-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`
+  const name =
+    typeof input.name === 'string' && input.name.trim()
+      ? input.name.trim().slice(0, 90)
+      : 'Trace Relieo'
+  const startedAt =
+    typeof input.startedAt === 'string' && Number.isFinite(Date.parse(input.startedAt))
+      ? new Date(input.startedAt).toISOString()
+      : points[0].time ?? now
+  const endedAt =
+    typeof input.endedAt === 'string' && Number.isFinite(Date.parse(input.endedAt))
+      ? new Date(input.endedAt).toISOString()
+      : points[points.length - 1].time ?? now
+  const fallbackDuration = Math.max(
+    1,
+    Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000),
+  )
+  const durationSeconds = finiteNumber(input.durationSeconds)
+    ? Math.max(1, Math.round(input.durationSeconds))
+    : fallbackDuration
+
+  return {
+    id,
+    name,
+    createdAt:
+      typeof input.createdAt === 'string' && Number.isFinite(Date.parse(input.createdAt))
+        ? new Date(input.createdAt).toISOString()
+        : now,
+    updatedAt:
+      options?.touchUpdatedAt === false &&
+      typeof input.updatedAt === 'string' &&
+      Number.isFinite(Date.parse(input.updatedAt))
+        ? new Date(input.updatedAt).toISOString()
+        : now,
+    startedAt,
+    endedAt,
+    durationSeconds,
+    points,
+    stats: computeTraceStats(points),
+  }
+}
+
+const parseStoredTrace = (raw: string | null): StoredUserTrace | null => {
+  if (!raw) return null
+  try {
+    return normalizeTraceRecord(JSON.parse(raw), { touchUpdatedAt: false })
+  } catch {
+    return null
+  }
+}
 
 export async function POST(request: Request) {
   if (!hasR2Config()) {
@@ -94,7 +315,10 @@ export async function POST(request: Request) {
     if (
       body.type !== 'relieo.prepare-upload' &&
       body.type !== 'relieo.delete-media' &&
-      body.type !== 'relieo.cleanup-unused-media'
+      body.type !== 'relieo.cleanup-unused-media' &&
+      body.type !== 'relieo.list-user-traces' &&
+      body.type !== 'relieo.save-user-trace' &&
+      body.type !== 'relieo.delete-user-trace'
     ) {
       return Response.json({ message: 'Requete upload invalide.' }, { status: 400 })
     }
@@ -103,6 +327,42 @@ export async function POST(request: Request) {
     // (uid Firebase), ou sous le namespace `_studio` pour le repli mot de passe
     // admin. Impossible donc d'ecrire dans le dossier d'un autre utilisateur.
     const owner = uid ?? STUDIO_OWNER
+
+    if (body.type === 'relieo.list-user-traces') {
+      const keys = await r2ListKeys(traceRoot(owner))
+      const traceKeys = keys.filter((key) => key.endsWith('/trace.json'))
+      const traces = (
+        await Promise.all(
+          traceKeys.map(async (key) => parseStoredTrace(await r2GetText(key))),
+        )
+      )
+        .filter((trace): trace is StoredUserTrace => Boolean(trace))
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        )
+
+      return Response.json({ traces })
+    }
+
+    if (body.type === 'relieo.save-user-trace') {
+      const trace = normalizeTraceRecord(body.trace)
+      const scope: StorageScope | undefined = uid
+        ? userStorageScope(uid)
+        : undefined
+      await r2PutText(traceKey(owner, trace.id), JSON.stringify(trace), scope)
+      return Response.json({ trace })
+    }
+
+    if (body.type === 'relieo.delete-user-trace') {
+      const id = cleanTraceId(body.traceId)
+      if (!id) {
+        return Response.json({ message: 'Trace introuvable.' }, { status: 400 })
+      }
+      await r2DeletePrefix(tracePrefix(owner, id))
+      return Response.json({ deleted: true })
+    }
+
     const location = trailLocation(owner, body.trailCode ?? '')
 
     if (body.type === 'relieo.delete-media') {
