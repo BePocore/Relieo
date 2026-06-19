@@ -92,6 +92,7 @@ import {
 import { AdminApp } from './admin/AdminView'
 import HeroSlideshow from './HeroSlideshow'
 import { TraceRecorderScreen, TracesView } from './TraceViews'
+import { hasLocalTraceDraft } from './userTraces'
 import {
   getThemePreference,
   setThemePreference,
@@ -155,6 +156,7 @@ const navigate = (path: string): void => {
 
 const currentView = (): PortalView => {
   if (window.location.pathname === '/tracker') return 'tracker'
+  if (hasLocalTraceDraft()) return 'tracker'
   if (window.location.pathname.endsWith('/profile')) return 'profile'
   if (window.location.pathname.endsWith('/hikes')) return 'hikes'
   if (window.location.pathname.endsWith('/plans')) return 'plans'
@@ -1056,14 +1058,15 @@ function DashboardShell({
   }
 
   const setPortalView = (next: PortalView) => {
+    const target = next !== 'tracker' && hasLocalTraceDraft() ? 'tracker' : next
     const path =
-      next === 'tracker'
+      target === 'tracker'
         ? '/tracker'
-        : next === 'dashboard'
+        : target === 'dashboard'
           ? '/dashboard'
-          : `/dashboard/${next}`
+          : `/dashboard/${target}`
     navigate(path)
-    setView(next)
+    setView(target)
     setMobileMenu(false)
     setNotifOpen(false)
   }

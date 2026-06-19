@@ -1,16 +1,29 @@
 import type { TrackPoint, TrailStats } from '../types'
 import { getIdToken } from './firebase'
 
+export const LOCAL_TRACE_DRAFT_KEY = 'relieo.tracker.draft'
+
 export type UserTraceRecord = {
   id: string
   name: string
+  status?: 'recording' | 'interrupted' | 'saved'
   createdAt: string
   updatedAt: string
+  autosavedAt?: string
   startedAt: string
   endedAt: string
   durationSeconds: number
   points: TrackPoint[]
   stats: TrailStats
+}
+
+export const hasLocalTraceDraft = (): boolean => {
+  if (typeof window === 'undefined') return false
+  try {
+    return Boolean(window.localStorage.getItem(LOCAL_TRACE_DRAFT_KEY))
+  } catch {
+    return false
+  }
 }
 
 type ApiError = {

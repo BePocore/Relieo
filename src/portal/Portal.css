@@ -928,6 +928,35 @@
   white-space: nowrap;
 }
 
+.user-trace-titleline {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-trace-titleline h3 {
+  min-width: 0;
+}
+
+.user-trace-status {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.user-trace-status.interrupted {
+  color: var(--c-danger);
+  background: var(--c-surface-2);
+}
+
 .user-trace-card p {
   margin: 3px 0 0;
   color: var(--c-text-dim);
@@ -1035,21 +1064,26 @@
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: 14px;
+  color: #f7f5ef;
   background:
-    radial-gradient(circle at top left, rgba(111, 207, 151, 0.2), transparent 34%),
-    var(--c-border);
+    linear-gradient(180deg, rgba(18, 26, 31, 0.96), rgba(6, 8, 10, 1)),
+    #07090b;
 }
 
 .trace-recorder-panel {
   width: min(520px, 100%);
+  min-height: min(760px, calc(100dvh - 28px));
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
   gap: 16px;
   padding: 20px;
-  border: 1px solid var(--c-border);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
-  background: var(--c-surface);
-  box-shadow: 0 24px 60px -28px rgba(6, 22, 14, 0.42);
+  background:
+    linear-gradient(180deg, rgba(18, 23, 26, 0.98), rgba(9, 10, 11, 0.98)),
+    #0b0d0f;
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.75);
 }
 
 .trace-recorder-head {
@@ -1061,8 +1095,15 @@
 
 .trace-recorder-head h1 {
   margin: 0;
+  overflow: hidden;
   font-size: 25px;
   line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-recorder-head .portal-kicker {
+  color: rgba(255, 184, 74, 0.78);
 }
 
 .trace-icon-button {
@@ -1070,16 +1111,21 @@
   height: 44px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--c-border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 15px;
-  color: var(--c-text);
-  background: var(--c-surface);
+  color: #f7f5ef;
+  background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
 }
 
 .trace-icon-button:hover {
-  color: var(--c-accent);
-  background: var(--c-accent-soft);
+  color: #ffbd55;
+  background: rgba(255, 189, 85, 0.12);
+}
+
+.trace-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .trace-status-pill {
@@ -1088,21 +1134,214 @@
   align-items: center;
   padding: 6px 10px;
   border-radius: 999px;
-  color: var(--c-text-dim);
-  background: var(--c-surface-2);
+  color: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.08);
   font-size: 12px;
   font-weight: 850;
 }
 
 .trace-status-pill.recording {
-  color: var(--c-accent-ink);
-  background: var(--c-accent);
+  color: #160b02;
+  background: #ffbd55;
 }
 
 .trace-status-pill.saving,
 .trace-status-pill.saved {
-  color: var(--c-accent);
-  background: var(--c-accent-soft);
+  color: #7ff0b0;
+  background: rgba(127, 240, 176, 0.12);
+}
+
+.trace-draft-resume {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.trace-draft-resume > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #ffbd55;
+  background: rgba(255, 189, 85, 0.12);
+}
+
+.trace-draft-resume strong {
+  display: block;
+  color: #f7f5ef;
+  font-size: 14px;
+}
+
+.trace-draft-resume p {
+  margin: 2px 0 0;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 12px;
+}
+
+.trace-draft-resume .portal-primary,
+.trace-draft-resume .portal-secondary {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+.trace-sport-dashboard {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(260px, 1fr);
+  gap: 18px;
+}
+
+.trace-duration-block {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.trace-duration-block span {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trace-duration-block strong {
+  color: #fff;
+  font-size: clamp(46px, 13vw, 70px);
+  font-weight: 500;
+  line-height: 0.96;
+  letter-spacing: 0;
+}
+
+.trace-sport-metrics {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trace-sport-metrics div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  text-align: center;
+}
+
+.trace-sport-metrics dt {
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.trace-sport-metrics dd {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(22px, 6vw, 30px);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.trace-sport-metrics small {
+  margin-left: 2px;
+  color: #b6d975;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trace-preview {
+  min-height: 260px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    #101315;
+  background-size: 42px 42px;
+}
+
+.trace-preview::after {
+  content: '';
+  position: absolute;
+  inset: auto -20% -22% -20%;
+  height: 55%;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 125, 35, 0), rgba(255, 104, 28, 0.48));
+}
+
+.trace-preview-svg {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.trace-preview-path-shadow,
+.trace-preview-path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trace-preview-path-shadow {
+  stroke: rgba(255, 111, 36, 0.28);
+  stroke-width: 14;
+}
+
+.trace-preview-path {
+  stroke: #ffc052;
+  stroke-width: 6;
+  filter: drop-shadow(0 0 10px rgba(255, 174, 64, 0.66));
+}
+
+.trace-preview-start {
+  fill: #7ff0b0;
+  stroke: rgba(7, 9, 10, 0.7);
+  stroke-width: 4;
+}
+
+.trace-preview-end-pulse {
+  fill: rgba(255, 111, 50, 0.22);
+}
+
+.trace-preview-end {
+  fill: #ff6b32;
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 2;
+}
+
+.trace-preview-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.72);
+  text-align: center;
+}
+
+.trace-preview-empty svg {
+  color: #ffbd55;
+}
+
+.trace-preview-empty strong {
+  color: #fff;
+}
+
+.trace-preview-empty span {
+  max-width: 230px;
+  font-size: 12px;
 }
 
 .trace-live-card {
@@ -1174,10 +1413,10 @@
   display: grid;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--c-border);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
-  color: var(--c-text-dim);
-  background: var(--c-surface);
+  color: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.05);
   font-size: 12px;
 }
 
@@ -1191,7 +1430,7 @@
 
 .trace-recorder-signal svg {
   flex: 0 0 auto;
-  color: var(--c-accent);
+  color: #ffbd55;
 }
 
 .trace-success {
@@ -1199,8 +1438,19 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--c-accent);
+  color: #7ff0b0;
   font-weight: 750;
+}
+
+.trace-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 189, 85, 0.2);
+  border-radius: 14px;
+  color: rgba(255, 229, 184, 0.82);
+  background: rgba(255, 189, 85, 0.1);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .trace-recorder-actions {
@@ -1214,6 +1464,18 @@
   min-height: 52px;
 }
 
+.trace-recorder-actions .portal-primary {
+  border-color: #7ff0b0;
+  color: #07100c;
+  background: #7ff0b0;
+}
+
+.trace-recorder-actions .portal-secondary {
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f7f5ef;
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .trace-stop-button {
   display: inline-flex;
   align-items: center;
@@ -1221,11 +1483,12 @@
   gap: 9px;
   padding: 12px 18px;
   border: 0;
-  border-radius: 15px;
-  color: var(--c-accent-ink);
-  background: var(--c-danger);
+  border-radius: 999px;
+  color: #fff;
+  background: #ff6b32;
   font-weight: 850;
   cursor: pointer;
+  box-shadow: 0 0 0 10px rgba(255, 107, 50, 0.1);
 }
 
 .profile-layout {
@@ -1890,6 +2153,16 @@
   .user-trace-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .trace-draft-resume {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .trace-draft-resume .portal-primary,
+  .trace-draft-resume .portal-secondary {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .new-hike-card {

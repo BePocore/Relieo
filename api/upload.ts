@@ -93,8 +93,10 @@ type StoredTrailStats = {
 type StoredUserTrace = {
   id: string
   name: string
+  status?: 'recording' | 'interrupted' | 'saved'
   createdAt: string
   updatedAt: string
+  autosavedAt?: string
   startedAt: string
   endedAt: string
   durationSeconds: number
@@ -241,10 +243,17 @@ const normalizeTraceRecord = (
   const durationSeconds = finiteNumber(input.durationSeconds)
     ? Math.max(1, Math.round(input.durationSeconds))
     : fallbackDuration
+  const status =
+    input.status === 'recording' ||
+    input.status === 'interrupted' ||
+    input.status === 'saved'
+      ? input.status
+      : 'saved'
 
   return {
     id,
     name,
+    status,
     createdAt:
       typeof input.createdAt === 'string' && Number.isFinite(Date.parse(input.createdAt))
         ? new Date(input.createdAt).toISOString()
@@ -255,6 +264,12 @@ const normalizeTraceRecord = (
       Number.isFinite(Date.parse(input.updatedAt))
         ? new Date(input.updatedAt).toISOString()
         : now,
+    autosavedAt:
+      typeof input.autosavedAt === 'string' && Number.isFinite(Date.parse(input.autosavedAt))
+        ? new Date(input.autosavedAt).toISOString()
+        : status === 'recording' || status === 'interrupted'
+          ? now
+          : undefined,
     startedAt,
     endedAt,
     durationSeconds,
