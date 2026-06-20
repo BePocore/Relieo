@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   Check,
-  Cloud,
   Crosshair,
   Download,
   HardDrive,
@@ -15,7 +14,6 @@ import {
   Satellite,
   Square,
   Trash2,
-  Zap,
 } from 'lucide-react'
 import type { TrackPoint } from '../types'
 import { computeTrailStats, distanceBetween } from '../lib/geo'
@@ -167,12 +165,6 @@ const formatDateTime = (value: string): string =>
   new Intl.DateTimeFormat('fr-FR', {
     day: '2-digit',
     month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
-
-const formatClockTime = (value: string): string =>
-  new Intl.DateTimeFormat('fr-FR', {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
@@ -540,19 +532,21 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
   const [points, setPoints] = useState<TrackPoint[]>([])
   const [startedAtMs, setStartedAtMs] = useState<number | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
-  const [accuracy, setAccuracy] = useState<number | null>(null)
-  const [wakeLockActive, setWakeLockActive] = useState(false)
-  const [wakeLockSupported, setWakeLockSupported] = useState(true)
+  // États en écriture seule : ils pilotent l'enregistrement (wake lock, autosave)
+  // mais ne sont plus affichés depuis le retrait du bandeau d'indicateurs.
+  const [, setAccuracy] = useState<number | null>(null)
+  const [, setWakeLockActive] = useState(false)
+  const [, setWakeLockSupported] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [signalWarning, setSignalWarning] = useState<string | null>(null)
   const [savedTrace, setSavedTrace] = useState<UserTraceRecord | null>(null)
-  const [lastLocalSaveAt, setLastLocalSaveAt] = useState<string | null>(
+  const [, setLastLocalSaveAt] = useState<string | null>(
     () => localDraft?.updatedAt ?? null,
   )
   const [lastCloudSaveAt, setLastCloudSaveAt] = useState<string | null>(
     () => localDraft?.autosavedAt ?? null,
   )
-  const [cloudSaveBusy, setCloudSaveBusy] = useState(false)
+  const [, setCloudSaveBusy] = useState(false)
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null)
   const traceMetaRef = useRef<ActiveTraceMeta | null>(null)
   const pointsRef = useRef<TrackPoint[]>([])
@@ -564,7 +558,6 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
 
   const stats = useMemo(() => computeTrailStats(points), [points])
   const elapsedSeconds = Math.round(elapsedMs / 1000)
-  const lastPoint = points[points.length - 1]
   const averagePace = formatPace(elapsedSeconds, stats.distanceMeters)
   const exitLocked =
     status === 'recording' ||
@@ -1060,14 +1053,6 @@ export function TraceRecorderScreen({ onClose }: { onClose: () => void }) {
           ) : null}
           <TracePreview points={points} />
         </section>
-
-        <div className="trace-recorder-signal">
-          <span><MapPin size={16} /> Precision {accuracy ? `${accuracy} m` : '-'}</span>
-          <span><Zap size={16} /> {wakeLockActive ? 'Ecran actif' : wakeLockSupported ? 'Veille possible' : 'Wake lock absent'}</span>
-          <span><Route size={16} /> {lastPoint ? `${lastPoint.lat.toFixed(5)}, ${lastPoint.lng.toFixed(5)}` : 'Position en attente'}</span>
-          <span><HardDrive size={16} /> Local {lastLocalSaveAt ? `OK ${formatClockTime(lastLocalSaveAt)}` : 'en attente'}</span>
-          <span><Cloud size={16} /> R2 {cloudSaveBusy ? 'envoi...' : lastCloudSaveAt ? `OK ${formatClockTime(lastCloudSaveAt)}` : 'auto 10 min'}</span>
-        </div>
 
         {error ? <p className="auth-error">{error}</p> : null}
         {signalWarning ? <p className="trace-warning">{signalWarning}</p> : null}

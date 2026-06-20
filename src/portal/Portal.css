@@ -1454,30 +1454,6 @@ body.portal-active.tracker-scroll-active #root {
   font-size: 12px;
 }
 
-.trace-recorder-signal {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--c-border);
-  border-radius: 16px;
-  color: var(--c-text-dim);
-  background: var(--c-surface);
-  font-size: 12px;
-}
-
-.trace-recorder-signal span {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  overflow-wrap: anywhere;
-}
-
-.trace-recorder-signal svg {
-  flex: 0 0 auto;
-  color: var(--c-accent);
-}
-
 .trace-success {
   margin: 0;
   display: inline-flex;
