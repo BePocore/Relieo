@@ -36,6 +36,7 @@ type AdminUser = {
   name?: string
   plan: string
   isAdmin: boolean
+  internal: boolean
   createdAt: string | null
   emailVerified: boolean
   hikeCount: number
@@ -97,7 +98,7 @@ type Overview = {
   publishedCount: number
   draftCount: number
   totalBytes: number
-  freeBytes: number
+  internalBytes: number
   billableBytes: number
   monthlyCostEur: number
 }
@@ -513,7 +514,7 @@ export function AdminApp({
         <span><HardDrive size={18} /></span>
         <p>Stockage total</p>
         <strong>{overview ? formatBytes(overview.totalBytes) : '—'}</strong>
-        <small>dont {overview ? formatBytes(overview.freeBytes) : '—'} gratuits</small>
+        <small>dont {overview ? formatBytes(overview.internalBytes) : '—'} interne (tests)</small>
       </article>
       <article className="admin-stat-card">
         <span><Database size={18} /></span>
@@ -986,27 +987,28 @@ export function AdminApp({
         <h2>Cloudflare R2</h2>
         <dl>
           <div><dt>Stockage total</dt><dd>{overview ? formatBytes(overview.totalBytes) : '—'}</dd></div>
-          <div><dt>Palier gratuit</dt><dd>{overview ? formatBytes(overview.freeBytes) : '—'}</dd></div>
+          <div><dt>Interne (tests, non facturé)</dt><dd>{overview ? formatBytes(overview.internalBytes) : '—'}</dd></div>
           <div><dt>Volume facturé</dt><dd>{overview ? formatBytes(overview.billableBytes) : '—'}</dd></div>
-          <div><dt>Coût mensuel réel</dt><dd className="admin-cost">{overview ? formatEur(overview.monthlyCostEur) : '—'}</dd></div>
+          <div><dt>Coût mensuel</dt><dd className="admin-cost">{overview ? formatEur(overview.monthlyCostEur) : '—'}</dd></div>
         </dl>
         <p className="admin-note">
-          R2 facture le stockage à l'usage : les 10 premiers Go par mois sont
-          gratuits, puis ~0,015 €/Go/mois (sortie de données gratuite).
+          Les comptes internes (admin, perso, tests) ne sont pas facturés : les
+          10 Go gratuits de R2 leur sont attribués. Les vrais utilisateurs sont
+          comptés au Go plein, ~0,015 €/Go/mois (sortie de données gratuite).
         </p>
       </article>
       <article className="admin-storage-card">
         <h2>Top consommateurs</h2>
         <ul className="admin-top-users">
-          {users.filter((u) => !u.isAdmin).slice(0, 8).map((u) => (
+          {users.filter((u) => !u.internal).slice(0, 8).map((u) => (
             <li key={u.uid}>
               <span>{u.name || u.email || u.uid}</span>
               <strong>{formatBytes(u.usedBytes)}</strong>
               <small>{formatEur(u.monthlyCostEur)}/mois</small>
             </li>
           ))}
-          {users.filter((u) => !u.isAdmin).length === 0 ? (
-            <li className="admin-empty">Aucun utilisateur.</li>
+          {users.filter((u) => !u.internal).length === 0 ? (
+            <li className="admin-empty">Aucun utilisateur facturable.</li>
           ) : null}
         </ul>
       </article>
@@ -1133,7 +1135,7 @@ export function AdminApp({
     const mrr = analytics.mrr
     const balance = mrr - totalCosts
     const topConsumers = [...users]
-      .filter((u) => !u.isAdmin && u.usedBytes > 0)
+      .filter((u) => !u.internal && u.usedBytes > 0)
       .sort((a, b) => b.monthlyCostEur - a.monthlyCostEur)
       .slice(0, 5)
     const modelLabel = (model: CostPlatform['model']) =>

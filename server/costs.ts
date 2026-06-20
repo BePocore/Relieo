@@ -11,6 +11,14 @@ export type FixedCost = {
   renewsAt?: string
 }
 
+// Comptes internes (admin, perso, tests) : leur stockage R2 n'est PAS facturé
+// dans la budgétisation. L'idée : les 10 Go gratuits de R2 couvrent cet usage.
+// Les vrais utilisateurs, eux, sont comptés au Go plein dès le 1er Go.
+export const INTERNAL_EMAILS = ['bepocore@gmail.com', 'quentintardivel@gmail.com']
+
+export const isInternalEmail = (email: string | null | undefined): boolean =>
+  Boolean(email && INTERNAL_EMAILS.includes(email.toLowerCase()))
+
 export const FIXED_COSTS: FixedCost[] = [
   {
     id: 'domain',

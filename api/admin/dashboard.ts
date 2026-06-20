@@ -17,13 +17,9 @@ import {
   EMAIL_MONTHLY_LIMIT,
   readEmailUsage,
 } from '../../server/emailUsage.js'
-import { FIXED_COSTS } from '../../server/costs.js'
+import { FIXED_COSTS, isInternalEmail } from '../../server/costs.js'
 import { userStorageRoot } from '../../server/trailStorage.js'
-import {
-  DEFAULT_PLAN_ID,
-  R2_FREE_BYTES,
-  monthlyR2Cost,
-} from '../../server/plans.js'
+import { DEFAULT_PLAN_ID, monthlyR2Cost } from '../../server/plans.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -68,18 +64,7 @@ export async function GET(request: Request) {
       readEmailUsage(),
     ])
 
-    // --- Vue d'ensemble ---
     const publishedCount = hikes.filter((h) => h.status === 'published').length
-    const overview = {
-      userCount: authList.users.length,
-      hikeCount: hikes.length,
-      publishedCount,
-      draftCount: hikes.length - publishedCount,
-      totalBytes,
-      freeBytes: R2_FREE_BYTES,
-      billableBytes: Math.max(0, totalBytes - R2_FREE_BYTES),
-      monthlyCostEur: monthlyR2Cost(totalBytes, true),
-    }
 
     // --- Agrégats des cartes par propriétaire ---
     const byOwner = new Map<
@@ -106,19 +91,24 @@ export async function GET(request: Request) {
         const aggregate = byOwner.get(record.uid)
         const mod = moderation.get(record.uid)
         const usedBytes = await r2UsageForPrefixes([userStorageRoot(record.uid)])
+        // Comptes internes (admin / perso / tests) non facturés ; les vrais
+        // utilisateurs sont comptés au Go plein dès le 1er Go.
+        const internal =
+          isAdminUid(record.uid) || isInternalEmail(record.email ?? null)
         return {
           uid: record.uid,
           email: record.email ?? null,
           name: profile?.name ?? record.displayName ?? undefined,
           plan: profile?.plan ?? DEFAULT_PLAN_ID,
           isAdmin: isAdminUid(record.uid),
+          internal,
           createdAt: record.metadata.creationTime ?? null,
           emailVerified: record.emailVerified,
           hikeCount: aggregate?.hikeCount ?? 0,
           publishedCount: aggregate?.publishedCount ?? 0,
           mediaCount: aggregate?.mediaCount ?? 0,
           usedBytes,
-          monthlyCostEur: monthlyR2Cost(usedBytes),
+          monthlyCostEur: internal ? 0 : monthlyR2Cost(usedBytes),
           status: mod?.status ?? 'active',
           banCount: mod?.banCount ?? 0,
           deletionRequest: Boolean(mod?.deletionRequest),
@@ -127,6 +117,26 @@ export async function GET(request: Request) {
         }
       }),
     )
+
+    // --- Vue d'ensemble (coût = somme des comptes facturables, au Go plein) ---
+    const billableBytes = users.reduce(
+      (sum, u) => sum + (u.internal ? 0 : u.usedBytes),
+      0,
+    )
+    const internalBytes = users.reduce(
+      (sum, u) => sum + (u.internal ? u.usedBytes : 0),
+      0,
+    )
+    const overview = {
+      userCount: authList.users.length,
+      hikeCount: hikes.length,
+      publishedCount,
+      draftCount: hikes.length - publishedCount,
+      totalBytes,
+      internalBytes,
+      billableBytes,
+      monthlyCostEur: users.reduce((sum, u) => sum + u.monthlyCostEur, 0),
+    }
 
     // Comptes supprimés dont l'auth Firebase n'existe plus (suppression
     // volontaire qui libère l'email) : reconstruits depuis `moderation` pour
@@ -140,6 +150,7 @@ export async function GET(request: Request) {
         name: undefined,
         plan: DEFAULT_PLAN_ID,
         isAdmin: false,
+        internal: false,
         createdAt: null,
         emailVerified: false,
         hikeCount: 0,
