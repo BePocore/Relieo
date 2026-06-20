@@ -52,12 +52,16 @@ import {
 } from 'lucide-react'
 import {
   type User,
+  EmailAuthProvider,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updatePassword,
   updateProfile,
 } from 'firebase/auth'
 import {
@@ -152,6 +156,30 @@ const backendHikes = (
 const navigate = (path: string): void => {
   window.history.pushState({}, '', path)
   window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
+// Demande l'envoi du mail de vérification : on tente d'abord le mail personnalisé
+// Relieo (via /api/account, envoyé par notre fournisseur), avec repli automatique
+// sur l'envoi natif Firebase si le fournisseur n'est pas configuré ou échoue.
+async function requestEmailVerification(user: User): Promise<void> {
+  try {
+    const token = await user.getIdToken()
+    const response = await fetch('/api/account', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action: 'send-verification' }),
+    })
+    const data = (await response.json().catch(() => null)) as
+      | { sent?: boolean; fallback?: boolean; alreadyVerified?: boolean }
+      | null
+    if (response.ok && (data?.sent || data?.alreadyVerified)) return
+  } catch {
+    // Erreur réseau : on bascule sur le repli Firebase ci-dessous.
+  }
+  await sendEmailVerification(user)
 }
 
 const currentView = (): PortalView => {
@@ -498,15 +526,29 @@ function ProfileView({
   user,
   onSave,
   onSavePhoto,
+  canChangePassword,
+  onChangePassword,
 }: {
   user: PortalUser
   onSave: (user: PortalUser) => Promise<void>
   onSavePhoto: (photoURL: string) => Promise<void>
+  canChangePassword: boolean
+  onChangePassword: (current: string, next: string) => Promise<void>
 }) {
   const [draft, setDraft] = useState(user)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPwd, setShowPwd] = useState(false)
+  const [pwdBusy, setPwdBusy] = useState(false)
+  const [pwdSaved, setPwdSaved] = useState(false)
+  const [pwdError, setPwdError] = useState<string | null>(null)
+  const pwdChecks = passwordChecks(newPassword)
+  const pwdStrong = pwdChecks.every((check) => check.valid)
+  const pwdMatch = newPassword === confirmPassword
   const [cropFile, setCropFile] = useState<File | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -596,6 +638,39 @@ function ProfileView({
     }
   }
 
+  const submitPassword = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!pwdStrong) {
+      setPwdError('Le nouveau mot de passe ne respecte pas tous les critères.')
+      return
+    }
+    if (!pwdMatch) {
+      setPwdError('Les deux nouveaux mots de passe ne correspondent pas.')
+      return
+    }
+    setPwdBusy(true)
+    setPwdError(null)
+    setPwdSaved(false)
+    try {
+      await onChangePassword(currentPassword, newPassword)
+      setPwdSaved(true)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (changeError) {
+      const code = (changeError as { code?: string }).code
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setPwdError('Le mot de passe actuel est incorrect.')
+      } else if (code === 'auth/requires-recent-login') {
+        setPwdError('Reconnecte-toi puis réessaie (session trop ancienne).')
+      } else {
+        setPwdError(firebaseErrorMessage(changeError))
+      }
+    } finally {
+      setPwdBusy(false)
+    }
+  }
+
   return (
     <section className="profile-view">
       <header className="page-heading">
@@ -644,6 +719,92 @@ function ProfileView({
           <button className="portal-primary" disabled={busy} type="submit">{saved ? <Check size={17} /> : <UserRound size={17} />}{busy ? 'Enregistrement...' : saved ? 'Profil enregistré' : 'Enregistrer le profil'}</button>
         </form>
       </div>
+
+      {canChangePassword ? (
+        <div className="profile-password">
+          <div className="profile-password-text">
+            <h3>Mot de passe</h3>
+            <p>Modifie le mot de passe de connexion de ton compte.</p>
+          </div>
+          <form className="profile-password-form" onSubmit={submitPassword}>
+            <label>
+              <span>Mot de passe actuel</span>
+              <div className="input-shell">
+                <KeyRound size={17} />
+                <input
+                  autoComplete="current-password"
+                  required
+                  type={showPwd ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+                <button
+                  aria-label={showPwd ? 'Masquer les mots de passe' : 'Afficher les mots de passe'}
+                  className="password-visibility"
+                  type="button"
+                  onClick={() => setShowPwd((visible) => !visible)}
+                >
+                  {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+            </label>
+            <label>
+              <span>Nouveau mot de passe</span>
+              <div className="input-shell">
+                <KeyRound size={17} />
+                <input
+                  autoComplete="new-password"
+                  minLength={12}
+                  required
+                  type={showPwd ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+              </div>
+            </label>
+            {newPassword ? (
+              <ul className="password-rules" aria-label="Règles du mot de passe">
+                {pwdChecks.map((check) => (
+                  <li className={check.valid ? 'valid' : ''} key={check.label}>
+                    <Check aria-hidden="true" size={13} />
+                    {check.label}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <label>
+              <span>Confirmer le nouveau mot de passe</span>
+              <div className="input-shell">
+                <KeyRound size={17} />
+                <input
+                  autoComplete="new-password"
+                  minLength={12}
+                  required
+                  type={showPwd ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+              </div>
+              {confirmPassword ? (
+                <small className={pwdMatch ? 'password-match valid' : 'password-match'}>
+                  {pwdMatch
+                    ? 'Les mots de passe correspondent.'
+                    : 'Les mots de passe ne correspondent pas.'}
+                </small>
+              ) : null}
+            </label>
+            {pwdError ? <p className="auth-error">{pwdError}</p> : null}
+            <button className="portal-primary" disabled={pwdBusy} type="submit">
+              {pwdSaved ? <Check size={17} /> : <KeyRound size={17} />}
+              {pwdBusy
+                ? 'Modification...'
+                : pwdSaved
+                  ? 'Mot de passe modifié'
+                  : 'Modifier le mot de passe'}
+            </button>
+          </form>
+        </div>
+      ) : null}
 
       <div className="profile-danger">
         <div className="profile-danger-text">
@@ -917,11 +1078,15 @@ function DashboardShell({
   onLogout,
   onSaveProfile,
   onSavePhoto,
+  canChangePassword,
+  onChangePassword,
 }: {
   user: PortalUser
   onLogout: () => void
   onSaveProfile: (user: PortalUser) => Promise<void>
   onSavePhoto: (photoURL: string) => Promise<void>
+  canChangePassword: boolean
+  onChangePassword: (current: string, next: string) => Promise<void>
 }) {
   const [view, setView] = useState<PortalView>(currentView)
   const [hikes, setHikes] = useState<PortalHike[]>([])
@@ -1230,7 +1395,13 @@ function DashboardShell({
           {view === 'settings' ? (
             <SettingsView />
           ) : view === 'profile' ? (
-            <ProfileView user={profile} onSave={saveProfile} onSavePhoto={savePhoto} />
+            <ProfileView
+              user={profile}
+              onSave={saveProfile}
+              onSavePhoto={savePhoto}
+              canChangePassword={canChangePassword}
+              onChangePassword={onChangePassword}
+            />
           ) : view === 'plans' ? (
             <PlansView currentPlanId={profile.plan ?? DEFAULT_PLAN_ID} />
           ) : view === 'traces' ? (
@@ -1464,6 +1635,7 @@ function FirebaseAuthScreen({
   const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
   const checks = passwordChecks(password)
   const passwordIsStrong = checks.every((check) => check.valid)
   const passwordsMatch = password === passwordConfirmation
@@ -1471,9 +1643,37 @@ function FirebaseAuthScreen({
   const changeMode = (nextMode: 'login' | 'signup') => {
     setMode(nextMode)
     setError(null)
+    setResetSent(false)
     setPasswordConfirmation('')
     setShowPassword(false)
     setShowPasswordConfirmation(false)
+  }
+
+  // Mot de passe oublié : Firebase envoie le lien de réinitialisation. On ne
+  // révèle jamais si l'email existe (anti-énumération) : compte introuvable =
+  // même message de succès générique.
+  const handleForgotPassword = async () => {
+    if (!auth) return
+    const target = email.trim()
+    if (!target) {
+      setError('Entre ton email ci-dessus pour recevoir le lien de réinitialisation.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setResetSent(false)
+    try {
+      await sendPasswordResetEmail(auth, target)
+      setResetSent(true)
+    } catch (resetError) {
+      if ((resetError as { code?: string }).code === 'auth/user-not-found') {
+        setResetSent(true)
+      } else {
+        setError(firebaseErrorMessage(resetError))
+      }
+    } finally {
+      setBusy(false)
+    }
   }
 
   const run = async (action: () => Promise<unknown>) => {
@@ -1518,7 +1718,7 @@ function FirebaseAuthScreen({
         })
         // Envoi du lien de vérification : l'accès au compte reste bloqué tant
         // que l'email n'est pas validé (géré dans FirebasePortal).
-        await sendEmailVerification(credential.user)
+        await requestEmailVerification(credential.user)
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password)
       }
@@ -1603,6 +1803,22 @@ function FirebaseAuthScreen({
                 </button>
               </div>
             </label>
+            {mode === 'login' ? (
+              <button
+                className="auth-forgot"
+                disabled={busy}
+                type="button"
+                onClick={() => void handleForgotPassword()}
+              >
+                Mot de passe oublié ?
+              </button>
+            ) : null}
+            {resetSent ? (
+              <p className="auth-success-note">
+                Si un compte existe pour cet email, un lien de réinitialisation
+                vient d'être envoyé. Pense à vérifier tes spams.
+              </p>
+            ) : null}
             {mode === 'signup' ? (
               <>
                 <ul className="password-rules" aria-label="Règles du mot de passe">
@@ -2028,7 +2244,7 @@ function FirebasePortal() {
           return verified
         }}
         onResend={async () => {
-          await sendEmailVerification(session.firebaseUser)
+          await requestEmailVerification(session.firebaseUser)
         }}
       />
     )
@@ -2133,6 +2349,17 @@ function FirebasePortal() {
             firebaseUser: session.firebaseUser,
             portalUser: { ...session.portalUser, photoURL },
           })
+        }}
+        canChangePassword={session.firebaseUser.providerData.some(
+          (provider) => provider.providerId === 'password',
+        )}
+        onChangePassword={async (current, next) => {
+          const fbUser = session.firebaseUser
+          if (!fbUser.email) throw new Error('Email du compte introuvable.')
+          // Réauthentification obligatoire avant une opération sensible, puis MAJ.
+          const credential = EmailAuthProvider.credential(fbUser.email, current)
+          await reauthenticateWithCredential(fbUser, credential)
+          await updatePassword(fbUser, next)
         }}
       />
     </>

@@ -27,6 +27,8 @@ import {
   userStorageRoot,
 } from '../../server/trailStorage.js'
 import { PLAN_STORAGE_LIMITS } from '../../server/plans.js'
+import { emailConfigured, sendEmail } from '../../server/email.js'
+import { moderationEmailHtml } from '../../server/emailTemplates.js'
 import type { AuthedUser } from '../../server/firebaseAdmin.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
@@ -58,6 +60,22 @@ const emailOf = async (uid: string | null): Promise<string | null> => {
   }
 }
 
+// Double une notification de modération in-app par un email (si un fournisseur
+// est configuré et qu'on a l'adresse). Best-effort : ne bloque jamais l'action.
+const notifyByEmail = async (
+  to: string | null,
+  heading: string,
+  message: string,
+  mapTitle?: string,
+): Promise<void> => {
+  if (!to || !message || !emailConfigured()) return
+  await sendEmail({
+    to,
+    subject: heading,
+    html: moderationEmailHtml(heading, message, mapTitle),
+  })
+}
+
 // Coupe le pointeur public si la carte active fait partie des dossiers visés.
 const clearActiveIfRemoved = async (folders: string[]): Promise<void> => {
   if (folders.length === 0) return
@@ -82,6 +100,7 @@ const handleMap = async (admin: AuthedUser, body: ActionBody) => {
   }
   const folder = trailFolder(code)
   const owner = await ownerForFolder(folder)
+  const ownerEmail = await emailOf(owner)
   const mapTitle = body.title?.trim() || code
   const message = body.message?.trim() ?? ''
 
@@ -92,7 +111,7 @@ const handleMap = async (admin: AuthedUser, body: ActionBody) => {
       mapCode: code,
       mapTitle,
       ownerId: owner ?? '',
-      ownerEmail: await emailOf(owner),
+      ownerEmail,
       adminUid: admin.uid,
       adminEmail: admin.email,
       message,
@@ -111,6 +130,7 @@ const handleMap = async (admin: AuthedUser, body: ActionBody) => {
         mapTitle,
         createdAt: new Date().toISOString(),
       })
+      await notifyByEmail(ownerEmail, 'Votre carte a été dépubliée', message, mapTitle)
     }
     await logSanction('unpublish')
     return json({ code, op, status: 'draft' })
@@ -127,6 +147,7 @@ const handleMap = async (admin: AuthedUser, body: ActionBody) => {
       mapTitle,
       createdAt: new Date().toISOString(),
     })
+    await notifyByEmail(ownerEmail, 'Votre carte a été supprimée', message, mapTitle)
   }
   await logSanction('delete')
   return json({ code, op, deleted: true })
@@ -192,6 +213,7 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
       message,
       createdAt: new Date().toISOString(),
     })
+    await notifyByEmail(targetEmail, 'Votre compte Relieo a été bloqué', message)
     await logSanction('block')
     return json({ uid, op, status: 'blocked', banCount: current.banCount + 1 })
   }
@@ -246,6 +268,7 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
       message,
       createdAt: new Date().toISOString(),
     })
+    await notifyByEmail(targetEmail, 'Votre compte Relieo a été supprimé', message)
   }
   if (body.notifId) await markAdminNotificationsRead([body.notifId])
   await logSanction('delete-account')

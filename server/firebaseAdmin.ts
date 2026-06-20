@@ -126,3 +126,25 @@ export const verifyRequestUser = async (
     return null
   }
 }
+
+// Décode l'ID token SANS exiger la vérification de l'email. Réservé aux actions
+// accessibles à un compte tout juste créé (ex. envoi du mail de vérification) :
+// pour le reste, utiliser `verifyRequestUser` qui, lui, impose `email_verified`.
+export const decodeRequestUser = async (
+  request: Request,
+): Promise<{ uid: string; email: string | null; emailVerified: boolean } | null> => {
+  if (!hasFirebaseAdmin()) return null
+  const header = request.headers.get('authorization') ?? ''
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  if (!match) return null
+  try {
+    const decoded = await getAuth(adminApp()).verifyIdToken(match[1].trim())
+    return {
+      uid: decoded.uid,
+      email: decoded.email ?? null,
+      emailVerified: decoded.email_verified === true,
+    }
+  } catch {
+    return null
+  }
+}

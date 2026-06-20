@@ -1,12 +1,15 @@
 import { getAuth } from 'firebase-admin/auth'
 import {
   adminApp,
+  decodeRequestUser,
   hasFirebaseAdmin,
   verifyRequestUser,
 } from '../server/firebaseAdmin.js'
 import { hasR2Config } from '../server/r2.js'
 import { appendAppeal, readModeration, setModeration } from '../server/moderation.js'
 import { appendAdminNotification } from '../server/adminNotifications.js'
+import { emailConfigured, sendEmail } from '../server/email.js'
+import { verificationEmailHtml } from '../server/emailTemplates.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -14,7 +17,7 @@ const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: jsonHeaders })
 
 type AccountBody = {
-  action?: 'appeal' | 'finalize-deletion' | 'request-deletion'
+  action?: 'appeal' | 'finalize-deletion' | 'request-deletion' | 'send-verification'
   message?: string
 }
 
@@ -27,13 +30,40 @@ export async function POST(request: Request) {
   if (!hasFirebaseAdmin()) {
     return json({ message: 'Service indisponible.' }, 503)
   }
-  const user = await verifyRequestUser(request)
-  if (!user) {
-    return json({ message: 'Connexion requise.' }, 401)
-  }
+
+  const body = (await request.json().catch(() => ({}))) as AccountBody
 
   try {
-    const body = (await request.json().catch(() => ({}))) as AccountBody
+    // Envoi du mail de vérification : accessible à un compte tout juste créé,
+    // donc on décode le token SANS exiger email_verified. Si Resend n'est pas
+    // configuré (ou échoue), on renvoie `fallback` pour que le client retombe
+    // sur l'envoi natif de Firebase. Zéro régression tant que la clé manque.
+    if (body.action === 'send-verification') {
+      const account = await decodeRequestUser(request)
+      if (!account || !account.email) {
+        return json({ message: 'Connexion requise.' }, 401)
+      }
+      if (account.emailVerified) {
+        return json({ alreadyVerified: true })
+      }
+      if (!emailConfigured()) {
+        return json({ sent: false, fallback: true })
+      }
+      const link = await getAuth(adminApp()).generateEmailVerificationLink(
+        account.email,
+      )
+      const sent = await sendEmail({
+        to: account.email,
+        subject: 'Confirmez votre adresse pour Relieo',
+        html: verificationEmailHtml(link),
+      })
+      return json({ sent, fallback: !sent })
+    }
+
+    const user = await verifyRequestUser(request)
+    if (!user) {
+      return json({ message: 'Connexion requise.' }, 401)
+    }
 
     if (body.action === 'finalize-deletion') {
       const moderation = await readModeration(user.uid)

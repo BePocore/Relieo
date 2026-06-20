@@ -1993,6 +1993,37 @@ body.portal-active.tracker-scroll-active #root {
   font-size: 12px;
 }
 
+.auth-forgot {
+  justify-self: end;
+  margin-top: -6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-forgot:hover {
+  text-decoration: underline;
+}
+
+.auth-forgot:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.auth-success-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .auth-device-warning {
   margin: 0;
   padding: 11px 12px;
@@ -2836,6 +2867,47 @@ body.portal-active.tracker-scroll-active #root {
 .portal-notif-ok:hover { background: var(--c-accent-strong); }
 
 /* ── Zone danger du profil (demande de suppression) ─────────────── */
+.profile-password {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  background: var(--c-surface);
+  display: grid;
+  gap: 16px;
+}
+
+.profile-password-text h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--c-text);
+}
+
+.profile-password-text p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--c-text-dim);
+  line-height: 1.45;
+}
+
+.profile-password-form {
+  display: grid;
+  gap: 13px;
+  max-width: 460px;
+}
+
+.profile-password-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--c-text-dim);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-password-form .portal-primary {
+  justify-self: start;
+}
+
 .profile-danger {
   margin-top: 24px;
   padding: 20px;
