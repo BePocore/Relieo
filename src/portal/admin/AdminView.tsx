@@ -16,11 +16,13 @@ import {
   Map as MapIcon,
   Mail,
   RefreshCw,
+  Scale,
   ShieldCheck,
   Trash2,
   TrendingUp,
   Unlock,
   Users,
+  Wallet,
 } from 'lucide-react'
 import type { PortalUser } from '../portalStore'
 import { getIdToken } from '../firebase'
@@ -111,6 +113,7 @@ type EmailUsage = {
 
 type AdminSection =
   | 'overview'
+  | 'costs'
   | 'users'
   | 'maps'
   | 'sanctions'
@@ -119,11 +122,26 @@ type AdminSection =
 
 const SECTION_TITLES: Record<AdminSection, string> = {
   overview: 'Vue d’ensemble',
+  costs: 'Coûts',
   users: 'Utilisateurs',
   maps: 'Cartes',
   sanctions: 'Sanctions',
   notifications: 'Notifications',
   storage: 'Stockage R2',
+}
+
+type CostPlatform = {
+  id: string
+  name: string
+  detail: string
+  model: 'usage' | 'free' | 'fixed'
+  monthlyEur: number
+  renewsAt: string | null
+}
+
+type Costs = {
+  platforms: CostPlatform[]
+  totalMonthlyEur: number
 }
 
 const formatDateTime = (value: string): string =>
@@ -210,6 +228,7 @@ export function AdminApp({
   const [section, setSection] = useState<AdminSection>('overview')
   const [overview, setOverview] = useState<Overview | null>(null)
   const [email, setEmail] = useState<EmailUsage | null>(null)
+  const [costs, setCosts] = useState<Costs | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [maps, setMaps] = useState<AdminMap[]>([])
   const [sanctions, setSanctions] = useState<Sanction[]>([])
@@ -265,6 +284,7 @@ export function AdminApp({
         sanctions: Sanction[]
         notifications: AdminNotification[]
         email: EmailUsage
+        costs: Costs
       }
       setOverview(data.overview)
       setUsers(data.users)
@@ -272,6 +292,7 @@ export function AdminApp({
       setSanctions(data.sanctions)
       setNotifications(data.notifications)
       setEmail(data.email)
+      setCosts(data.costs)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -467,6 +488,7 @@ export function AdminApp({
 
   const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode; badge?: number }> = [
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
+    { id: 'costs', label: 'Coûts', icon: <Wallet size={18} /> },
     { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
     { id: 'maps', label: 'Cartes', icon: <MapIcon size={18} /> },
     { id: 'sanctions', label: 'Sanctions', icon: <Gavel size={18} /> },
@@ -1106,6 +1128,110 @@ export function AdminApp({
     </section>
   )
 
+  const costsView = (() => {
+    const totalCosts = costs?.totalMonthlyEur ?? 0
+    const mrr = analytics.mrr
+    const balance = mrr - totalCosts
+    const topConsumers = [...users]
+      .filter((u) => !u.isAdmin && u.usedBytes > 0)
+      .sort((a, b) => b.monthlyCostEur - a.monthlyCostEur)
+      .slice(0, 5)
+    const modelLabel = (model: CostPlatform['model']) =>
+      model === 'usage' ? 'À l’usage' : model === 'fixed' ? 'Fixe' : 'Gratuit'
+    return (
+      <>
+        <section className="admin-stats" aria-label="Balance budgétaire">
+          <article className="admin-stat-card featured">
+            <span><Scale size={18} /></span>
+            <p>Balance mensuelle</p>
+            <strong style={{ color: balance >= 0 ? '#9be7c4' : '#ffb3ad' }}>
+              {formatEur(balance)}
+            </strong>
+            <small>
+              {balance >= 0 ? 'Bénéfice' : 'Perte'} · {formatEur(balance * 12)}/an
+            </small>
+          </article>
+          <article className="admin-stat-card">
+            <span><Euro size={18} /></span>
+            <p>Revenus / mois</p>
+            <strong>{formatEur(mrr)}</strong>
+            <small>MRR des forfaits payants</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><Wallet size={18} /></span>
+            <p>Coûts / mois</p>
+            <strong>{formatEur(totalCosts)}</strong>
+            <small>toutes plateformes</small>
+          </article>
+        </section>
+
+        <section className="admin-panel" aria-label="Coûts par plateforme">
+          <header className="admin-panel-head">
+            <h2><Database size={18} /> Coûts par plateforme</h2>
+            <p>Calculés depuis l’usage réel ou les abonnements connus. Aucune saisie manuelle.</p>
+          </header>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr><th>Plateforme</th><th>Type</th><th>Détail</th><th>Coût / mois</th></tr>
+              </thead>
+              <tbody>
+                {(costs?.platforms ?? []).map((p) => (
+                  <tr key={p.id}>
+                    <td><strong>{p.name}</strong></td>
+                    <td>{modelLabel(p.model)}</td>
+                    <td>
+                      {p.detail}
+                      {p.renewsAt ? ` · échéance ${formatDate(p.renewsAt)}` : ''}
+                    </td>
+                    <td>
+                      {p.model === 'free' && p.monthlyEur === 0
+                        ? 'Gratuit'
+                        : formatEur(p.monthlyEur)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3}><strong>Total mensuel</strong></td>
+                  <td><strong>{formatEur(totalCosts)}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <section className="admin-panel" aria-label="R2 top consommateurs">
+          <header className="admin-panel-head">
+            <h2><HardDrive size={18} /> R2 : top consommateurs</h2>
+            <p>Les comptes qui pèsent le plus dans le coût de stockage.</p>
+          </header>
+          {topConsumers.length > 0 ? (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Utilisateur</th><th>Stockage</th><th>Coût / mois</th></tr>
+                </thead>
+                <tbody>
+                  {topConsumers.map((u) => (
+                    <tr key={u.uid}>
+                      <td>{u.name || u.email || u.uid}</td>
+                      <td>{formatBytes(u.usedBytes)}</td>
+                      <td>{formatEur(u.monthlyCostEur)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="admin-empty">Aucun stockage facturé pour l’instant.</p>
+          )}
+        </section>
+      </>
+    )
+  })()
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -1167,6 +1293,8 @@ export function AdminApp({
               {revenuePanel}
               {growthPanel}
             </>
+          ) : section === 'costs' ? (
+            costsView
           ) : section === 'users' ? (
             usersTable
           ) : section === 'maps' ? (

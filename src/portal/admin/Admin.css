@@ -479,6 +479,14 @@
 @media (max-width: 640px) {
   .admin-email-quotas { grid-template-columns: 1fr; }
 }
+
+/* Pied de tableau (totaux), ex. onglet Coûts */
+.admin-table tfoot td {
+  padding: 12px 14px;
+  border-top: 2px solid var(--admin-line);
+  background: var(--admin-green-soft);
+  color: var(--admin-ink);
+}
 .admin-mini-card {
   display: flex;
   flex-direction: column;

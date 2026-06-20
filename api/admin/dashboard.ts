@@ -17,6 +17,7 @@ import {
   EMAIL_MONTHLY_LIMIT,
   readEmailUsage,
 } from '../../server/emailUsage.js'
+import { FIXED_COSTS } from '../../server/costs.js'
 import { userStorageRoot } from '../../server/trailStorage.js'
 import {
   DEFAULT_PLAN_ID,
@@ -186,8 +187,56 @@ export async function GET(request: Request) {
       updatedAt: emailUsage?.updatedAt ?? null,
     }
 
+    // --- Coûts par plateforme (vérité : calculés ou abonnements connus) ---
+    const costPlatforms = [
+      {
+        id: 'r2',
+        name: 'Cloudflare R2',
+        detail: 'Stockage des médias et cartes',
+        model: 'usage' as const,
+        monthlyEur: overview.monthlyCostEur,
+        renewsAt: null as string | null,
+      },
+      ...FIXED_COSTS.map((cost) => ({
+        id: cost.id,
+        name: cost.name,
+        detail: cost.detail,
+        model: 'fixed' as const,
+        monthlyEur: cost.yearlyEur / 12,
+        renewsAt: cost.renewsAt ?? null,
+      })),
+      {
+        id: 'firebase',
+        name: 'Firebase',
+        detail: 'Auth + Firestore (plan Spark gratuit)',
+        model: 'free' as const,
+        monthlyEur: 0,
+        renewsAt: null as string | null,
+      },
+      {
+        id: 'vercel',
+        name: 'Vercel',
+        detail: 'Hébergement (plan Hobby gratuit)',
+        model: 'free' as const,
+        monthlyEur: 0,
+        renewsAt: null as string | null,
+      },
+      {
+        id: 'resend',
+        name: 'Resend',
+        detail: 'Emails (gratuit, 3000/mois)',
+        model: 'free' as const,
+        monthlyEur: 0,
+        renewsAt: null as string | null,
+      },
+    ]
+    const costs = {
+      platforms: costPlatforms,
+      totalMonthlyEur: costPlatforms.reduce((sum, p) => sum + p.monthlyEur, 0),
+    }
+
     return Response.json(
-      { overview, users: allUsers, maps, sanctions, notifications, email },
+      { overview, users: allUsers, maps, sanctions, notifications, email, costs },
       { headers: jsonHeaders },
     )
   } catch (error) {
