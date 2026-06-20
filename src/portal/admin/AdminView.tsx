@@ -427,10 +427,10 @@ export function AdminApp({
     }
   }
 
-  // Revenus + évolution des inscriptions, dérivés de la liste des utilisateurs
-  // (l'admin est exclu, il ne paie pas et ne compte pas comme client).
+  // Revenus + évolution des inscriptions, dérivés de la liste des utilisateurs.
+  // On exclut l'admin (ne paie pas) et les comptes supprimés (plus d'abonnement).
   const analytics = useMemo(() => {
-    const clients = users.filter((u) => !u.isAdmin)
+    const clients = users.filter((u) => !u.isAdmin && u.status !== 'deleted')
     const priceOf = (planId: string) =>
       PLANS.find((p) => p.id === planId)?.monthlyPriceEur ?? 0
 
@@ -1000,15 +1000,19 @@ export function AdminApp({
       <article className="admin-storage-card">
         <h2>Top consommateurs</h2>
         <ul className="admin-top-users">
-          {users.filter((u) => !u.internal).slice(0, 8).map((u) => (
-            <li key={u.uid}>
-              <span>{u.name || u.email || u.uid}</span>
-              <strong>{formatBytes(u.usedBytes)}</strong>
-              <small>{formatEur(u.monthlyCostEur)}/mois</small>
-            </li>
-          ))}
-          {users.filter((u) => !u.internal).length === 0 ? (
-            <li className="admin-empty">Aucun utilisateur facturable.</li>
+          {users
+            .filter((u) => !u.internal && u.usedBytes > 0)
+            .sort((a, b) => b.usedBytes - a.usedBytes)
+            .slice(0, 8)
+            .map((u) => (
+              <li key={u.uid}>
+                <span>{u.name || u.email || u.uid}</span>
+                <strong>{formatBytes(u.usedBytes)}</strong>
+                <small>{formatEur(u.monthlyCostEur)}/mois</small>
+              </li>
+            ))}
+          {users.filter((u) => !u.internal && u.usedBytes > 0).length === 0 ? (
+            <li className="admin-empty">Aucun consommateur pour l’instant.</li>
           ) : null}
         </ul>
       </article>
