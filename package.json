@@ -19,8 +19,7 @@
     "maplibre-gl": "^5.24.0",
     "pannellum": "^2.5.7",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "resend": "^6.14.0"
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

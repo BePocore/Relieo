@@ -11,6 +11,12 @@ import { readAllProfiles } from '../../server/firestoreAdmin.js'
 import { readAllModeration } from '../../server/moderation.js'
 import { readSanctions } from '../../server/sanctions.js'
 import { readAdminNotifications } from '../../server/adminNotifications.js'
+import { emailConfigured } from '../../server/email.js'
+import {
+  EMAIL_DAILY_LIMIT,
+  EMAIL_MONTHLY_LIMIT,
+  readEmailUsage,
+} from '../../server/emailUsage.js'
 import { userStorageRoot } from '../../server/trailStorage.js'
 import {
   DEFAULT_PLAN_ID,
@@ -41,16 +47,25 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [authList, hikes, profiles, moderation, totalBytes, sanctions, notifications] =
-      await Promise.all([
-        getAuth(adminApp()).listUsers(1000),
-        readHikeIndex(),
-        readAllProfiles(),
-        readAllModeration(),
-        r2StorageUsage(),
-        readSanctions(),
-        readAdminNotifications(),
-      ])
+    const [
+      authList,
+      hikes,
+      profiles,
+      moderation,
+      totalBytes,
+      sanctions,
+      notifications,
+      emailUsage,
+    ] = await Promise.all([
+      getAuth(adminApp()).listUsers(1000),
+      readHikeIndex(),
+      readAllProfiles(),
+      readAllModeration(),
+      r2StorageUsage(),
+      readSanctions(),
+      readAdminNotifications(),
+      readEmailUsage(),
+    ])
 
     // --- Vue d'ensemble ---
     const publishedCount = hikes.filter((h) => h.status === 'published').length
@@ -161,8 +176,18 @@ export async function GET(request: Request) {
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       )
 
+    // --- Consommation d'emails (Resend) ---
+    const email = {
+      configured: emailConfigured(),
+      dailyUsed: emailUsage?.dailyUsed ?? null,
+      dailyLimit: EMAIL_DAILY_LIMIT,
+      monthlyUsed: emailUsage?.monthlyUsed ?? null,
+      monthlyLimit: EMAIL_MONTHLY_LIMIT,
+      updatedAt: emailUsage?.updatedAt ?? null,
+    }
+
     return Response.json(
-      { overview, users: allUsers, maps, sanctions, notifications },
+      { overview, users: allUsers, maps, sanctions, notifications, email },
       { headers: jsonHeaders },
     )
   } catch (error) {

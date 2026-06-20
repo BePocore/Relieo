@@ -100,6 +100,15 @@ type Overview = {
   monthlyCostEur: number
 }
 
+type EmailUsage = {
+  configured: boolean
+  dailyUsed: number | null
+  dailyLimit: number
+  monthlyUsed: number | null
+  monthlyLimit: number
+  updatedAt: string | null
+}
+
 type AdminSection =
   | 'overview'
   | 'users'
@@ -161,6 +170,36 @@ const authFetch = async (
   })
 }
 
+// Jauge de consommation d'emails (utilisé / limite) avec code couleur.
+function EmailQuotaBar({
+  label,
+  used,
+  limit,
+}: {
+  label: string
+  used: number | null
+  limit: number
+}) {
+  const known = typeof used === 'number'
+  const pct = known ? Math.min(100, Math.round((used / limit) * 100)) : 0
+  const level = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : 'ok'
+  return (
+    <div className="admin-email-quota">
+      <div className="admin-email-quota-head">
+        <span>{label}</span>
+        <strong>{known ? `${used} / ${limit}` : `— / ${limit}`}</strong>
+      </div>
+      <div className="admin-email-bar">
+        <div
+          className={`admin-email-bar-fill ${level}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <small>{known ? `${pct}%` : 'En attente de données'}</small>
+    </div>
+  )
+}
+
 export function AdminApp({
   user,
   onLogout,
@@ -170,6 +209,7 @@ export function AdminApp({
 }) {
   const [section, setSection] = useState<AdminSection>('overview')
   const [overview, setOverview] = useState<Overview | null>(null)
+  const [email, setEmail] = useState<EmailUsage | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [maps, setMaps] = useState<AdminMap[]>([])
   const [sanctions, setSanctions] = useState<Sanction[]>([])
@@ -224,12 +264,14 @@ export function AdminApp({
         maps: AdminMap[]
         sanctions: Sanction[]
         notifications: AdminNotification[]
+        email: EmailUsage
       }
       setOverview(data.overview)
       setUsers(data.users)
       setMaps(data.maps)
       setSanctions(data.sanctions)
       setNotifications(data.notifications)
+      setEmail(data.email)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -999,6 +1041,36 @@ export function AdminApp({
     </section>
   )
 
+  const emailPanel = (
+    <section className="admin-panel" aria-label="Emails Resend">
+      <header className="admin-panel-head">
+        <h2><Mail size={18} /> Emails (Resend)</h2>
+        <p>
+          {email?.configured
+            ? 'Consommation du compte (transactionnel + marketing), lue chez Resend.'
+            : 'Fournisseur non configuré : aucun email envoyé via Resend pour l’instant.'}
+        </p>
+      </header>
+      <div className="admin-email-quotas">
+        <EmailQuotaBar
+          label="Aujourd’hui"
+          used={email?.dailyUsed ?? null}
+          limit={email?.dailyLimit ?? 100}
+        />
+        <EmailQuotaBar
+          label="Ce mois"
+          used={email?.monthlyUsed ?? null}
+          limit={email?.monthlyLimit ?? 3000}
+        />
+      </div>
+      <p className="admin-email-foot">
+        {email?.updatedAt
+          ? `Dernière mesure : ${formatDateTime(email.updatedAt)}. Le compteur se met à jour à chaque envoi de l’app ; la page Usage de Resend reste la source temps réel.`
+          : 'Aucune mesure encore : les compteurs apparaîtront au premier envoi.'}
+      </p>
+    </section>
+  )
+
   const growthPanel = (
     <section className="admin-panel" aria-label="Évolution des utilisateurs">
       <header className="admin-panel-head admin-panel-head-row">
@@ -1091,6 +1163,7 @@ export function AdminApp({
             <>
               {statCards}
               {storagePanels}
+              {emailPanel}
               {revenuePanel}
               {growthPanel}
             </>
