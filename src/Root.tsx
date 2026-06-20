@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import { DevGate } from './DevGate.tsx'
 
 const App = lazy(() => import('./App.tsx'))
 const PortalApp = lazy(() => import('./portal/PortalApp.tsx'))
@@ -17,6 +18,10 @@ const isMapRoute = (): boolean => {
 
 export function Root() {
   return (
-    <Suspense fallback={null}>{isMapRoute() ? <App /> : <PortalApp />}</Suspense>
+    <DevGate>
+      <Suspense fallback={null}>
+        {isMapRoute() ? <App /> : <PortalApp />}
+      </Suspense>
+    </DevGate>
   )
 }
