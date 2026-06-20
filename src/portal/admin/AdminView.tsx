@@ -493,7 +493,6 @@ export function AdminApp({
     { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
     { id: 'maps', label: 'Cartes', icon: <MapIcon size={18} /> },
     { id: 'sanctions', label: 'Sanctions', icon: <Gavel size={18} /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell size={18} />, badge: unreadCount },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
   ]
 
@@ -1274,6 +1273,18 @@ export function AdminApp({
             <h1>{SECTION_TITLES[section]}</h1>
           </div>
           <div className="admin-topbar-right">
+            <button
+              className={`admin-topbar-bell${section === 'notifications' ? ' active' : ''}`}
+              type="button"
+              title="Notifications"
+              aria-label="Notifications"
+              onClick={() => setSection('notifications')}
+            >
+              <Bell size={18} />
+              {unreadCount > 0 ? (
+                <span className="admin-topbar-bell-badge">{unreadCount}</span>
+              ) : null}
+            </button>
             <button className="admin-refresh" disabled={loading} type="button" onClick={() => void load()}>
               <RefreshCw size={16} /> Actualiser
             </button>

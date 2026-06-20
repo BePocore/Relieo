@@ -480,6 +480,46 @@
   .admin-email-quotas { grid-template-columns: 1fr; }
 }
 
+/* Cloche de notifications dans la barre du haut (console admin) */
+.admin-topbar-bell {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--admin-line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--admin-ink);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.admin-topbar-bell:hover {
+  background: var(--admin-green-soft);
+}
+.admin-topbar-bell.active {
+  border-color: var(--admin-green);
+  color: var(--admin-green);
+  background: var(--admin-green-soft);
+}
+.admin-topbar-bell-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 /* Pied de tableau (totaux), ex. onglet Coûts */
 .admin-table tfoot td {
   padding: 12px 14px;
