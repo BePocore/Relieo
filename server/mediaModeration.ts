@@ -1,4 +1,4 @@
-import { mediaBaseUrl, r2GetText, r2PutText } from './r2.js'
+import { mediaBaseUrl, r2GetText, r2KeyFromPublicUrl, r2PutText } from './r2.js'
 
 // Pendant Vercel de l'état de modération écrit par le videur (cf. worker/src/moderation.ts et
 // docs/STORAGE-moderation.md). Sert au filtrage public (api/project), à la console admin (lecture +
@@ -34,6 +34,21 @@ export type ModerationUsage = {
   month: string
   monthOps: number
   updatedAt: string
+}
+
+// Rapport d'un passage de scan, renvoyé par le videur (voir worker/src/scan.ts:ScanReport).
+// Affiché par la console admin après un clic sur « Lancer un scan ».
+export type ScanReport = {
+  ok: boolean
+  reason?: string
+  processed: number
+  flagged: number
+  videosSubmitted: number
+  seeded: number
+  skipped: number
+  capReached: boolean
+  dayOps: number
+  monthOps: number
 }
 
 // "1" = blocage fail-closed actif (identique au flag MODERATION_ENFORCE du videur). Tant que c'est
@@ -102,24 +117,25 @@ export const approveModerationItem = async (
 }
 
 /**
- * Rejeter : non conforme. Passe l'entrée en `rejected` (bloquée même pour le propriétaire). La
- * suppression R2 + carte + notifs se fait dans l'action admin. Renvoie l'entrée mise à jour.
+ * Rejeter : non conforme. Passe en `rejected` (bloqué même pour le propriétaire) toutes les entrées
+ * dont l'id est dans `ids` (l'original ET sa vignette s'ils ont été flaggés tous les deux). La
+ * suppression R2 + carte + notifs se fait dans l'action admin. Idempotent.
  */
-export const rejectModerationItem = async (
-  id: string,
+export const rejectModerationItems = async (
+  ids: string[],
   reviewedBy: string,
-): Promise<MediaModerationEntry | null> => {
+): Promise<void> => {
+  const target = new Set(ids)
   const items = await readModerationItems()
-  const index = items.findIndex((item) => item.id === id)
-  if (index < 0) return null
-  items[index] = {
-    ...items[index],
-    status: 'rejected',
-    reviewedAt: new Date().toISOString(),
-    reviewedBy,
-  }
-  await writeModerationItems(items)
-  return items[index]
+  if (!items.some((item) => target.has(item.id))) return
+  const reviewedAt = new Date().toISOString()
+  await writeModerationItems(
+    items.map((item) =>
+      target.has(item.id)
+        ? { ...item, status: 'rejected', reviewedAt, reviewedBy }
+        : item,
+    ),
+  )
 }
 
 export const readModerationUsage = async (): Promise<ModerationUsage | null> => {
@@ -160,5 +176,79 @@ export const signalModerationScan = async (ids: string[] = []): Promise<void> =>
     // best-effort : panne réseau ou timeout, le scan de fond rattrapera.
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+/**
+ * Lance un scan À LA DEMANDE (bouton admin) et ATTEND le rapport du videur. Contrairement à
+ * `signalModerationScan` (fire-and-forget de la publication), on lit la réponse pour l'afficher.
+ * Timeout ~9 s (limite d'une fonction Vercel Hobby) : si le scan dépasse, on renvoie null et le
+ * videur continue en arrière-plan (le scan est incrémental, rien n'est perdu). Renvoie null aussi
+ * tant que `MODERATION_SIGNAL_SECRET` n'est pas configuré (modération non activée).
+ */
+export const triggerModerationScan = async (): Promise<ScanReport | null> => {
+  const secret = process.env.MODERATION_SIGNAL_SECRET
+  if (!secret) return null
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 9000)
+  try {
+    const response = await fetch(
+      `${mediaBaseUrl()}/_moderation/scan?token=${encodeURIComponent(secret)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [] }),
+        signal: controller.signal,
+      },
+    )
+    if (!response.ok) return null
+    return (await response.json()) as ScanReport
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+type FilterableProject = {
+  mediaLibrary?: Array<{ url?: string; thumbnailUrl?: string; [key: string]: unknown }>
+  points?: Array<{ image?: string; video?: string; [key: string]: unknown }>
+  [key: string]: unknown
+}
+
+/**
+ * Couche 2 (confort d'affichage) : retire d'un projet, À LA LECTURE PUBLIQUE, les médias qui ne sont
+ * pas servables (non scannés ou flaggés), pour ne pas laisser de marqueur vide chez le visiteur. La
+ * vraie barrière reste le videur (refus d'octet). On ne touche jamais au fichier stocké, seulement à
+ * la réponse. Le propriétaire et l'admin ne passent pas par ce filtre (ils voient tout, avec un
+ * badge « en attente de vérification »). Une URL externe (hors R2) n'est jamais masquée.
+ */
+export const filterServableMedia = (
+  project: FilterableProject,
+  scanned: Set<string>,
+  blocked: Set<string>,
+): FilterableProject => {
+  const servable = (url: string | undefined): boolean => {
+    if (!url) return true
+    const key = r2KeyFromPublicUrl(url)
+    if (!key) return true
+    return isPubliclyServable(key, scanned, blocked)
+  }
+  return {
+    ...project,
+    ...(Array.isArray(project.mediaLibrary)
+      ? {
+          mediaLibrary: project.mediaLibrary.filter(
+            (media) => servable(media.url) && servable(media.thumbnailUrl),
+          ),
+        }
+      : {}),
+    ...(Array.isArray(project.points)
+      ? {
+          points: project.points.filter(
+            (point) => servable(point.image) && servable(point.video),
+          ),
+        }
+      : {}),
   }
 }

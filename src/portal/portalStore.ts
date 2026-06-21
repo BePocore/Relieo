@@ -50,7 +50,13 @@ export type AccountStatus = {
 // sa prochaine connexion (ex : une de ses cartes a été dépubliée).
 export type PortalNotification = {
   id: string
-  type: 'unpublish' | 'delete' | 'block' | 'delete-account' | 'info'
+  type:
+    | 'unpublish'
+    | 'delete'
+    | 'block'
+    | 'delete-account'
+    | 'media-rejected'
+    | 'info'
   message: string
   mapTitle?: string
   createdAt: string

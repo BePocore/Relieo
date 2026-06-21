@@ -12,7 +12,7 @@
 >
 > Ajout : section **Brique 1.6 — Coût & budget** (suivi des opérations, garde-fous).
 
-## État d'avancement (handoff, 2026-06-21)
+## État d'avancement (handoff, mis à jour 2026-06-21)
 
 **Fait, commité (repo Relieo, commit `a2d49dc`) — moteur côté videur, compile, INACTIF (`MODERATION_ENFORCE=0`) :**
 - `worker/src/sightengine.ts` : appels Sightengine, images (binaire sync) + vidéos (Upload + callback async).
@@ -23,18 +23,32 @@
   (`wrangler.jsonc`).
 - Docs : ce plan + `docs/STORAGE-moderation.md` (contrat des 5 fichiers d'état).
 
-**Fait, NON commité (working tree) :**
+**Fait, commité (commit `52ca704`) :**
 - `server/mediaModeration.ts` : socle Vercel (lecture de l'état, `isPubliclyServable`, approve/reject,
-  usage, `signalModerationScan`). **Pas encore branché ni buildé.**
+  usage, `signalModerationScan`).
 
-**Reste à faire (surtout côté Vercel) :**
-1. Filtrage à la lecture publique dans `api/project.ts` (retirer les médias non servables, derrière `moderationEnforced()`).
-2. Signal de publication dans `api/hikes.ts` (POST published → `signalModerationScan(ids des médias de la carte)`).
-3. Console admin : `api/admin/dashboard.ts` (renvoyer `readModerationItems()` + `readModerationUsage()`),
-   `api/admin/action.ts` (`action:'media-mod'` approve/reject + `action:'scan-media'`), `AdminView.tsx`
-   (onglet « Modération IA » + **bouton « Lancer un scan »**), ligne de coût Sightengine (onglet Coûts).
-4. Reliquat **Upload API vidéos > 50 Mo** (aujourd'hui une telle vidéo reste non scannée = masquée au public, sûr mais pas publiable).
-5. **CGU + consentement** (brique 3).
+**Fait — BLOC A « branchements Vercel » (build OK, reste INACTIF tant que les env vars ne sont pas posées) :**
+- `server/mediaModeration.ts` complété : `triggerModerationScan()` (attend le rapport du videur, bouton
+  admin), `rejectModerationItems(ids[])` (rejette le couple original + vignette), `filterServableMedia()`
+  (couche 2, retire les médias non validés à la lecture publique).
+- `api/project.ts` : filtrage à la lecture, **uniquement pour un visiteur public** (le propriétaire/admin
+  voit tout), derrière `moderationEnforced()`. No-op tant que `MODERATION_ENFORCE≠1`.
+- `api/hikes.ts` : à la publication, signal prioritaire au videur (`signalModerationScan` des médias de la
+  carte). Conditionné à `MODERATION_SIGNAL_SECRET` : **aucun coût** (pas même le listing R2) tant qu'absent.
+- `api/admin/dashboard.ts` : renvoie `mediaModeration { items (enrichis : mediaUrl videur, ownerEmail,
+  mapCode/title), usage, dailyLimit, monthlyLimit }` + une ligne de coût **Sightengine** (onglet Coûts).
+- `api/admin/action.ts` : `action:'media-mod'` (`op:'approve'|'reject'`) et `action:'scan-media'`. Le rejet
+  supprime original + vignette de R2, retire la réf du `project.json`, notifie le propriétaire (in-app +
+  email best-effort, type `media-rejected`) et journalise une sanction `media-reject`.
+- Front : onglet **« Modération IA »** dans `AdminView.tsx` (galerie des flaggés avec aperçu + catégorie +
+  score, **bouton « Lancer un scan »**, jauges d'ops jour/mois, modale de rejet), badge = nb en attente.
+  Type de notification `media-rejected` ajouté (`portalStore`, `firestoreAdmin`, `PortalApp` : titre, popup,
+  icône) ; sanction `media-reject` ajoutée (`server/sanctions.ts`).
+
+**Reste à faire :**
+1. Reliquat **Upload API vidéos > 50 Mo** côté videur (`worker/src/sightengine.ts`) : aujourd'hui une telle
+   vidéo est `skipped` au scan → reste non scannée = masquée au public (sûr mais pas publiable).
+2. **CGU + consentement** (brique 3).
 
 **À activer le moment venu (Quentin) — RIEN n'est créé/posé pour l'instant :**
 - Créer un compte **Sightengine** (API user + secret).

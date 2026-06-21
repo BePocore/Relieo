@@ -22,6 +22,12 @@ import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { isAdminUser } from '../server/admin.js'
 import { readModeration } from '../server/moderation.js'
+import {
+  filterServableMedia,
+  moderationEnforced,
+  readBlockedIds,
+  readScannedIds,
+} from '../server/mediaModeration.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
 import { pickRandomCoverUrl } from '../server/cover.js'
@@ -209,18 +215,21 @@ export async function GET(request: Request) {
           { status: 404, headers: jsonHeaders },
         )
       }
+      // On décode l'appelant une seule fois si on en a besoin : pour autoriser un
+      // brouillon, et/ou pour savoir si on doit filtrer les médias non validés (le
+      // propriétaire et l'admin voient tout, le visiteur public non).
+      const needsViewer = entry.status === 'draft' || moderationEnforced()
+      const viewer = needsViewer ? await verifyRequestUser(request) : null
+      const isOwnerOrAdmin = Boolean(
+        viewer && (viewer.uid === entry.ownerId || isAdminUser(viewer)),
+      )
       // Brouillon : consultation réservée au propriétaire et à l'admin. On
       // renvoie 404 (et pas 403) pour ne pas révéler l'existence du brouillon.
-      if (entry.status === 'draft') {
-        const user = await verifyRequestUser(request)
-        const allowed =
-          user && (user.uid === entry.ownerId || isAdminUser(user))
-        if (!allowed) {
-          return Response.json(
-            { message: 'Aucune carte enregistrée pour ce code.' },
-            { status: 404, headers: jsonHeaders },
-          )
-        }
+      if (entry.status === 'draft' && !isOwnerOrAdmin) {
+        return Response.json(
+          { message: 'Aucune carte enregistrée pour ce code.' },
+          { status: 404, headers: jsonHeaders },
+        )
       }
       const body = await r2GetText(trailLocation(entry.ownerId, code).projectKey)
       if (!body) {
@@ -238,7 +247,17 @@ export async function GET(request: Request) {
       // bord ne réécrit pas project.json. On l'injecte pour que le client
       // connaisse l'état réel (publiée / brouillon).
       try {
-        const project = JSON.parse(served) as Record<string, unknown>
+        let project = JSON.parse(served) as Record<string, unknown>
+        // Modération (couche 2) : pour un VISITEUR public, on retire les médias
+        // non encore validés ou flaggés (le videur les refuserait de toute façon).
+        // Le propriétaire/admin garde tout. No-op tant que MODERATION_ENFORCE≠1.
+        if (moderationEnforced() && !isOwnerOrAdmin) {
+          const [scanned, blocked] = await Promise.all([
+            readScannedIds(),
+            readBlockedIds(),
+          ])
+          project = filterServableMedia(project, scanned, blocked)
+        }
         return Response.json(
           { ...project, hikeStatus: entry.status },
           { headers: jsonHeaders },
@@ -257,8 +276,24 @@ export async function GET(request: Request) {
         { status: 404, headers: jsonHeaders },
       )
     }
-    // Vue publique par défaut : médias servis via le videur media.relieo.fr.
-    return new Response(rewriteMediaUrls(body), {
+    // Vue publique par défaut : médias servis via le videur media.relieo.fr. Cette
+    // vue est toujours « publique » (le propriétaire passe par ?code= ou le Studio),
+    // donc on filtre les médias non validés si la modération est active.
+    let served = rewriteMediaUrls(body)
+    if (moderationEnforced()) {
+      try {
+        const [scanned, blocked] = await Promise.all([
+          readScannedIds(),
+          readBlockedIds(),
+        ])
+        served = JSON.stringify(
+          filterServableMedia(JSON.parse(served), scanned, blocked),
+        )
+      } catch {
+        // project.json illisible : on sert tel quel (le videur reste la barrière).
+      }
+    }
+    return new Response(served, {
       headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {

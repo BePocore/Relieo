@@ -6,13 +6,22 @@ import {
   r2DeleteObject,
   r2DeletePrefix,
   r2GetText,
+  r2KeyFromPublicUrl,
+  r2PutText,
 } from '../../server/r2.js'
 import {
   ownerForFolder,
+  readHikeIndex,
   removeHikeIndex,
   removeOwnerFromIndex,
   upsertHikeIndex,
 } from '../../server/hikeIndex.js'
+import {
+  approveModerationItem,
+  readModerationItems as readMediaModerationItems,
+  rejectModerationItems,
+  triggerModerationScan,
+} from '../../server/mediaModeration.js'
 import { pushUserNotification, setUserPlan } from '../../server/firestoreAdmin.js'
 import { readModeration, setModeration } from '../../server/moderation.js'
 import { appendSanction } from '../../server/sanctions.js'
@@ -34,7 +43,14 @@ import type { AuthedUser } from '../../server/firebaseAdmin.js'
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
 type ActionBody = {
-  action?: 'set-plan' | 'map' | 'user-action' | 'reply-appeal' | 'mark-read'
+  action?:
+    | 'set-plan'
+    | 'map'
+    | 'user-action'
+    | 'reply-appeal'
+    | 'mark-read'
+    | 'media-mod'
+    | 'scan-media'
   // set-plan
   plan?: string
   // map + user-action + reply-appeal
@@ -46,6 +62,15 @@ type ActionBody = {
   // mark-read + reply-appeal (notification visée)
   ids?: string[]
   notifId?: string
+  // media-mod (clé R2 du média flaggé)
+  id?: string
+}
+
+// uid/folder extraits d'une clé R2 `relieo/users/<uid>/randonnees/<folder>/…`.
+const segmentAfter = (key: string, marker: string): string | null => {
+  const parts = key.split('/')
+  const index = parts.indexOf(marker)
+  return index >= 0 && index + 1 < parts.length ? parts[index + 1] || null : null
 }
 
 const json = (data: unknown, status = 200) =>
@@ -275,6 +300,115 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
   return json({ uid, op, status: 'deleted' })
 }
 
+// --- Modération IA d'un média (approuver / rejeter) ---
+const handleMediaMod = async (admin: AuthedUser, body: ActionBody) => {
+  const id = body.id?.trim()
+  const op = body.op
+  if (!id || (op !== 'approve' && op !== 'reject')) {
+    return json({ message: 'id et op (approve|reject) sont obligatoires.' }, 400)
+  }
+
+  // Approuver : l'IA s'est trompée. On retire l'entrée -> le média redevient
+  // servable (il reste « scanné »). Aucune suppression.
+  if (op === 'approve') {
+    await approveModerationItem(id)
+    return json({ id, op, approved: true })
+  }
+
+  // Rejeter : non conforme. On résout la carte via l'index (source de vérité),
+  // on retire le média (original + sa vignette) du project.json et de R2, puis on
+  // notifie le propriétaire.
+  const entry = (await readMediaModerationItems()).find((item) => item.id === id)
+  const folder = entry?.mapFolder || segmentAfter(id, 'randonnees') || body.code?.trim()
+  const hike = folder
+    ? (await readHikeIndex()).find((item) => item.folder === folder)
+    : undefined
+  const ownerUid =
+    hike?.ownerId || entry?.ownerUid || body.uid?.trim() || segmentAfter(id, 'users') || ''
+  const code = hike?.code || body.code?.trim() || folder || ''
+  const mapTitle = hike?.title || body.title?.trim() || code || 'votre carte'
+  const message = body.message?.trim() ?? ''
+
+  // Couple de clés à effacer : la clé flaggée + l'original et la vignette du même
+  // média (le flag peut viser l'un OU l'autre des deux objets scannés).
+  const keysToDelete = new Set<string>([id])
+  let originalKey: string | null = null
+
+  if (ownerUid && code) {
+    const projectKey = trailLocation(ownerUid, code).projectKey
+    const raw = await r2GetText(projectKey)
+    if (raw) {
+      try {
+        const project = JSON.parse(raw) as {
+          mediaLibrary?: Array<{ url?: string; thumbnailUrl?: string }>
+          points?: Array<{ image?: string; video?: string }>
+          [key: string]: unknown
+        }
+        const library = Array.isArray(project.mediaLibrary) ? project.mediaLibrary : []
+        const target = library.find((media) => {
+          const oKey = media.url ? r2KeyFromPublicUrl(media.url) : null
+          const tKey = media.thumbnailUrl ? r2KeyFromPublicUrl(media.thumbnailUrl) : null
+          return oKey === id || tKey === id
+        })
+        if (target) {
+          originalKey = target.url ? r2KeyFromPublicUrl(target.url) : null
+          const thumbKey = target.thumbnailUrl
+            ? r2KeyFromPublicUrl(target.thumbnailUrl)
+            : null
+          if (originalKey) keysToDelete.add(originalKey)
+          if (thumbKey) keysToDelete.add(thumbKey)
+          const nextLibrary = library.filter((media) => media !== target)
+          const nextPoints = (
+            Array.isArray(project.points) ? project.points : []
+          ).filter((point) => {
+            const iKey = point.image ? r2KeyFromPublicUrl(point.image) : null
+            const vKey = point.video ? r2KeyFromPublicUrl(point.video) : null
+            return iKey !== originalKey && vKey !== originalKey
+          })
+          await r2PutText(
+            projectKey,
+            JSON.stringify({ ...project, mediaLibrary: nextLibrary, points: nextPoints }),
+            undefined,
+            { skipQuota: true },
+          )
+        }
+      } catch {
+        // project.json illisible : on supprime au moins la clé connue.
+      }
+    }
+  }
+
+  // Bloque définitivement (rejeté) puis efface les octets de R2.
+  await rejectModerationItems([...keysToDelete], admin.uid)
+  for (const key of keysToDelete) await r2DeleteObject(key)
+
+  // Notifie le propriétaire (in-app + email best-effort) et journalise la sanction.
+  const ownerEmail = await emailOf(ownerUid || null)
+  if (ownerUid && message) {
+    await pushUserNotification(ownerUid, {
+      id: `media-${Date.now()}`,
+      type: 'media-rejected',
+      message,
+      mapTitle,
+      createdAt: new Date().toISOString(),
+    })
+    await notifyByEmail(ownerEmail, 'Un de vos médias a été retiré', message, mapTitle)
+  }
+  await appendSanction({
+    id: `media-${Date.now()}`,
+    action: 'media-reject',
+    mapCode: code,
+    mapTitle,
+    ownerId: ownerUid,
+    ownerEmail,
+    adminUid: admin.uid,
+    adminEmail: admin.email,
+    message,
+    createdAt: new Date().toISOString(),
+  })
+  return json({ id, op, rejected: true })
+}
+
 // Endpoint admin unique pour TOUTES les écritures (anciens `set-plan`, `map`,
 // `user-action`, et le marquage-lu des notifications). Aiguille sur `action`.
 export async function POST(request: Request) {
@@ -303,6 +437,14 @@ export async function POST(request: Request) {
         return handleMap(admin, body)
       case 'user-action':
         return handleUserAction(admin, body)
+      case 'media-mod':
+        return handleMediaMod(admin, body)
+      case 'scan-media': {
+        // Bouton « Lancer un scan » : déclenche un passage immédiat dans le videur
+        // et renvoie son rapport (null tant que la modération n'est pas configurée).
+        const report = await triggerModerationScan()
+        return json({ report })
+      }
       case 'reply-appeal': {
         const notifId = body.notifId?.trim()
         const message = body.message?.trim()

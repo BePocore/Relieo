@@ -2,6 +2,7 @@ import {
   hasR2Config,
   r2DeleteObject,
   r2GetText,
+  r2ListKeys,
   r2PutText,
   rewriteMediaUrls,
 } from '../server/r2.js'
@@ -9,6 +10,7 @@ import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { isAdminUser } from '../server/admin.js'
 import { activeTrailPath, trailFolder, trailLocation } from '../server/trailStorage.js'
+import { signalModerationScan } from '../server/mediaModeration.js'
 import { pickCoverFromProjectJson } from '../server/cover.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
@@ -140,6 +142,24 @@ export async function POST(request: Request) {
       }
     } else if (!activeBody) {
       await r2PutText(activeTrailPath, JSON.stringify(trailLocation(entry.ownerId, code)))
+    }
+
+    // Modération : à la publication, on demande au videur de scanner EN PRIORITÉ
+    // les médias de cette carte (file prioritaire). Tout est conditionné à la
+    // présence du secret : tant que la modération n'est pas configurée, on ne fait
+    // RIEN (pas même le listing R2) ; le cron 2×/jour rattrape une fois activé.
+    if (status === 'published' && process.env.MODERATION_SIGNAL_SECRET) {
+      try {
+        const prefix = trailLocation(entry.ownerId, code).prefix
+        const mediaKeys = (await r2ListKeys(`${prefix}/`)).filter(
+          (key) =>
+            (key.includes('/media/') || key.includes('/previews/')) &&
+            !key.endsWith('.json'),
+        )
+        await signalModerationScan(mediaKeys)
+      } catch {
+        // best-effort : le balayage de fond du videur reprendra ces médias.
+      }
     }
 
     return Response.json({ code, status }, { headers: jsonHeaders })

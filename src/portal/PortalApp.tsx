@@ -40,6 +40,7 @@ import {
   Route,
   Search,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -207,6 +208,9 @@ const formatDate = (value: string): string =>
 const notifTitle = (item: PortalNotification): string => {
   if (item.type === 'block') return 'Compte bloqué'
   if (item.type === 'delete-account') return 'Compte supprimé'
+  if (item.type === 'media-rejected') {
+    return item.mapTitle ? `Média retiré de « ${item.mapTitle} »` : 'Média retiré'
+  }
   if (item.mapTitle && item.type !== 'info') {
     return `Carte « ${item.mapTitle} » ${
       item.type === 'delete' ? 'supprimée' : 'dépubliée'
@@ -223,6 +227,7 @@ const POPUP_NOTIF_TYPES: ReadonlyArray<PortalNotification['type']> = [
   'delete-account',
   'unpublish',
   'delete',
+  'media-rejected',
 ]
 
 const ADMIN_PHONE_NOTICE =
@@ -246,6 +251,8 @@ const notifVisual = (type: PortalNotification['type']) => {
     case 'delete-account':
     case 'delete':
       return { icon: <Trash2 size={18} />, tone: 'danger' }
+    case 'media-rejected':
+      return { icon: <ShieldAlert size={18} />, tone: 'danger' }
     case 'unpublish':
       return { icon: <EyeOff size={18} />, tone: 'warn' }
     default:

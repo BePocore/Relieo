@@ -3,10 +3,17 @@ import { adminApp, hasFirebaseAdmin } from '../../server/firebaseAdmin.js'
 import { isAdminUid, requireAdmin } from '../../server/admin.js'
 import {
   hasR2Config,
+  r2PublicUrl,
   r2StorageUsage,
   r2UsageForPrefixes,
   rewriteMediaUrls,
 } from '../../server/r2.js'
+import {
+  MODERATION_DAILY_LIMIT,
+  MODERATION_MONTHLY_LIMIT,
+  readModerationItems as readMediaModerationItems,
+  readModerationUsage as readMediaModerationUsage,
+} from '../../server/mediaModeration.js'
 import { readHikeIndex } from '../../server/hikeIndex.js'
 import { readAllProfiles } from '../../server/firestoreAdmin.js'
 import { readAllModeration } from '../../server/moderation.js'
@@ -54,6 +61,8 @@ export async function GET(request: Request) {
       sanctions,
       notifications,
       emailUsage,
+      mediaModItems,
+      mediaModUsage,
     ] = await Promise.all([
       getAuth(adminApp()).listUsers(1000),
       readHikeIndex(),
@@ -63,6 +72,8 @@ export async function GET(request: Request) {
       readSanctions(),
       readAdminNotifications(),
       readEmailUsage(),
+      readMediaModerationItems(),
+      readMediaModerationUsage(),
     ])
 
     const publishedCount = hikes.filter((h) => h.status === 'published').length
@@ -189,6 +200,24 @@ export async function GET(request: Request) {
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       )
 
+    // --- Modération IA des médias (flaggés/rejetés + conso Sightengine) ---
+    // Les entrées écrites par le videur ne portent que des clés R2 : on résout ici
+    // l'email du propriétaire, le code/titre de la carte et l'URL d'aperçu (réécrite
+    // vers le videur par rewriteMediaUrls plus bas, chargée avec le ticket admin).
+    const hikeByFolder = new Map(hikes.map((hike) => [hike.folder, hike]))
+    const mediaModeration = {
+      items: mediaModItems.map((item) => ({
+        ...item,
+        mediaUrl: r2PublicUrl(item.id),
+        ownerEmail: emailByUid.get(item.ownerUid) ?? null,
+        mapCode: hikeByFolder.get(item.mapFolder)?.code ?? item.mapFolder,
+        mapTitle: hikeByFolder.get(item.mapFolder)?.title ?? item.mapFolder,
+      })),
+      usage: mediaModUsage,
+      dailyLimit: MODERATION_DAILY_LIMIT,
+      monthlyLimit: MODERATION_MONTHLY_LIMIT,
+    }
+
     // --- Consommation d'emails (Resend) ---
     const email = {
       configured: emailConfigured(),
@@ -241,6 +270,14 @@ export async function GET(request: Request) {
         monthlyEur: 0,
         renewsAt: null as string | null,
       },
+      {
+        id: 'sightengine',
+        name: 'Sightengine',
+        detail: `Modération IA des médias · ${mediaModUsage?.monthOps ?? 0}/${MODERATION_MONTHLY_LIMIT} ops ce mois (palier gratuit)`,
+        model: 'free' as const,
+        monthlyEur: 0,
+        renewsAt: null as string | null,
+      },
     ]
     const costs = {
       platforms: costPlatforms,
@@ -257,6 +294,7 @@ export async function GET(request: Request) {
       notifications,
       email,
       costs,
+      mediaModeration,
     }
     return new Response(rewriteMediaUrls(JSON.stringify(payload)), {
       headers: { ...jsonHeaders, 'Content-Type': 'application/json' },

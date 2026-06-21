@@ -854,3 +854,65 @@
 }
 .admin-notif-mark.danger:hover:not(:disabled) { background: #fdeceb; }
 .admin-notif-mark:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Modération IA des médias ───────────────────────────────────── */
+.admin-mediamod-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.admin-mediamod-scaninfo {
+  font-size: 13.5px;
+  color: var(--admin-muted);
+}
+.admin-mediamod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.admin-mediamod-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--admin-line);
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+}
+.admin-mediamod-preview {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: #0f1623;
+}
+.admin-mediamod-preview img,
+.admin-mediamod-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.admin-mediamod-score {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(163, 38, 31, 0.92);
+  text-transform: capitalize;
+}
+.admin-mediamod-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px 4px;
+}
+.admin-mediamod-info strong { font-size: 14px; }
+.admin-mediamod-info small { font-size: 12px; color: var(--admin-muted); }
+.admin-mediamod-card .admin-actions {
+  padding: 10px 14px 14px;
+  margin-top: auto;
+}

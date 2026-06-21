@@ -6,14 +6,16 @@ import { r2GetText, r2PutText } from './r2.js'
 export const sanctionsPath = 'relieo/sanctions.json'
 
 // Actions sur les cartes (unpublish/delete) ET sur les comptes (block/unblock/
-// delete-account). Pour les sanctions de compte, mapCode/mapTitle restent vides
-// et targetUid/targetEmail désignent l'utilisateur visé.
+// delete-account), plus le rejet d'un média par la modération IA (media-reject).
+// Pour les sanctions de compte, mapCode/mapTitle restent vides et targetUid/
+// targetEmail désignent l'utilisateur visé.
 export type SanctionAction =
   | 'unpublish'
   | 'delete'
   | 'block'
   | 'unblock'
   | 'delete-account'
+  | 'media-reject'
 
 export type SanctionEntry = {
   id: string

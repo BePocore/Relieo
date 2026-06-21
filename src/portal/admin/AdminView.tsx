@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Ban,
   Bell,
+  Check,
   CreditCard,
   Database,
   Euro,
@@ -17,6 +18,8 @@ import {
   Mail,
   RefreshCw,
   Scale,
+  ScanLine,
+  ShieldAlert,
   ShieldCheck,
   Trash2,
   TrendingUp,
@@ -93,6 +96,40 @@ type Sanction = {
   createdAt: string
 }
 
+// Un média flaggé/rejeté par la modération IA (enrichi côté serveur : URL d'aperçu
+// via le videur, email du propriétaire, code/titre de la carte).
+type MediaModItem = {
+  id: string
+  ownerUid: string
+  mapFolder: string
+  mediaKind: 'image' | 'video'
+  status: 'flagged' | 'rejected'
+  aiCategory: string
+  aiScore: number
+  scannedAt: string
+  reviewedAt: string | null
+  reviewedBy: string | null
+  mediaUrl: string
+  ownerEmail: string | null
+  mapCode: string
+  mapTitle: string
+}
+
+type MediaModUsage = {
+  day: string
+  dayOps: number
+  month: string
+  monthOps: number
+  updatedAt: string
+} | null
+
+type MediaModeration = {
+  items: MediaModItem[]
+  usage: MediaModUsage
+  dailyLimit: number
+  monthlyLimit: number
+}
+
 type Overview = {
   userCount: number
   hikeCount: number
@@ -119,6 +156,7 @@ type AdminSection =
   | 'users'
   | 'maps'
   | 'sanctions'
+  | 'media-moderation'
   | 'notifications'
   | 'storage'
 
@@ -128,6 +166,7 @@ const SECTION_TITLES: Record<AdminSection, string> = {
   users: 'Utilisateurs',
   maps: 'Cartes',
   sanctions: 'Sanctions',
+  'media-moderation': 'Modération IA',
   notifications: 'Notifications',
   storage: 'Stockage R2',
 }
@@ -235,6 +274,12 @@ export function AdminApp({
   const [maps, setMaps] = useState<AdminMap[]>([])
   const [sanctions, setSanctions] = useState<Sanction[]>([])
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
+  const [mediaMod, setMediaMod] = useState<MediaModeration | null>(null)
+  // Modale de rejet d'un média + message transmis au propriétaire.
+  const [rejectMediaTarget, setRejectMediaTarget] = useState<MediaModItem | null>(null)
+  const [rejectMediaMessage, setRejectMediaMessage] = useState('')
+  // Retour du dernier scan déclenché à la main.
+  const [scanInfo, setScanInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
@@ -289,6 +334,7 @@ export function AdminApp({
         notifications: AdminNotification[]
         email: EmailUsage
         costs: Costs
+        mediaModeration: MediaModeration
       }
       setOverview(data.overview)
       setUsers(data.users)
@@ -297,6 +343,7 @@ export function AdminApp({
       setNotifications(data.notifications)
       setEmail(data.email)
       setCosts(data.costs)
+      setMediaMod(data.mediaModeration)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -433,6 +480,94 @@ export function AdminApp({
     }
   }
 
+  // Modération IA : lance un scan à la demande et affiche le rapport du videur.
+  const scanMedia = async () => {
+    setBusyAction('scan-media')
+    setScanInfo('Scan en cours…')
+    try {
+      const response = await authFetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'scan-media' }),
+      })
+      const data = (await response.json().catch(() => null)) as {
+        report?: {
+          ok: boolean
+          reason?: string
+          processed: number
+          flagged: number
+          videosSubmitted: number
+          capReached: boolean
+        } | null
+      } | null
+      const report = data?.report
+      if (!report) {
+        setScanInfo(
+          'Modération non configurée (aucun compte Sightengine) : le scan reste inactif.',
+        )
+      } else if (!report.ok) {
+        setScanInfo(report.reason ?? 'Scan indisponible.')
+      } else {
+        setScanInfo(
+          `Scan terminé : ${report.processed} média(s) traité(s), ${report.flagged} flaggé(s)` +
+            `${report.videosSubmitted ? `, ${report.videosSubmitted} vidéo(s) en analyse` : ''}` +
+            `${report.capReached ? ' · cap quotidien atteint' : ''}.`,
+        )
+      }
+      await load()
+    } catch {
+      setScanInfo('Scan impossible.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const approveMedia = async (item: MediaModItem) => {
+    setBusyAction(`media-${item.id}`)
+    try {
+      const response = await authFetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'media-mod', op: 'approve', id: item.id }),
+      })
+      if (!response.ok) throw new Error()
+      setMediaMod((current) =>
+        current
+          ? { ...current, items: current.items.filter((i) => i.id !== item.id) }
+          : current,
+      )
+    } catch {
+      setError('Approbation du média impossible.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  const rejectMedia = async (item: MediaModItem, message: string) => {
+    setBusyAction(`media-${item.id}`)
+    try {
+      const response = await authFetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'media-mod',
+          op: 'reject',
+          id: item.id,
+          uid: item.ownerUid,
+          code: item.mapCode,
+          title: item.mapTitle,
+          message,
+        }),
+      })
+      if (!response.ok) throw new Error()
+      await load()
+    } catch {
+      setError('Rejet du média impossible.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   // Revenus + évolution des inscriptions, dérivés de la liste des utilisateurs.
   // On exclut l'admin (ne paie pas) et les comptes supprimés (plus d'abonnement).
   const analytics = useMemo(() => {
@@ -492,6 +627,7 @@ export function AdminApp({
   }, [users, rangeMonths])
 
   const unreadCount = notifications.filter((n) => !n.read).length
+  const flaggedMedia = (mediaMod?.items ?? []).filter((i) => i.status === 'flagged')
 
   const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode; badge?: number }> = [
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
@@ -499,6 +635,12 @@ export function AdminApp({
     { id: 'users', label: 'Utilisateurs', icon: <Users size={18} /> },
     { id: 'maps', label: 'Cartes', icon: <MapIcon size={18} /> },
     { id: 'sanctions', label: 'Sanctions', icon: <Gavel size={18} /> },
+    {
+      id: 'media-moderation',
+      label: 'Modération IA',
+      icon: <ShieldAlert size={18} />,
+      badge: flaggedMedia.length || undefined,
+    },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
   ]
 
@@ -1243,6 +1385,108 @@ export function AdminApp({
     )
   })()
 
+  const mediaModerationView = (() => {
+    const usage = mediaMod?.usage
+    const dailyLimit = mediaMod?.dailyLimit ?? 500
+    const monthlyLimit = mediaMod?.monthlyLimit ?? 2000
+    return (
+      <>
+        <section className="admin-stats" aria-label="Synthèse modération IA">
+          <article className="admin-stat-card featured">
+            <span><ShieldAlert size={18} /></span>
+            <p>En attente de revue</p>
+            <strong>{flaggedMedia.length}</strong>
+          </article>
+          <article className="admin-stat-card">
+            <span><ScanLine size={18} /></span>
+            <p>Opérations aujourd’hui</p>
+            <strong>{usage?.dayOps ?? 0}</strong>
+            <small>sur {dailyLimit} (palier gratuit)</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><ScanLine size={18} /></span>
+            <p>Opérations ce mois</p>
+            <strong>{usage?.monthOps ?? 0}</strong>
+            <small>sur {monthlyLimit} (palier gratuit)</small>
+          </article>
+        </section>
+
+        <div className="admin-mediamod-toolbar">
+          <button
+            className="admin-refresh"
+            type="button"
+            disabled={busyAction === 'scan-media'}
+            onClick={() => void scanMedia()}
+          >
+            <ScanLine size={16} /> Lancer un scan
+          </button>
+          {scanInfo ? <span className="admin-mediamod-scaninfo">{scanInfo}</span> : null}
+        </div>
+
+        {flaggedMedia.length > 0 ? (
+          <div className="admin-mediamod-grid">
+            {flaggedMedia.map((item) => (
+              <article className="admin-mediamod-card" key={item.id}>
+                <div className="admin-mediamod-preview">
+                  {item.mediaKind === 'video' ? (
+                    <video
+                      src={item.mediaUrl}
+                      controls
+                      preload="metadata"
+                      crossOrigin="use-credentials"
+                    />
+                  ) : (
+                    <img
+                      src={item.mediaUrl}
+                      alt="Média signalé"
+                      crossOrigin="use-credentials"
+                    />
+                  )}
+                  <span className="admin-mediamod-score">
+                    {item.aiCategory} · {Math.round(item.aiScore * 100)}%
+                  </span>
+                </div>
+                <div className="admin-mediamod-info">
+                  <strong>{item.mapTitle}</strong>
+                  <small>{item.ownerEmail ?? item.ownerUid}</small>
+                  <small>Scanné le {formatDateTime(item.scannedAt)}</small>
+                </div>
+                <div className="admin-actions">
+                  <button
+                    className="admin-action success"
+                    type="button"
+                    disabled={busyAction === `media-${item.id}`}
+                    onClick={() => void approveMedia(item)}
+                    title="L’IA s’est trompée : rétablir le média"
+                  >
+                    <Check size={15} /> Approuver
+                  </button>
+                  <button
+                    className="admin-action danger"
+                    type="button"
+                    disabled={busyAction === `media-${item.id}`}
+                    onClick={() => {
+                      setRejectMediaMessage('')
+                      setRejectMediaTarget(item)
+                    }}
+                    title="Non conforme : supprimer le média"
+                  >
+                    <Trash2 size={15} /> Rejeter
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="admin-empty">
+            Aucun média en attente de revue.
+            {usage ? '' : ' La modération IA n’a pas encore tourné.'}
+          </p>
+        )}
+      </>
+    )
+  })()
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -1324,6 +1568,8 @@ export function AdminApp({
             mapsTable
           ) : section === 'sanctions' ? (
             sanctionsView
+          ) : section === 'media-moderation' ? (
+            mediaModerationView
           ) : section === 'notifications' ? (
             notificationsView
           ) : (
@@ -1606,6 +1852,55 @@ export function AdminApp({
                 }}
               >
                 Envoyer la réponse
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {rejectMediaTarget ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-modal">
+            <h2 className="admin-modal-danger">
+              <Trash2 size={18} /> Rejeter ce média
+            </h2>
+            <p>
+              Action <strong>définitive</strong>. Le média (et sa vignette) sera
+              supprimé de la carte « {rejectMediaTarget.mapTitle} » et de Cloudflare
+              R2. Le propriétaire
+              ({rejectMediaTarget.ownerEmail ?? rejectMediaTarget.ownerUid}) sera
+              notifié avec le message ci-dessous.
+            </p>
+            <label className="admin-modal-label" htmlFor="reject-media-message">
+              Message au propriétaire (facultatif, affiché à sa prochaine connexion)
+            </label>
+            <textarea
+              autoFocus
+              className="admin-modal-textarea"
+              id="reject-media-message"
+              placeholder="Ex : Un de vos médias a été retiré car il ne respecte pas…"
+              value={rejectMediaMessage}
+              onChange={(event) => setRejectMediaMessage(event.target.value)}
+            />
+            <div className="admin-modal-actions">
+              <button
+                className="admin-modal-cancel"
+                type="button"
+                onClick={() => setRejectMediaTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="admin-modal-delete"
+                disabled={busyAction === `media-${rejectMediaTarget.id}`}
+                type="button"
+                onClick={async () => {
+                  const target = rejectMediaTarget
+                  await rejectMedia(target, rejectMediaMessage.trim())
+                  setRejectMediaTarget(null)
+                }}
+              >
+                <Trash2 size={15} /> Rejeter le média
               </button>
             </div>
           </div>
