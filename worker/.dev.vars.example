@@ -4,3 +4,12 @@
 
 # Secret de signature des tickets (HMAC-SHA256). En prod : valeur forte et unique.
 MEDIA_TICKET_SECRET="dev-secret-a-changer"
+
+# --- Moderation IA (Sightengine) ---
+# Identifiants API Sightengine (sightengine.com -> API keys).
+SIGHTENGINE_API_USER=""
+SIGHTENGINE_API_SECRET=""
+# Protege POST /_moderation/scan (appel depuis Vercel a la publication). Meme valeur cote Vercel.
+MODERATION_SIGNAL_SECRET="dev-signal-secret"
+# Protege POST /_moderation/callback (callbacks video de Sightengine).
+MODERATION_CALLBACK_SECRET="dev-callback-secret"

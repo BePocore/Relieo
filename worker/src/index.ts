@@ -10,9 +10,13 @@
 // La vraie protection arrive quand le bucket devient prive : l'URL seule ne suffira plus.
 
 import { verifyTicket } from './ticket'
+import { canServe, enqueueForScan } from './moderation'
+import { handleVideoCallback, runScan, type ModerationEnv } from './scan'
 
-export interface Env {
-  MEDIA_BUCKET: R2Bucket
+// Env du videur = config d'accès media + toute la config de modération (ModerationEnv).
+// MEDIA_BUCKET et les MODERATION_* (dont MODERATION_ENFORCE : "1" active le blocage fail-closed,
+// "0" par défaut tant que le scan + le seed Halsa ne sont pas en place) viennent de ModerationEnv.
+export interface Env extends ModerationEnv {
   MEDIA_TICKET_SECRET: string
   /** Origines autorisees pour CORS (CSV). "*" en dev, "https://relieo.fr" en prod. */
   ALLOWED_ORIGINS?: string
@@ -113,16 +117,63 @@ const forbidden = (request: Request, env: Env, reason: string): Response =>
 const notFound = (request: Request, env: Env): Response =>
   new Response('Not Found', { status: 404, headers: corsHeaders(request, env) })
 
+// --- Endpoints de moderation (hors flux media) ---------------------------
+// POST /_moderation/scan?token=<MODERATION_SIGNAL_SECRET>      -> lance un passage de scan
+//      (body optionnel { ids: [...] } pour prioriser les medias d'une publication)
+// POST /_moderation/callback?token=<MODERATION_CALLBACK_SECRET> -> recoit un callback video Sightengine
+// Premiere barriere : un token secret en query (l'URL est connue de nous seuls). La signature
+// Sightengine du callback pourra etre verifiee en complement plus tard.
+
+const handleModerationRoute = async (
+  request: Request,
+  url: URL,
+  env: Env,
+): Promise<Response> => {
+  if (request.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 })
+  }
+
+  if (url.pathname === '/_moderation/scan') {
+    if (!env.MODERATION_SIGNAL_SECRET || url.searchParams.get('token') !== env.MODERATION_SIGNAL_SECRET) {
+      return new Response('Forbidden', { status: 403 })
+    }
+    const body = (await request.json().catch(() => ({}))) as { ids?: unknown }
+    if (Array.isArray(body.ids)) {
+      const ids = body.ids.filter((id): id is string => typeof id === 'string')
+      if (ids.length) await enqueueForScan(env.MEDIA_BUCKET, ids)
+    }
+    const report = await runScan(env)
+    return Response.json(report)
+  }
+
+  if (url.pathname === '/_moderation/callback') {
+    if (!env.MODERATION_CALLBACK_SECRET || url.searchParams.get('token') !== env.MODERATION_CALLBACK_SECRET) {
+      return new Response('Forbidden', { status: 403 })
+    }
+    const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null
+    if (payload) await handleVideoCallback(env, payload)
+    return new Response('ok') // 2xx pour accuser reception (callbacks idempotents)
+  }
+
+  return new Response('Not Found', { status: 404 })
+}
+
 // --- Handler -------------------------------------------------------------
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url)
+    // Endpoints de moderation (scan / callback video), hors flux media.
+    if (url.pathname.startsWith('/_moderation/')) {
+      return handleModerationRoute(request, url, env)
+    }
+
     if (request.method === 'OPTIONS') return handlePreflight(request, env)
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return new Response('Method Not Allowed', { status: 405 })
     }
 
-    const key = keyFromPath(new URL(request.url).pathname)
+    const key = keyFromPath(url.pathname)
     if (!key) return forbidden(request, env, 'cle invalide')
 
     const rawTicket = readTicket(request, env)
@@ -136,8 +187,13 @@ export default {
       return forbidden(request, env, 'cle hors perimetre du ticket')
     }
 
-    // TODO (etape moderation) : refuser ici si le media est flagge
-    // (lecture de relieo/.../media-moderation.json, mis en cache court cote Worker).
+    // Moderation IA : un media non valide est refuse ici (fail-closed cote public). Le visiteur
+    // ne voit que le scanne & non flagge ; le proprietaire/admin voit tout sauf le rejete.
+    // Tant que MODERATION_ENFORCE !== "1", on sert tout (deploiement progressif sans casser la prod).
+    const enforce = env.MODERATION_ENFORCE === '1'
+    if (!(await canServe(env.MEDIA_BUCKET, key, ticket.role, enforce))) {
+      return forbidden(request, env, 'media indisponible (moderation)')
+    }
 
     // HEAD : metadonnees seules, pas de corps.
     if (request.method === 'HEAD') {
@@ -176,5 +232,10 @@ export default {
 
     headers.set('Content-Length', String(object.size))
     return new Response(object.body, { status: 200, headers })
+  },
+
+  // Cron 2x/jour (cf. wrangler.jsonc triggers.crons) : balayage de fond de la modération.
+  async scheduled(_controller, env, ctx): Promise<void> {
+    ctx.waitUntil(runScan(env))
   },
 } satisfies ExportedHandler<Env>
