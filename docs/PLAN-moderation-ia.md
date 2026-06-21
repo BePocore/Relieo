@@ -12,6 +12,38 @@
 >
 > Ajout : section **Brique 1.6 — Coût & budget** (suivi des opérations, garde-fous).
 
+## État d'avancement (handoff, 2026-06-21)
+
+**Fait, commité (repo Relieo, commit `a2d49dc`) — moteur côté videur, compile, INACTIF (`MODERATION_ENFORCE=0`) :**
+- `worker/src/sightengine.ts` : appels Sightengine, images (binaire sync) + vidéos (Upload + callback async).
+- `worker/src/moderation.ts` : refus d'octet `canServe` (chemin chaud) + store des 5 fichiers d'état R2.
+- `worker/src/scan.ts` : boucle de scan (file prioritaire publication → balayage → seed Halsa auto →
+  cap quotidien) + `handleVideoCallback`.
+- `worker/src/index.ts` : endpoints `/_moderation/scan` + `/_moderation/callback` + cron 2×/jour
+  (`wrangler.jsonc`).
+- Docs : ce plan + `docs/STORAGE-moderation.md` (contrat des 5 fichiers d'état).
+
+**Fait, NON commité (working tree) :**
+- `server/mediaModeration.ts` : socle Vercel (lecture de l'état, `isPubliclyServable`, approve/reject,
+  usage, `signalModerationScan`). **Pas encore branché ni buildé.**
+
+**Reste à faire (surtout côté Vercel) :**
+1. Filtrage à la lecture publique dans `api/project.ts` (retirer les médias non servables, derrière `moderationEnforced()`).
+2. Signal de publication dans `api/hikes.ts` (POST published → `signalModerationScan(ids des médias de la carte)`).
+3. Console admin : `api/admin/dashboard.ts` (renvoyer `readModerationItems()` + `readModerationUsage()`),
+   `api/admin/action.ts` (`action:'media-mod'` approve/reject + `action:'scan-media'`), `AdminView.tsx`
+   (onglet « Modération IA » + **bouton « Lancer un scan »**), ligne de coût Sightengine (onglet Coûts).
+4. Reliquat **Upload API vidéos > 50 Mo** (aujourd'hui une telle vidéo reste non scannée = masquée au public, sûr mais pas publiable).
+5. **CGU + consentement** (brique 3).
+
+**À activer le moment venu (Quentin) — RIEN n'est créé/posé pour l'instant :**
+- Créer un compte **Sightengine** (API user + secret).
+- Poser les secrets : videur `wrangler secret put SIGHTENGINE_API_USER / SIGHTENGINE_API_SECRET /
+  MODERATION_SIGNAL_SECRET / MODERATION_CALLBACK_SECRET` ; Vercel `MODERATION_SIGNAL_SECRET` (même
+  valeur) + `MODERATION_ENFORCE`.
+- `wrangler deploy` (le videur ne se déploie PAS via un git push).
+- Vérifier de bout en bout, puis basculer `MODERATION_ENFORCE=1` (videur + Vercel) pour activer le blocage.
+
 ## Contexte
 
 Relieo va bientôt permettre des cartes et médias **réellement publics** (visibles par tous,

@@ -79,7 +79,11 @@ Media are **not public**: the R2 bucket's public `r2.dev` access is **disabled**
 - **Ticket issuance** — `POST /api/media-ticket` (`api/media-ticket.ts` + `server/mediaTicket.ts`): `{code}` = one map (published → anyone with the code; draft → owner/admin only), `{scope:'user'}` = all of the caller's maps (dashboard), `{scope:'all'}` = everything (admin).
 - **URL rewriting at read time** — `server/r2.ts:rewriteMediaUrls` rewrites stored `…r2.dev` URLs to `media.relieo.fr` in `/api/project` (consultation + Studio), `/api/hikes` (user dashboard covers), `/api/admin/dashboard` (admin covers) and `/api/upload`. Storage is unchanged (keys/URLs stay `r2.dev`); `r2KeyFromPublicUrl` accepts **both** bases so saving reconverts correctly.
 - **Client** — `src/lib/mediaTicket.ts` (request + refresh loop), `src/lib/mediaAccess.ts` (canvas thumbnails/posters load with `crossOrigin="use-credentials"` when the URL is `media.relieo.fr`, so the cookie is sent). Wired in `App.tsx` (per-map ticket), `PortalApp` (scope user) and `AdminView` (scope all).
-- **DNSSEC** was reactivated on Cloudflare after the DNS migration (DS published at OVH, algorithm 13). Future moderation (Sightengine) will reuse this same Worker to refuse a flagged media at request time (TODO hook in `worker/src/index.ts`).
+- **DNSSEC** was reactivated on Cloudflare after the DNS migration (DS published at OVH, algorithm 13).
+
+### AI media moderation (Sightengine) — IN PROGRESS, inactive
+
+The videur Worker also hosts the **AI moderation engine** (Sightengine), added 2026-06-21 but **inactive** (`MODERATION_ENFORCE=0`, no Sightengine account/keys yet). It compiles and changes nothing until enabled. Engine = `worker/src/{sightengine,moderation,scan}.ts` + `/_moderation/scan` & `/_moderation/callback` endpoints + a 2×/day cron: it pushes media bytes to Sightengine (private bucket, no URL exposed), images sync + videos async (callback), and writes verdicts to 5 R2 state files. The videur's `canServe` then refuses non-validated media to the public (fail-closed). Vercel side has a socle (`server/mediaModeration.ts`) not yet wired. **Full design, data contract and step-by-step remaining work: `docs/PLAN-moderation-ia.md` (handoff section) + `docs/STORAGE-moderation.md`.**
 
 ### Drafts vs published
 
