@@ -44,6 +44,7 @@ import {
   uploadMedia,
 } from './lib/cloudUpload'
 import { firebaseEnabled, getIdToken } from './portal/firebase'
+import { requestMediaTicket, startMediaTicketRefresh } from './lib/mediaTicket'
 import { loadUserTraces, type UserTraceRecord } from './portal/userTraces'
 import { takePendingTraceImport } from './lib/pendingTraceImport'
 import {
@@ -187,36 +188,6 @@ const syncStudioUrlToCode = (code: string): void => {
   url.searchParams.delete('new')
   url.searchParams.set('code', code)
   window.history.replaceState(window.history.state, '', url.toString())
-}
-
-// Demande un ticket d'acces aux medias de la carte. Le serveur pose un cookie
-// httpOnly (.relieo.fr) renvoye automatiquement aux requetes media.relieo.fr.
-// A appeler en consultation publique AVANT d'afficher les medias, puis a
-// renouveler (le ticket dure ~2 min). Renvoie le delai conseille (ms), ou null.
-const fetchMediaTicket = async (
-  code: string,
-  authToken?: string | null,
-): Promise<number | null> => {
-  if (!code) return null
-  try {
-    const response = await fetch('/api/media-ticket', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        // Studio : le jeton Firebase donne un ticket « propriétaire » (accès aux
-        // brouillons et aux médias pas encore scannés).
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      },
-      body: JSON.stringify({ code }),
-      cache: 'no-store',
-    })
-    if (!response.ok) return null
-    const data = (await response.json()) as { refreshInMs?: number }
-    return typeof data.refreshInMs === 'number' ? data.refreshInMs : 60_000
-  } catch {
-    return null
-  }
 }
 
 const studioReturnStateKey = 'relieoStudioReturn'
@@ -616,10 +587,8 @@ function App() {
         // Ticket d'acces media (cookie pose) AVANT d'afficher, pour que les images
         // partent deja autorisees : en consultation (public) comme en Studio
         // (ticket proprietaire via le jeton Firebase deja recupere ci-dessus).
-        await fetchMediaTicket(
-          hikeCode || onlineProject.accessCode || '',
-          authToken,
-        )
+        const ticketCode = hikeCode || onlineProject.accessCode || ''
+        if (ticketCode) await requestMediaTicket({ code: ticketCode }, authToken)
         applyProject(onlineProject)
         // Trace en attente depuis l'onglet Traces : ajoutee a CETTE carte (non
         // sauvegardee), le proprietaire relit puis clique Sauvegarder.
@@ -658,21 +627,8 @@ function App() {
   useEffect(() => {
     const code = hikeCode || accessCode
     if (!code) return
-    let stopped = false
-    let timer: number | undefined
-    const tick = async (): Promise<void> => {
-      if (stopped) return
-      // En Studio, on re-signe avec le jeton Firebase (ticket propriétaire).
-      const authToken = isStudioMode ? await getIdToken().catch(() => null) : null
-      const next = await fetchMediaTicket(code, authToken)
-      if (stopped) return
-      timer = window.setTimeout(() => void tick(), next ?? 60_000)
-    }
-    timer = window.setTimeout(() => void tick(), 60_000)
-    return () => {
-      stopped = true
-      if (timer) window.clearTimeout(timer)
-    }
+    // En Studio, on re-signe avec le jeton Firebase (ticket propriétaire).
+    return startMediaTicketRefresh({ code }, isStudioMode ? getIdToken : undefined)
   }, [isStudioMode, hikeCode, accessCode])
 
   const combinedPoints = useMemo(

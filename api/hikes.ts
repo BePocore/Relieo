@@ -3,6 +3,7 @@ import {
   r2DeleteObject,
   r2GetText,
   r2PutText,
+  rewriteMediaUrls,
 } from '../server/r2.js'
 import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
@@ -56,7 +57,11 @@ export async function GET(request: Request) {
       }
     }
 
-    return Response.json({ hikes: filtered }, { headers: jsonHeaders })
+    // Covers réécrites vers le videur media.relieo.fr (le dashboard les charge
+    // avec un ticket « scope user »).
+    return new Response(rewriteMediaUrls(JSON.stringify({ hikes: filtered })), {
+      headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (error) {
     return Response.json(
       {

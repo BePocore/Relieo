@@ -1,7 +1,11 @@
 import { isAdminUser } from '../server/admin.js'
 import { verifyRequestUser } from '../server/firebaseAdmin.js'
 import { readHikeIndex } from '../server/hikeIndex.js'
-import { trailFolder, trailLocation } from '../server/trailStorage.js'
+import {
+  trailFolder,
+  trailLocation,
+  userStorageRoot,
+} from '../server/trailStorage.js'
 import {
   buildTicketCookie,
   mintTicket,
@@ -11,16 +15,40 @@ import {
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
-// POST /api/media-ticket  { code }
+// Fabrique le ticket, le pose en cookie httpOnly et renvoie la réponse.
+const respondWithTicket = async (
+  prefix: string,
+  role: TicketRole,
+  secret: string,
+): Promise<Response> => {
+  const session = crypto.randomUUID()
+  const exp = Date.now() + TICKET_TTL_MS
+  const token = await mintTicket({ prefix, role, session, exp }, secret)
+  const headers = new Headers(jsonHeaders)
+  const domain = process.env.MEDIA_COOKIE_DOMAIN ?? '.relieo.fr'
+  headers.append('Set-Cookie', buildTicketCookie(token, domain))
+  // DEV uniquement : exposer le jeton (test par en-tête). Jamais "1" en prod.
+  const exposeToken = process.env.MEDIA_TICKET_EXPOSE_TOKEN === '1'
+  return Response.json(
+    {
+      ok: true,
+      role,
+      ttlMs: TICKET_TTL_MS,
+      refreshInMs: Math.floor(TICKET_TTL_MS / 2),
+      ...(exposeToken ? { token } : {}),
+    },
+    { headers },
+  )
+}
+
+// POST /api/media-ticket  { code }            → ticket d'UNE carte
+//                         { scope: 'user' }   → ticket de TOUTES les cartes de l'appelant
+//                         { scope: 'all' }    → ticket de TOUT (admin)
 //
-// Delivre un ticket d'acces aux medias d'une carte. Le Worker "videur"
-// (media.relieo.fr) verifiera ce ticket a chaque requete de fichier.
-//
-//  - Brouillon : ticket seulement au proprietaire connecte (ou admin).
-//  - Publiee   : ticket a quiconque fournit le bon code (= preuve d'acces ;
-//                un mauvais code ne resout aucune carte -> 404).
-//  - Publique (future bibliotheque sans code) : pas encore ; la place est laissee
-//    via le role et l'index (il suffira d'un statut/flag dedie).
+// Le Worker « videur » (media.relieo.fr) vérifie ce ticket à chaque requête.
+//  - Carte brouillon : ticket seulement au propriétaire connecté (ou admin).
+//  - Carte publiée   : ticket à quiconque fournit le bon code.
+//  - scope user/all  : pour les dashboards (plusieurs covers de cartes différentes).
 export async function POST(request: Request) {
   const secret = process.env.MEDIA_TICKET_SECRET
   if (!secret) {
@@ -30,13 +58,38 @@ export async function POST(request: Request) {
     )
   }
 
-  let code: string | undefined
+  let payload: { code?: unknown; scope?: unknown } = {}
   try {
-    const body = (await request.json()) as { code?: unknown }
-    code = typeof body.code === 'string' ? body.code.trim() : undefined
+    payload = (await request.json()) as { code?: unknown; scope?: unknown }
   } catch {
-    code = undefined
+    payload = {}
   }
+  const scope = typeof payload.scope === 'string' ? payload.scope : undefined
+
+  // --- Tickets scopés (dashboards) ---------------------------------------
+  if (scope === 'user' || scope === 'all') {
+    const user = await verifyRequestUser(request)
+    if (!user) {
+      return Response.json(
+        { message: 'Connexion requise.' },
+        { status: 401, headers: jsonHeaders },
+      )
+    }
+    if (scope === 'all') {
+      if (!isAdminUser(user)) {
+        return Response.json(
+          { message: 'Accès refusé.' },
+          { status: 403, headers: jsonHeaders },
+        )
+      }
+      return respondWithTicket('relieo/', 'owner', secret)
+    }
+    // scope === 'user' : toutes les cartes de l'utilisateur.
+    return respondWithTicket(userStorageRoot(user.uid), 'owner', secret)
+  }
+
+  // --- Ticket d'une carte (consultation publique ou Studio) --------------
+  const code = typeof payload.code === 'string' ? payload.code.trim() : undefined
   if (!code) {
     return Response.json(
       { message: 'Le code de la carte est requis.' },
@@ -55,7 +108,7 @@ export async function POST(request: Request) {
   }
 
   const entry = (await readHikeIndex()).find((hike) => hike.folder === folder)
-  // Carte introuvable = mauvais code. 404 sans rien reveler.
+  // Carte introuvable = mauvais code. 404 sans rien révéler.
   if (!entry) {
     return Response.json(
       { message: 'Carte introuvable.' },
@@ -67,8 +120,8 @@ export async function POST(request: Request) {
   const isOwner = Boolean(user && entry.ownerId && user.uid === entry.ownerId)
   const isAdmin = isAdminUser(user)
 
-  // Brouillon : reserve au proprietaire connecte ou a l'admin (meme regle que
-  // GET /api/project). 404 pour ne pas reveler l'existence du brouillon.
+  // Brouillon : réservé au propriétaire connecté ou à l'admin (même règle que
+  // GET /api/project). 404 pour ne pas révéler l'existence du brouillon.
   if (entry.status === 'draft' && !isOwner && !isAdmin) {
     return Response.json(
       { message: 'Carte introuvable.' },
@@ -77,31 +130,7 @@ export async function POST(request: Request) {
   }
 
   const role: TicketRole = isOwner || isAdmin ? 'owner' : 'public'
-  // Tous les medias de la carte vivent sous ce prefixe ; le slash final evite la
-  // collision entre des dossiers comme "halsa" et "halsa-2".
+  // Le slash final évite la collision entre "halsa" et "halsa-2".
   const prefix = `${trailLocation(entry.ownerId, code).prefix}/`
-  const session = crypto.randomUUID()
-  const exp = Date.now() + TICKET_TTL_MS
-
-  const token = await mintTicket({ prefix, role, session, exp }, secret)
-
-  const headers = new Headers(jsonHeaders)
-  const domain = process.env.MEDIA_COOKIE_DOMAIN ?? '.relieo.fr'
-  headers.append('Set-Cookie', buildTicketCookie(token, domain))
-
-  // Exposition du jeton dans le corps : DEV uniquement (test par en-tete
-  // X-Media-Ticket cote Worker). Defait le httpOnly -> jamais "1" en prod.
-  const exposeToken = process.env.MEDIA_TICKET_EXPOSE_TOKEN === '1'
-
-  return Response.json(
-    {
-      ok: true,
-      role,
-      ttlMs: TICKET_TTL_MS,
-      // Le client renouvelle a mi-vie (avec marge) tant que la carte reste ouverte.
-      refreshInMs: Math.floor(TICKET_TTL_MS / 2),
-      ...(exposeToken ? { token } : {}),
-    },
-    { headers },
-  )
+  return respondWithTicket(prefix, role, secret)
 }

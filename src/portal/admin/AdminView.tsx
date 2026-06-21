@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import type { PortalUser } from '../portalStore'
 import { getIdToken } from '../firebase'
+import { requestMediaTicket, startMediaTicketRefresh } from '../../lib/mediaTicket'
 import { PLANS, formatBytes, type PlanId } from '../plans'
 import { UserGrowthChart, type ChartSeries } from './UserGrowthChart'
 import './Admin.css'
@@ -267,6 +268,8 @@ export function AdminApp({
       setLoading(true)
       setError(null)
       const headers = { Authorization: `Bearer ${token}` }
+      // Ticket « scope all » (admin) posé AVANT de rendre les covers de la console.
+      await requestMediaTicket({ scope: 'all' }, token)
       // Une seule lecture regroupée (cf. api/admin/dashboard).
       const response = await fetch('/api/admin/dashboard', {
         cache: 'no-store',
@@ -310,6 +313,9 @@ export function AdminApp({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
+
+  // Renouvellement du ticket d'accès média « scope all » (covers de la console).
+  useEffect(() => startMediaTicketRefresh({ scope: 'all' }, getIdToken), [])
 
   const changePlan = async (uid: string, plan: string) => {
     setBusyAction(`plan-${uid}`)

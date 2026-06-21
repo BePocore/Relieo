@@ -5,6 +5,7 @@ import {
   hasR2Config,
   r2StorageUsage,
   r2UsageForPrefixes,
+  rewriteMediaUrls,
 } from '../../server/r2.js'
 import { readHikeIndex } from '../../server/hikeIndex.js'
 import { readAllProfiles } from '../../server/firestoreAdmin.js'
@@ -246,10 +247,20 @@ export async function GET(request: Request) {
       totalMonthlyEur: costPlatforms.reduce((sum, p) => sum + p.monthlyEur, 0),
     }
 
-    return Response.json(
-      { overview, users: allUsers, maps, sanctions, notifications, email, costs },
-      { headers: jsonHeaders },
-    )
+    // Covers (et toute URL média) réécrites vers le videur media.relieo.fr ; la
+    // console charge avec un ticket « scope all » (admin).
+    const payload = {
+      overview,
+      users: allUsers,
+      maps,
+      sanctions,
+      notifications,
+      email,
+      costs,
+    }
+    return new Response(rewriteMediaUrls(JSON.stringify(payload)), {
+      headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
+    })
   } catch (error) {
     return Response.json(
       {

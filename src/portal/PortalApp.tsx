@@ -94,6 +94,7 @@ import {
   type PlanId,
 } from './plans'
 import { AdminApp } from './admin/AdminView'
+import { requestMediaTicket, startMediaTicketRefresh } from '../lib/mediaTicket'
 import HeroSlideshow from './HeroSlideshow'
 import { TraceRecorderScreen, TracesView } from './TraceViews'
 import { hasLocalTraceDraft } from './userTraces'
@@ -1141,8 +1142,11 @@ function DashboardShell({
     let cancelled = false
     const controller = new AbortController()
     void getIdToken()
-      .then((token) => {
+      .then(async (token) => {
         if (!token) throw new Error('Connexion Firebase requise.')
+        // Ticket « scope user » posé AVANT de rendre les covers (servies par le
+        // videur media.relieo.fr), pour qu'elles s'affichent sans 403.
+        await requestMediaTicket({ scope: 'user' }, token)
         return fetch('/api/hikes', {
           cache: 'no-store',
           headers: { Authorization: `Bearer ${token}` },
@@ -1177,6 +1181,12 @@ function DashboardShell({
       controller.abort()
     }
   }, [user.id])
+
+  // Renouvellement du ticket d'accès média « scope user » (covers du dashboard).
+  useEffect(
+    () => startMediaTicketRefresh({ scope: 'user' }, getIdToken),
+    [user.id],
+  )
 
   useEffect(() => {
     let cancelled = false

@@ -1666,7 +1666,9 @@ body.portal-active.tracker-scroll-active #root {
   isolation: isolate;
   overflow: hidden;
   color: #fff;
-  background: url('https://pub-6e336e685535453c9bbafab6421d8fc6.r2.dev/relieo/users/vIHeTHpT0NVYfODDu0ldcDLt9Br2/randonnees/Halsa/previews/34cbfc6ea1455f26dd5ebb4f.jpg') center / cover;
+  /* Fallback sombre derrière le diaporama (HeroSlideshow) : pas de dépendance R2
+     (l'écran de connexion n'a aucun ticket d'accès média). */
+  background: linear-gradient(160deg, #0f1623, #1a2740);
 }
 
 .auth-slideshow {
