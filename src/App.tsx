@@ -193,13 +193,21 @@ const syncStudioUrlToCode = (code: string): void => {
 // httpOnly (.relieo.fr) renvoye automatiquement aux requetes media.relieo.fr.
 // A appeler en consultation publique AVANT d'afficher les medias, puis a
 // renouveler (le ticket dure ~2 min). Renvoie le delai conseille (ms), ou null.
-const fetchMediaTicket = async (code: string): Promise<number | null> => {
+const fetchMediaTicket = async (
+  code: string,
+  authToken?: string | null,
+): Promise<number | null> => {
   if (!code) return null
   try {
     const response = await fetch('/api/media-ticket', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Studio : le jeton Firebase donne un ticket « propriétaire » (accès aux
+        // brouillons et aux médias pas encore scannés).
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({ code }),
       cache: 'no-store',
     })
@@ -605,11 +613,13 @@ function App() {
         if (!onlineProject) {
           throw new Error(onlineError ?? 'Aucune carte disponible dans Cloudflare R2.')
         }
-        // Consultation publique : on obtient le ticket d'acces media (cookie pose)
-        // AVANT d'afficher la carte, pour que les images partent deja autorisees.
-        if (!isStudioMode) {
-          await fetchMediaTicket(hikeCode || onlineProject.accessCode || '')
-        }
+        // Ticket d'acces media (cookie pose) AVANT d'afficher, pour que les images
+        // partent deja autorisees : en consultation (public) comme en Studio
+        // (ticket proprietaire via le jeton Firebase deja recupere ci-dessus).
+        await fetchMediaTicket(
+          hikeCode || onlineProject.accessCode || '',
+          authToken,
+        )
         applyProject(onlineProject)
         // Trace en attente depuis l'onglet Traces : ajoutee a CETTE carte (non
         // sauvegardee), le proprietaire relit puis clique Sauvegarder.
@@ -646,14 +656,15 @@ function App() {
   // Renouvellement du ticket d'acces media (~mi-vie) tant que la carte publique
   // reste ouverte. Le tout premier ticket est obtenu pendant le chargement.
   useEffect(() => {
-    if (isStudioMode) return
     const code = hikeCode || accessCode
     if (!code) return
     let stopped = false
     let timer: number | undefined
     const tick = async (): Promise<void> => {
       if (stopped) return
-      const next = await fetchMediaTicket(code)
+      // En Studio, on re-signe avec le jeton Firebase (ticket propriétaire).
+      const authToken = isStudioMode ? await getIdToken().catch(() => null) : null
+      const next = await fetchMediaTicket(code, authToken)
       if (stopped) return
       timer = window.setTimeout(() => void tick(), next ?? 60_000)
     }

@@ -229,11 +229,11 @@ export async function GET(request: Request) {
           { status: 404, headers: jsonHeaders },
         )
       }
-      // Consultation publique (sans jeton) : les médias sont servis via le videur
-      // media.relieo.fr (réécriture à la volée). En mode Studio (jeton présent),
-      // on garde les URLs R2 d'origine pour que la sauvegarde les reconvertisse.
-      const isStudioLoad = Boolean(request.headers.get('authorization'))
-      const served = isStudioLoad ? body : rewriteMediaUrls(body)
+      // Médias servis via le videur media.relieo.fr (réécriture à la volée), en
+      // consultation publique COMME en Studio. La sauvegarde reconvertit les URLs
+      // en clé R2 (`r2KeyFromPublicUrl` accepte media.relieo.fr), donc rien n'est
+      // figé côté stockage (project.json garde des clés/URLs r2.dev).
+      const served = rewriteMediaUrls(body)
       // Le statut fiable vient de l'index : une dépublication via le tableau de
       // bord ne réécrit pas project.json. On l'injecte pour que le client
       // connaisse l'état réel (publiée / brouillon).
