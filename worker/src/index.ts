@@ -29,6 +29,10 @@ const CACHE_CONTROL = 'private, max-age=300'
 
 const corsHeaders = (request: Request, env: Env): Headers => {
   const headers = new Headers()
+  // Toujours present : le cache doit differencier les reponses selon l'Origin,
+  // sinon une reponse "no-cors" mise en cache (sans ACAO) casse une requete
+  // "cors" ulterieure sur la meme URL (cas du canvas / miniatures).
+  headers.set('Vary', 'Origin')
   const origin = request.headers.get('Origin')
   if (!origin) return headers
   const allowed = (env.ALLOWED_ORIGINS ?? '*').split(',').map((value) => value.trim())
@@ -36,7 +40,6 @@ const corsHeaders = (request: Request, env: Env): Headers => {
     // Avec credentials (cookie), impossible de renvoyer "*" : on reflete l'origine.
     headers.set('Access-Control-Allow-Origin', origin)
     headers.set('Access-Control-Allow-Credentials', 'true')
-    headers.set('Vary', 'Origin')
   }
   return headers
 }

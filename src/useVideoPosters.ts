@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { resolvePointMedia } from './lib/media'
+import { mediaCrossOrigin } from './lib/mediaAccess'
 import type { ImportedMedia, TrailPoint } from './types'
 
 // Cache global des vignettes vidéo (1re image), évite de régénérer.
@@ -14,7 +15,7 @@ type VideoSource = {
 const generatePoster = (src: string): Promise<string | null> =>
   new Promise((resolve) => {
     const video = document.createElement('video')
-    video.crossOrigin = 'anonymous'
+    video.crossOrigin = mediaCrossOrigin(src)
     video.muted = true
     video.defaultMuted = true
     video.playsInline = true

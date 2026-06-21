@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { resolvePointMedia } from './lib/media'
+import { mediaCrossOrigin, mediaFetchCredentials } from './lib/mediaAccess'
 import type { ImportedMedia, TrailPoint } from './types'
 
 // Vignette « carte » cuite dans un seul billboard (clustering correct) :
@@ -97,7 +98,7 @@ const drawFramed = (
 const frameThumbnailViaImage = (src: string): Promise<string | null> =>
   new Promise((resolve) => {
     const image = new Image()
-    if (!src.startsWith('data:')) image.crossOrigin = 'anonymous'
+    if (!src.startsWith('data:')) image.crossOrigin = mediaCrossOrigin(src)
     image.onload = () => {
       try {
         resolve(drawFramed(image, image.width, image.height))
@@ -114,7 +115,10 @@ const frameThumbnailViaImage = (src: string): Promise<string | null> =>
 const frameThumbnail = async (src: string): Promise<string | null> => {
   if (typeof createImageBitmap === 'function') {
     try {
-      const response = await fetch(src, { mode: 'cors' })
+      const response = await fetch(src, {
+        mode: 'cors',
+        credentials: mediaFetchCredentials(src),
+      })
       if (response.ok) {
         const blob = await response.blob()
         const bitmap = await createImageBitmap(blob)
