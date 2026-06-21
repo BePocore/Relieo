@@ -82,6 +82,7 @@ import {
   readUserNotifications,
   readUserProfile,
   requestAccountDeletion,
+  saveTermsAcceptance,
   saveUserPhoto,
   saveUserPlan,
   saveUserProfile,
@@ -116,6 +117,7 @@ type PortalView =
   | 'settings'
   | 'traces'
   | 'tracker'
+  | 'terms'
 
 // Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
@@ -185,6 +187,9 @@ async function requestEmailVerification(user: User): Promise<void> {
 }
 
 const currentView = (): PortalView => {
+  // Page CGU : publique et prioritaire (lisible connecté comme déconnecté, et
+  // jamais détournée par le brouillon de trace local).
+  if (window.location.pathname.endsWith('/terms')) return 'terms'
   if (window.location.pathname === '/tracker') return 'tracker'
   if (hasLocalTraceDraft()) return 'tracker'
   if (window.location.pathname.endsWith('/profile')) return 'profile'
@@ -951,6 +956,12 @@ function SettingsView() {
           </button>
         ))}
       </div>
+      <div className="settings-legal">
+        <button type="button" onClick={() => navigate('/terms')}>
+          <ShieldCheck size={16} /> Conditions d’utilisation &amp; confidentialité
+          <ChevronRight size={16} />
+        </button>
+      </div>
     </section>
   )
 }
@@ -1077,6 +1088,206 @@ function PlanOnboarding({
       </header>
       {error ? <p className="auth-error">{error}</p> : null}
       <PlanCards choosing={choosing} onChoose={choose} />
+    </main>
+  )
+}
+
+// Page CGU + politique de confidentialité + mentions légales. Publique (lisible
+// connecté comme déconnecté), atteinte sur /terms. PREMIER JET juridique : à faire
+// relire avant le lancement public (cf. docs/PLAN-moderation-ia.md, brique 3).
+function TermsView({ onClose }: { onClose: () => void }) {
+  const updatedOn = '21 juin 2026'
+  return (
+    <main className="terms-page">
+      <header className="terms-head">
+        <button className="terms-back" type="button" onClick={onClose}>
+          <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} /> Retour
+        </button>
+        <span className="portal-logo"><Compass size={22} /></span>
+      </header>
+      <div className="terms-doc">
+        <p className="terms-kicker">Relieo</p>
+        <h1>Conditions d’utilisation &amp; confidentialité</h1>
+        <p className="terms-updated">Dernière mise à jour : {updatedOn}</p>
+
+        <section className="terms-section">
+          <h2>1. Conditions générales d’utilisation</h2>
+          <h3>1.1 Objet</h3>
+          <p>
+            Relieo est un service en ligne permettant de créer des cartes
+            interactives 3D et d’y associer des photos et vidéos. L’utilisation du
+            service implique l’acceptation pleine et entière des présentes
+            conditions.
+          </p>
+          <h3>1.2 Compte</h3>
+          <p>
+            La création d’un compte nécessite une adresse email valide, vérifiée à
+            l’inscription. Vous êtes responsable de la confidentialité de vos
+            identifiants et de toute activité réalisée depuis votre compte.
+          </p>
+          <h3>1.3 Vos contenus</h3>
+          <p>
+            Vous conservez la propriété des médias et cartes que vous publiez. Vous
+            garantissez disposer des droits nécessaires sur les contenus mis en
+            ligne et vous engagez à ne pas publier de contenu illicite, haineux,
+            violent ou à caractère sexuel explicite.
+          </p>
+          <h3>1.4 Modération des contenus par une IA</h3>
+          <p>
+            <strong>
+              Vous acceptez expressément que les médias (photos et vidéos) que vous
+              publiez soient analysés par un service automatisé de modération afin
+              de détecter les contenus inappropriés (nudité explicite, violence,
+              symboles ou gestes haineux).
+            </strong>{' '}
+            Cette analyse est réalisée par notre sous-traitant <strong>Sightengine</strong>
+            {' '}(société française, traitement des données dans l’Union européenne,
+            suppression des fichiers immédiatement après analyse). Un contenu signalé
+            peut être masqué au public puis, après revue, retiré. Voir la politique
+            de confidentialité ci-dessous.
+          </p>
+          <h3>1.5 Modération et sanctions</h3>
+          <p>
+            Nous nous réservons le droit de dépublier ou supprimer un contenu, et de
+            suspendre ou supprimer un compte ne respectant pas ces conditions. Vous
+            êtes informé par notification et, le cas échéant, par email, et pouvez
+            adresser un message de contestation.
+          </p>
+          <h3>1.6 Disponibilité &amp; responsabilité</h3>
+          <p>
+            Le service est fourni « en l’état », sans garantie de disponibilité
+            continue. Nous ne saurions être tenus responsables d’une perte de
+            données, dans la limite permise par la loi. Pensez à conserver une copie
+            de vos contenus importants.
+          </p>
+          <h3>1.7 Évolution des conditions</h3>
+          <p>
+            Ces conditions peuvent évoluer. En cas de modification substantielle,
+            une nouvelle acceptation pourra vous être demandée.
+          </p>
+        </section>
+
+        <section className="terms-section">
+          <h2>2. Politique de confidentialité</h2>
+          <h3>2.1 Données collectées</h3>
+          <p>
+            Nous traitons : votre adresse email et les informations de votre profil
+            (nom, localisation, bio, photo), vos cartes et médias, ainsi que des
+            données techniques nécessaires au fonctionnement du service.
+          </p>
+          <h3>2.2 Finalités &amp; sous-traitants</h3>
+          <p>Vos données sont utilisées pour fournir le service. Nos sous-traitants :</p>
+          <ul>
+            <li><strong>Firebase (Google)</strong> — authentification et profils.</li>
+            <li><strong>Cloudflare R2</strong> — stockage des cartes et médias.</li>
+            <li><strong>Vercel</strong> — hébergement de l’application.</li>
+            <li><strong>Resend</strong> — envoi des emails transactionnels.</li>
+            <li>
+              <strong>Sightengine</strong> — modération automatisée des médias
+              publiés (UE, suppression immédiate après analyse). Base légale :
+              intérêt légitime à garantir un service sûr et votre consentement
+              exprès recueilli à l’acceptation des présentes.
+            </li>
+          </ul>
+          <h3>2.3 Conservation</h3>
+          <p>
+            Vos données sont conservées tant que votre compte est actif. Les
+            fichiers transmis à Sightengine pour analyse sont supprimés
+            immédiatement après traitement. La suppression de votre compte efface
+            vos contenus.
+          </p>
+          <h3>2.4 Vos droits</h3>
+          <p>
+            Conformément au RGPD, vous disposez d’un droit d’accès, de
+            rectification, d’effacement et de portabilité de vos données. Vous
+            pouvez supprimer votre compte depuis votre profil, ou nous contacter à
+            l’adresse ci-dessous.
+          </p>
+        </section>
+
+        <section className="terms-section">
+          <h2>3. Mentions légales</h2>
+          <p>
+            Éditeur : Relieo — <em>[identité de l’éditeur à compléter]</em>.<br />
+            Contact : <a href="mailto:contact@relieo.fr">contact@relieo.fr</a>.<br />
+            Hébergement : Vercel Inc. et Cloudflare, Inc.
+          </p>
+          <p className="terms-draft-note">
+            Document de travail (premier jet) à faire relire avant le lancement
+            public.
+          </p>
+        </section>
+      </div>
+    </main>
+  )
+}
+
+// Écran de consentement bloquant, affiché après l’inscription (et aux comptes
+// existants n’ayant pas encore accepté) avant l’accès au dashboard. Calqué sur
+// PlanOnboarding.
+function TermsOnboarding({
+  user,
+  onAccept,
+  onViewTerms,
+}: {
+  user: PortalUser
+  onAccept: () => Promise<void>
+  onViewTerms: () => void
+}) {
+  const [checked, setChecked] = useState(false)
+  const [accepting, setAccepting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const accept = () => {
+    setAccepting(true)
+    setError(null)
+    onAccept().catch((acceptError: unknown) => {
+      setError(
+        acceptError instanceof Error
+          ? acceptError.message
+          : 'Impossible d’enregistrer votre acceptation.',
+      )
+      setAccepting(false)
+    })
+  }
+
+  return (
+    <main className="plan-onboarding terms-onboarding">
+      <header className="plan-onboarding-head">
+        <span className="portal-logo"><ShieldCheck size={24} /></span>
+        <p className="portal-kicker">Bienvenue {user.name.split(' ')[0]}</p>
+        <h1>Conditions d’utilisation</h1>
+        <p>
+          Avant de commencer, merci d’accepter nos conditions. Point important : les
+          médias que vous publiez sont analysés par une IA de modération
+          (Sightengine, UE) pour garder Relieo sûr pour tous.
+        </p>
+      </header>
+      {error ? <p className="auth-error">{error}</p> : null}
+      <div className="terms-onboarding-card">
+        <label className="terms-consent">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(event) => setChecked(event.target.checked)}
+          />
+          <span>
+            J’ai lu et j’accepte les{' '}
+            <button className="terms-inline-link" type="button" onClick={onViewTerms}>
+              conditions d’utilisation et la politique de confidentialité
+            </button>
+            , y compris la modération automatisée de mes médias.
+          </span>
+        </label>
+        <button
+          className="portal-primary terms-accept"
+          type="button"
+          disabled={!checked || accepting}
+          onClick={accept}
+        >
+          {accepting ? 'Enregistrement…' : 'J’accepte et je continue'}
+        </button>
+      </div>
     </main>
   )
 }
@@ -1601,6 +1812,8 @@ const toPortalUser = (fb: User, extras: ProfileExtras): PortalUser => {
     createdAt: fb.metadata.creationTime ?? new Date().toISOString(),
     plan: extras.plan,
     photoURL: extras.photoURL ?? fb.photoURL ?? undefined,
+    termsAccepted: extras.termsAccepted === true,
+    termsAcceptedAt: extras.termsAcceptedAt,
   }
 }
 
@@ -1882,6 +2095,17 @@ function FirebaseAuthScreen({
               <ArrowRight size={17} />
             </button>
           </form>
+          <p className="auth-terms-link">
+            En continuant, vous acceptez nos{' '}
+            <button
+              className="terms-inline-link"
+              type="button"
+              onClick={() => navigate('/terms')}
+            >
+              conditions d’utilisation
+            </button>
+            .
+          </p>
         </div>
       </section>
     </main>
@@ -2105,6 +2329,14 @@ function FirebasePortal() {
   })
   // État de modération du compte (actif / bloqué / supprimé).
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
+  // Chemin courant suivi au niveau racine, pour router la page /terms (publique)
+  // que l'on soit connecté ou non.
+  const [pathname, setPathname] = useState(window.location.pathname)
+  useEffect(() => {
+    const syncPath = () => setPathname(window.location.pathname)
+    window.addEventListener('popstate', syncPath)
+    return () => window.removeEventListener('popstate', syncPath)
+  }, [])
   const adminPhoneBlocked =
     Boolean(session) && emailVerified && admin.checked && admin.isAdmin && adminPhoneDevice
 
@@ -2229,6 +2461,11 @@ function FirebasePortal() {
     void signOut(auth).finally(() => navigate('/login'))
   }, [adminPhoneBlocked, auth])
 
+  // Page CGU : publique et prioritaire, accessible avant même la connexion.
+  if (pathname.endsWith('/terms')) {
+    return <TermsView onClose={() => navigate(session ? '/dashboard' : '/login')} />
+  }
+
   if (!auth) {
     return (
       <main className="portal-auth">
@@ -2331,6 +2568,32 @@ function FirebasePortal() {
             setSession({
               firebaseUser: session.firebaseUser,
               portalUser: { ...session.portalUser, plan: planId },
+            })
+            navigate('/dashboard')
+          }}
+        />
+      </>
+    )
+  }
+
+  // Consentement CGU (modération IA incluse) obligatoire avant l'accès au
+  // dashboard. Les comptes existants le voient à leur prochaine connexion.
+  if (!session.portalUser.termsAccepted) {
+    return (
+      <>
+        {profileError ? <p className="auth-error">{profileError}</p> : null}
+        <TermsOnboarding
+          user={session.portalUser}
+          onViewTerms={() => navigate('/terms')}
+          onAccept={async () => {
+            const acceptedAt = await saveTermsAcceptance(session.firebaseUser.uid)
+            setSession({
+              firebaseUser: session.firebaseUser,
+              portalUser: {
+                ...session.portalUser,
+                termsAccepted: true,
+                termsAcceptedAt: acceptedAt,
+              },
             })
             navigate('/dashboard')
           }}

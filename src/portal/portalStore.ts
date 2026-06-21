@@ -10,6 +10,10 @@ export type PortalUser = {
   plan?: string
   // Photo de profil : vignette JPEG (data URL) stockée dans Firestore.
   photoURL?: string
+  // Acceptation des CGU (et de la modération IA des médias). Tant que c'est
+  // false/undefined, un écran de consentement bloque l'accès au dashboard.
+  termsAccepted?: boolean
+  termsAcceptedAt?: string
 }
 
 export type PortalHike = {
@@ -32,6 +36,8 @@ export type ProfileExtras = {
   bio?: string
   plan?: string
   photoURL?: string
+  termsAccepted?: boolean
+  termsAcceptedAt?: string
 }
 
 // État de modération du compte, lu depuis Firestore `moderation/<uid>` (écrit

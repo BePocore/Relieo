@@ -45,10 +45,20 @@
   Type de notification `media-rejected` ajouté (`portalStore`, `firestoreAdmin`, `PortalApp` : titre, popup,
   icône) ; sanction `media-reject` ajoutée (`server/sanctions.ts`).
 
+**Fait — BLOC C « CGU + consentement » (brique 3, build OK) :**
+- `portalStore.ts` / `firebase.ts` : champs profil `termsAccepted` / `termsAcceptedAt` +
+  `saveTermsAcceptance(uid)`.
+- `PortalApp.tsx` : page **`/terms`** publique (`TermsView` : CGU + politique de confidentialité citant
+  Sightengine + mentions légales, **premier jet à faire relire**), écran de consentement **bloquant**
+  (`TermsOnboarding`, après le choix du forfait, avant le dashboard ; les comptes existants le voient à la
+  prochaine connexion ; les admins en sont exemptés). Liens vers `/terms` depuis l'écran de connexion et
+  l'onglet Paramètres. Routage `/terms` au niveau racine (lisible connecté comme déconnecté).
+- ⚠️ Le contenu juridique est un **brouillon** : identité de l'éditeur à compléter, relecture conseillée.
+
 **Reste à faire :**
 1. Reliquat **Upload API vidéos > 50 Mo** côté videur (`worker/src/sightengine.ts`) : aujourd'hui une telle
-   vidéo est `skipped` au scan → reste non scannée = masquée au public (sûr mais pas publiable).
-2. **CGU + consentement** (brique 3).
+   vidéo est `skipped` au scan → reste non scannée = masquée au public (sûr mais pas publiable). Nécessite
+   un upload **streamé** R2 → Sightengine (mémoire Worker) à valider contre l'API réelle.
 
 **À activer le moment venu (Quentin) — RIEN n'est créé/posé pour l'instant :**
 - Créer un compte **Sightengine** (API user + secret).

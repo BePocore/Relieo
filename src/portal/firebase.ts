@@ -133,6 +133,9 @@ export const readUserProfile = async (
       typeof data.photoURL === 'string' && data.photoURL
         ? data.photoURL
         : undefined,
+    termsAccepted: data.termsAccepted === true,
+    termsAcceptedAt:
+      typeof data.termsAcceptedAt === 'string' ? data.termsAcceptedAt : undefined,
   }
 }
 
@@ -168,6 +171,20 @@ export const saveUserPhoto = async (
     { photoURL, updatedAt: serverTimestamp() },
     { merge: true },
   )
+}
+
+// Enregistre l'acceptation des CGU (consentement à la modération IA incluse).
+// Renvoie l'horodatage ISO posé, pour rafraîchir la session sans relecture.
+export const saveTermsAcceptance = async (uid: string): Promise<string> => {
+  const reference = profileDocument(uid)
+  if (!reference) throw new Error('Firestore n’est pas configure.')
+  const acceptedAt = new Date().toISOString()
+  await setDoc(
+    reference,
+    { termsAccepted: true, termsAcceptedAt: acceptedAt, updatedAt: serverTimestamp() },
+    { merge: true },
+  )
+  return acceptedAt
 }
 
 // Enregistre uniquement le forfait choisi (sans toucher au reste du profil).

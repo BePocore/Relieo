@@ -3027,3 +3027,126 @@ body.portal-active.tracker-scroll-active #root {
 @media (max-width: 640px) {
   .theme-options { grid-template-columns: 1fr; }
 }
+
+/* ── CGU : page légale + consentement bloquant ──────────────────── */
+.terms-page {
+  min-height: 100vh;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--c-border);
+  color: var(--c-text);
+}
+.terms-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  z-index: 2;
+}
+.terms-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+.terms-back:hover { background: var(--c-border); }
+.terms-doc {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+.terms-kicker {
+  color: var(--c-accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 4px;
+}
+.terms-doc h1 { font-size: 28px; margin: 0 0 6px; }
+.terms-updated { color: var(--c-text-dim); font-size: 13px; margin: 0 0 24px; }
+.terms-section { margin-bottom: 28px; }
+.terms-section h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--c-border);
+}
+.terms-section h3 { font-size: 15.5px; margin: 18px 0 6px; }
+.terms-section p,
+.terms-section li { font-size: 14.5px; line-height: 1.62; color: var(--c-text); }
+.terms-section ul { padding-left: 20px; display: grid; gap: 6px; }
+.terms-section a { color: var(--c-accent); }
+.terms-draft-note {
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--c-accent-soft);
+  color: var(--c-text-dim);
+  font-size: 13px;
+}
+
+.terms-onboarding-card {
+  width: min(100%, 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid var(--c-border);
+  border-radius: 18px;
+  background: var(--c-surface);
+}
+.terms-consent {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 14.5px;
+  line-height: 1.55;
+  cursor: pointer;
+}
+.terms-consent input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.terms-inline-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--c-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.terms-accept { justify-content: center; }
+.terms-accept:disabled { opacity: 0.5; cursor: default; }
+.auth-terms-link {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--c-text-dim);
+}
+.settings-legal { margin-top: 26px; }
+.settings-legal button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-weight: 600;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+.settings-legal button:hover { background: var(--c-border); }
+.settings-legal button > :last-child { margin-left: auto; color: var(--c-text-dim); }

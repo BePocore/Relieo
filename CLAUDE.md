@@ -90,7 +90,9 @@ The videur Worker hosts the **AI moderation engine** (Sightengine), added 2026-0
 - **Publish signal** (`api/hikes.ts`): on publish, prioritised scan request to the videur (`signalModerationScan`), gated on `MODERATION_SIGNAL_SECRET` being present (no R2 list cost otherwise).
 - **Admin console**: `GET /api/admin/dashboard` returns `mediaModeration { items (enriched: videur `mediaUrl`, ownerEmail, mapCode/title), usage, dailyLimit, monthlyLimit }` + a **Sightengine** cost line. `POST /api/admin/action` handles `action:'media-mod'` (`op:'approve'|'reject'`) and `action:'scan-media'`. **Reject** deletes the original + its thumbnail from R2, removes the ref from `project.json`, notifies the owner (in-app `media-rejected` + best-effort email) and logs a `media-reject` sanction. The **« Modération IA »** tab in `AdminView.tsx` shows the flagged gallery (preview + category + score), a **« Lancer un scan »** button and day/month op gauges; nav badge = pending count.
 
-**Full design, data contract and remaining work (Upload API for >50 MB videos, CGU): `docs/PLAN-moderation-ia.md` (handoff section) + `docs/STORAGE-moderation.md`.**
+**Terms & consent gate**: a `/terms` page (`TermsView` in `PortalApp.tsx`: CGU + privacy policy citing Sightengine + legal notice, **first draft to review**) is public (top-level route, readable logged-in or out), and a **blocking** consent screen (`TermsOnboarding`) is shown after plan choice, before the dashboard (existing users see it next login; admins are exempt). Profile carries `termsAccepted`/`termsAcceptedAt` (`saveTermsAcceptance`). This is the explicit consent for AI moderation, required before public launch.
+
+**Full design, data contract and remaining work (only the Upload API for >50 MB videos is left): `docs/PLAN-moderation-ia.md` (handoff section) + `docs/STORAGE-moderation.md`.**
 
 ### Drafts vs published
 
