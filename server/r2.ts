@@ -189,19 +189,36 @@ export const r2PublicUrl = (key: string): string => {
   return `${publicBaseUrl}/${encodedKey}`
 }
 
+// Domaine du « videur » (Cloudflare Worker) qui sert les médias sous contrôle
+// d'accès. Les URLs renvoyées au public pointent dessus (cf. rewriteMediaUrls).
+const MEDIA_BASE_URL_DEFAULT = 'https://media.relieo.fr'
+export const mediaBaseUrl = (): string =>
+  process.env.MEDIA_BASE_URL?.trim().replace(/\/$/, '') || MEDIA_BASE_URL_DEFAULT
+
+// Réécrit À LA LECTURE les URLs publiques R2 (…r2.dev) vers media.relieo.fr.
+// Réversible : ne modifie pas les fichiers stockés, seulement la réponse servie.
+export const rewriteMediaUrls = (text: string): string => {
+  const { publicBaseUrl } = config()
+  const media = mediaBaseUrl()
+  if (!publicBaseUrl || publicBaseUrl === media) return text
+  return text.split(publicBaseUrl).join(media)
+}
+
 export const r2KeyFromPublicUrl = (url: string): string | null => {
   const { publicBaseUrl } = config()
-  const prefix = `${publicBaseUrl}/`
-  if (!url.startsWith(prefix)) return null
-  try {
-    return url
-      .slice(prefix.length)
-      .split('/')
-      .map(decodeURIComponent)
-      .join('/')
-  } catch {
-    return null
+  // On accepte l'ancienne base publique (r2.dev) ET le domaine du videur
+  // (media.relieo.fr) : une carte rechargée peut porter l'une ou l'autre, et la
+  // sauvegarde Studio doit pouvoir reconvertir les deux en clé R2.
+  for (const base of [publicBaseUrl, mediaBaseUrl()]) {
+    const prefix = `${base}/`
+    if (!url.startsWith(prefix)) continue
+    try {
+      return url.slice(prefix.length).split('/').map(decodeURIComponent).join('/')
+    } catch {
+      return null
+    }
   }
+  return null
 }
 
 export const r2ObjectExists = async (key: string): Promise<boolean> => {

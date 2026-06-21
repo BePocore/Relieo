@@ -189,6 +189,28 @@ const syncStudioUrlToCode = (code: string): void => {
   window.history.replaceState(window.history.state, '', url.toString())
 }
 
+// Demande un ticket d'acces aux medias de la carte. Le serveur pose un cookie
+// httpOnly (.relieo.fr) renvoye automatiquement aux requetes media.relieo.fr.
+// A appeler en consultation publique AVANT d'afficher les medias, puis a
+// renouveler (le ticket dure ~2 min). Renvoie le delai conseille (ms), ou null.
+const fetchMediaTicket = async (code: string): Promise<number | null> => {
+  if (!code) return null
+  try {
+    const response = await fetch('/api/media-ticket', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+      cache: 'no-store',
+    })
+    if (!response.ok) return null
+    const data = (await response.json()) as { refreshInMs?: number }
+    return typeof data.refreshInMs === 'number' ? data.refreshInMs : 60_000
+  } catch {
+    return null
+  }
+}
+
 const studioReturnStateKey = 'relieoStudioReturn'
 
 const studioReturnUrl = (): string | null => {
@@ -583,6 +605,11 @@ function App() {
         if (!onlineProject) {
           throw new Error(onlineError ?? 'Aucune carte disponible dans Cloudflare R2.')
         }
+        // Consultation publique : on obtient le ticket d'acces media (cookie pose)
+        // AVANT d'afficher la carte, pour que les images partent deja autorisees.
+        if (!isStudioMode) {
+          await fetchMediaTicket(hikeCode || onlineProject.accessCode || '')
+        }
         applyProject(onlineProject)
         // Trace en attente depuis l'onglet Traces : ajoutee a CETTE carte (non
         // sauvegardee), le proprietaire relit puis clique Sauvegarder.
@@ -615,6 +642,27 @@ function App() {
 
     void loadTrail()
   }, [applyProject, isNewBlankStudio, newTrailCode, hikeCode, isStudioMode])
+
+  // Renouvellement du ticket d'acces media (~mi-vie) tant que la carte publique
+  // reste ouverte. Le tout premier ticket est obtenu pendant le chargement.
+  useEffect(() => {
+    if (isStudioMode) return
+    const code = hikeCode || accessCode
+    if (!code) return
+    let stopped = false
+    let timer: number | undefined
+    const tick = async (): Promise<void> => {
+      if (stopped) return
+      const next = await fetchMediaTicket(code)
+      if (stopped) return
+      timer = window.setTimeout(() => void tick(), next ?? 60_000)
+    }
+    timer = window.setTimeout(() => void tick(), 60_000)
+    return () => {
+      stopped = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [isStudioMode, hikeCode, accessCode])
 
   const combinedPoints = useMemo(
     () => traces.flatMap((trace) => trace.points),

@@ -1,0 +1,36 @@
+{
+  // Config du Worker "videur" Relieo. Doc: https://developers.cloudflare.com/workers/wrangler/configuration/
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "relieo-media",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+
+  // Le Worker repond sur media.relieo.fr (zone geree par Cloudflare, meme compte).
+  // wrangler cree le custom domain + l'enregistrement DNS + le certificat au deploiement.
+  "routes": [{ "pattern": "media.relieo.fr", "custom_domain": true }],
+
+  // Binding R2 : acces natif au bucket, SANS clefs S3 (R2_ACCESS_KEY_ID/SECRET inutiles ici).
+  // ⚠️ Remplacer "bucket_name" par le vrai nom du bucket R2 (= la variable R2_BUCKET_NAME cote Vercel).
+  //    Pour le retrouver apres "wrangler login" : npx wrangler r2 bucket list
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "rando3d-media"
+    }
+  ],
+
+  // Variables non secretes. Le secret MEDIA_TICKET_SECRET se pose a part :
+  //  - en local  : fichier .dev.vars (non commite)
+  //  - en prod   : npx wrangler secret put MEDIA_TICKET_SECRET
+  "vars": {
+    // Origines autorisees pour CORS (CSV). En dev on ouvre large ; en prod -> https://relieo.fr
+    "ALLOWED_ORIGINS": "*",
+    // Autorise le ticket passe en en-tete X-Media-Ticket (tests sur *.workers.dev ou le cookie
+    // cross-domaine est impossible). A mettre "0" en prod (le ticket ne doit venir que du cookie).
+    "ALLOW_HEADER_TICKET": "1"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

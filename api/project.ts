@@ -7,6 +7,7 @@ import {
   r2KeyFromPublicUrl,
   r2PublicUrl,
   r2PutText,
+  rewriteMediaUrls,
 } from '../server/r2.js'
 import {
   activeTrailPath,
@@ -228,17 +229,22 @@ export async function GET(request: Request) {
           { status: 404, headers: jsonHeaders },
         )
       }
+      // Consultation publique (sans jeton) : les médias sont servis via le videur
+      // media.relieo.fr (réécriture à la volée). En mode Studio (jeton présent),
+      // on garde les URLs R2 d'origine pour que la sauvegarde les reconvertisse.
+      const isStudioLoad = Boolean(request.headers.get('authorization'))
+      const served = isStudioLoad ? body : rewriteMediaUrls(body)
       // Le statut fiable vient de l'index : une dépublication via le tableau de
       // bord ne réécrit pas project.json. On l'injecte pour que le client
       // connaisse l'état réel (publiée / brouillon).
       try {
-        const project = JSON.parse(body) as Record<string, unknown>
+        const project = JSON.parse(served) as Record<string, unknown>
         return Response.json(
           { ...project, hikeStatus: entry.status },
           { headers: jsonHeaders },
         )
       } catch {
-        return new Response(body, {
+        return new Response(served, {
           headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
         })
       }
@@ -251,7 +257,8 @@ export async function GET(request: Request) {
         { status: 404, headers: jsonHeaders },
       )
     }
-    return new Response(body, {
+    // Vue publique par défaut : médias servis via le videur media.relieo.fr.
+    return new Response(rewriteMediaUrls(body), {
       headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {

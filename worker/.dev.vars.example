@@ -1,0 +1,6 @@
+# Copie ce fichier en ".dev.vars" (non commite) pour le dev local du Worker.
+# Le secret doit etre IDENTIQUE a celui pose cote Vercel (emission du ticket)
+# et cote Worker en prod (npx wrangler secret put MEDIA_TICKET_SECRET).
+
+# Secret de signature des tickets (HMAC-SHA256). En prod : valeur forte et unique.
+MEDIA_TICKET_SECRET="dev-secret-a-changer"

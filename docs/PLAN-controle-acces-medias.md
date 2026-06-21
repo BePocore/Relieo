@@ -4,6 +4,24 @@
 > Complète le [PLAN-moderation-ia.md](./PLAN-moderation-ia.md) : c'est le **même Cloudflare Worker**
 > qui assurera à la fois la modération (scan) et le contrôle d'accès décrit ici.
 
+## Prérequis pour démarrer (à fournir / décider en début de session suivante)
+
+Avant d'écrire le moindre code du videur, il faut ces éléments (bloquants) :
+1. **Où est géré le DNS de relieo.fr ?** (OVH d'après l'historique, ou déplacé sur Cloudflare ?).
+   Pour router `media.relieo.fr` vers un Worker, la zone doit en général être gérée par Cloudflare →
+   sinon, étape 0 = déléguer le DNS (ou le sous-domaine) à Cloudflare.
+2. **Valeur de `R2_PUBLIC_BASE_URL`** (dans `.env.local`) : un domaine custom type `cdn.relieo.fr`
+   (= déjà sur Cloudflare, gagné) ou un `*.r2.dev` (config différente).
+3. **Re-brancher relieo.fr sur Vercel en public** : aujourd'hui relieo.fr a été **détaché** de Vercel
+   (la protection Vercel ne couvrait pas le domaine custom sans plan payant). Le site et les médias
+   doivent être sur le même domaine (relieo.fr / media.relieo.fr) pour que le cookie ticket soit
+   first-party.
+4. **Accès au compte Cloudflare** (où est le bucket R2) + installer `wrangler` (CLI Workers).
+
+État actuel (2026-06-21) : le site est fermé par un **mur d'accès dev** (mot de passe, `SITE_GATE_PASSWORD`,
+cf. `src/DevGate.tsx` + `api/gate.ts`). Le contrôle d'accès des médias remplacera la sécurité « pour de
+vrai » au lancement public ; le mur dev sera retiré à ce moment-là.
+
 ## Contexte
 
 Aujourd'hui, les médias (photos, vidéos, previews) sont stockés sur un bucket Cloudflare R2 **public** :
