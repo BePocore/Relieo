@@ -23,11 +23,10 @@
   //  - en local  : fichier .dev.vars (non commite)
   //  - en prod   : npx wrangler secret put MEDIA_TICKET_SECRET
   "vars": {
-    // Origines autorisees pour CORS (CSV). En dev on ouvre large ; en prod -> https://relieo.fr
-    "ALLOWED_ORIGINS": "*",
-    // Autorise le ticket passe en en-tete X-Media-Ticket (tests sur *.workers.dev ou le cookie
-    // cross-domaine est impossible). A mettre "0" en prod (le ticket ne doit venir que du cookie).
-    "ALLOW_HEADER_TICKET": "1"
+    // Origines autorisees pour CORS (CSV).
+    "ALLOWED_ORIGINS": "https://relieo.fr,https://www.relieo.fr",
+    // En prod le ticket ne vient QUE du cookie httpOnly (pas d'en-tete X-Media-Ticket).
+    "ALLOW_HEADER_TICKET": "0"
   },
 
   "observability": {

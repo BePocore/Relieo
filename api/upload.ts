@@ -9,6 +9,7 @@ import {
   r2ListKeys,
   r2PrepareUpload,
   r2PutText,
+  rewriteMediaUrls,
   type StorageScope,
 } from '../server/r2.js'
 import { cleanStorageName, STUDIO_OWNER, trailLocation, userStorageRoot } from '../server/trailStorage.js'
@@ -469,7 +470,13 @@ export async function POST(request: Request) {
       size,
       scope,
     })
-    return Response.json({ provider: 'r2', folder: location.folder, ...prepared })
+    // `url` (aperçu immédiat) réécrit vers le videur media.relieo.fr ; le Studio
+    // a un ticket propriétaire qui couvre la carte. `uploadUrl` (PUT signé vers
+    // …r2.cloudflarestorage.com) n'est pas concerné par la réécriture.
+    const payload = { provider: 'r2', folder: location.folder, ...prepared }
+    return new Response(rewriteMediaUrls(JSON.stringify(payload)), {
+      headers: { 'Content-Type': 'application/json' },
+    })
   } catch (error) {
     if (error instanceof R2QuotaError) {
       return Response.json(
