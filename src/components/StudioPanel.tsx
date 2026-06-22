@@ -62,6 +62,7 @@ type StudioPanelProps = {
   onImportDriveMedia: () => Promise<void>
   onImportMedia: (files: File[]) => Promise<void>
   onCleanupUnusedMedia: () => Promise<void>
+  onDeleteMedia: (mediaId: string) => Promise<void>
   onAcceptEstimatedMedia: (mediaId: string) => void
   onEstimateImportedMedia: (mediaId: string) => void
   onIgnoreImportEntry: (
@@ -84,6 +85,7 @@ type StudioPanelProps = {
   isUploading: boolean
   isDriveImporting: boolean
   isCleaningUnusedMedia: boolean
+  deletingMediaId: string | null
   canEstimatePlacement: boolean
   googleDriveConfigured: boolean
   uploadProgress: UploadProgress | null
@@ -658,6 +660,7 @@ export function StudioPanel({
   onImportDriveMedia,
   onImportMedia,
   onCleanupUnusedMedia,
+  onDeleteMedia,
   onAcceptEstimatedMedia,
   onEstimateImportedMedia,
   onIgnoreImportEntry,
@@ -678,6 +681,7 @@ export function StudioPanel({
   isUploading,
   isDriveImporting,
   isCleaningUnusedMedia,
+  deletingMediaId,
   canEstimatePlacement,
   googleDriveConfigured,
   uploadProgress,
@@ -1327,6 +1331,31 @@ export function StudioPanel({
                       : ' · pas de GPS'}
                   </small>
                 </span>
+                <button
+                  className="danger-action media-delete-action"
+                  type="button"
+                  aria-label={`Supprimer ${media.name}`}
+                  title="Supprimer ce média du stockage sans supprimer le point"
+                  disabled={
+                    !writeAuthReady ||
+                    !accessCode.trim() ||
+                    isUploading ||
+                    isDriveImporting ||
+                    isCleaningUnusedMedia ||
+                    Boolean(deletingMediaId)
+                  }
+                  onClick={() => void onDeleteMedia(media.id)}
+                >
+                  {deletingMediaId === media.id ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="save-status-spinner"
+                      size={15}
+                    />
+                  ) : (
+                    <Trash2 aria-hidden="true" size={15} />
+                  )}
+                </button>
               </div>
             ))}
           </div>

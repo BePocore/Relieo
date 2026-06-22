@@ -306,20 +306,30 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
 const handleMediaMod = async (admin: AuthedUser, body: ActionBody) => {
   const id = body.id?.trim()
   const op = body.op
-  if (!id || (op !== 'approve' && op !== 'reject')) {
+  const ids = Array.isArray(body.ids)
+    ? body.ids
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : []
+  const targetIds = ids.length > 0 ? ids : id ? [id] : []
+
+  if (targetIds.length === 0 || (op !== 'approve' && op !== 'reject')) {
     return json({ message: 'id et op (approve|reject) sont obligatoires.' }, 400)
   }
 
   // Approuver : l'IA s'est trompée. On retire l'entrée -> le média redevient
   // servable (il reste « scanné »). Aucune suppression.
   if (op === 'approve') {
-    await approveModerationItem(id)
-    return json({ id, op, approved: true })
+    for (const targetId of targetIds) {
+      await approveModerationItem(targetId)
+    }
+    return json({ ids: targetIds, op, approved: true })
   }
 
   // Rejeter : non conforme. Cœur factorisé (réutilisé par l'auto-suppression).
-  await rejectMediaCore(id, { uid: admin.uid, email: admin.email }, body.message?.trim() ?? '')
-  return json({ id, op, rejected: true })
+  await rejectMediaCore(targetIds[0], { uid: admin.uid, email: admin.email }, body.message?.trim() ?? '')
+  return json({ id: targetIds[0], op, rejected: true })
 }
 
 // Cœur du rejet d'un média, partagé par le bouton « Rejeter » (manuel) et la

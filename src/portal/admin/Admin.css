@@ -885,12 +885,44 @@
   aspect-ratio: 4 / 3;
   background: #0f1623;
 }
-.admin-mediamod-preview img,
-.admin-mediamod-preview video {
+.admin-mediamod-preview > img,
+.admin-mediamod-preview > video,
+.admin-mediamod-main-media {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.admin-mediamod-thumb {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 76px;
+  height: 62px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0f1623;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+.admin-mediamod-thumb img,
+.admin-mediamod-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.admin-mediamod-thumb span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 4px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  background: rgba(15, 22, 35, 0.82);
 }
 .admin-mediamod-score {
   position: absolute;

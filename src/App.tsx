@@ -396,6 +396,83 @@ const mediaAlreadyInLibrary = (
   )
 }
 
+const pointUsesMedia = (point: TrailPoint, media: ImportedMedia): boolean => {
+  return (
+    point.image === media.url ||
+    point.video === media.url ||
+    point.mediaName?.toLowerCase() === media.name.toLowerCase()
+  )
+}
+
+const pointTypeAfterMediaRemoval = (point: TrailPoint): PointType => {
+  if (point.skypixelUrl) return '360'
+  return point.type === 'photo' || point.type === 'video' || point.type === '360'
+    ? 'poi'
+    : point.type
+}
+
+const stripMediaFromPoint = (
+  point: TrailPoint,
+  media: ImportedMedia,
+): TrailPoint => {
+  if (!pointUsesMedia(point, media)) return point
+  return {
+    ...point,
+    type: pointTypeAfterMediaRemoval(point),
+    image: undefined,
+    video: undefined,
+    mediaName: undefined,
+    mediaKind: undefined,
+  }
+}
+
+const mediaUrlsUsedByPoints = (
+  points: TrailPoint[],
+  mediaLibrary: ImportedMedia[],
+): string[] => {
+  const urls = new Set<string>()
+  for (const point of points) {
+    if (point.image) urls.add(point.image)
+    if (point.video) urls.add(point.video)
+  }
+  for (const media of mediaLibrary) {
+    if (!points.some((point) => pointUsesMedia(point, media))) continue
+    urls.add(media.url)
+    if (media.thumbnailUrl) urls.add(media.thumbnailUrl)
+  }
+  return Array.from(urls)
+}
+
+const pruneMediaFromImportReport = (
+  report: ImportReport | null,
+  removedMedia: ImportedMedia[],
+): ImportReport | null => {
+  if (!report || removedMedia.length === 0) return report
+  const removedIds = new Set(removedMedia.map((media) => media.id))
+  const removedNames = new Set(
+    removedMedia.map((media) => media.name.toLowerCase()),
+  )
+  const keepEntry = (entry: ImportReport['placed'][number]): boolean => {
+    if (entry.mediaId && removedIds.has(entry.mediaId)) return false
+    return !removedNames.has(entry.name.toLowerCase())
+  }
+  const next: ImportReport = {
+    total: 0,
+    placed: report.placed.filter(keepEntry),
+    noGps: report.noGps.filter(keepEntry),
+    offTrack: report.offTrack.filter(keepEntry),
+    duplicates: report.duplicates.filter(keepEntry),
+    failed: report.failed.filter(keepEntry),
+  }
+  next.total =
+    next.placed.length +
+    next.noGps.length +
+    next.offTrack.length +
+    next.duplicates.length +
+    next.failed.length
+  return next.total > 0 ? next : null
+}
+
 function App() {
   const [isStudioMode] = useState(() => isStudioUrl())
   const [studioReturnHref] = useState(() =>
@@ -443,6 +520,7 @@ function App() {
   const [isUploading, setIsUploading] = useState(false)
   const [isDriveImporting, setIsDriveImporting] = useState(false)
   const [isCleaningUnusedMedia, setIsCleaningUnusedMedia] = useState(false)
+  const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
     null,
   )
@@ -676,18 +754,10 @@ function App() {
       }),
     [accessCode, mediaLibrary, points, pointsSourceName, traces],
   )
-  const usedMediaUrls = useMemo(() => {
-    const urls = new Set<string>()
-    for (const media of mediaLibrary) {
-      urls.add(media.url)
-      if (media.thumbnailUrl) urls.add(media.thumbnailUrl)
-    }
-    for (const point of points) {
-      if (point.image) urls.add(point.image)
-      if (point.video) urls.add(point.video)
-    }
-    return Array.from(urls)
-  }, [mediaLibrary, points])
+  const usedMediaUrls = useMemo(
+    () => mediaUrlsUsedByPoints(points, mediaLibrary),
+    [mediaLibrary, points],
+  )
   const hasUnsavedProjectChanges =
     savedProjectSignature !== null &&
     currentProjectSignature !== savedProjectSignature
@@ -1375,6 +1445,84 @@ function App() {
     setImportReport(null)
   }, [])
 
+  const removeMediaLocally = useCallback(
+    (
+      removedMedia: ImportedMedia[],
+      options: { detachPoints: boolean },
+    ): void => {
+      if (removedMedia.length === 0) return
+      const removedIds = new Set(removedMedia.map((media) => media.id))
+
+      setMediaLibrary((current) =>
+        current.filter((media) => !removedIds.has(media.id)),
+      )
+      setManualPlacementMediaId((current) =>
+        current && removedIds.has(current) ? null : current,
+      )
+      setImportReport((current) =>
+        pruneMediaFromImportReport(current, removedMedia),
+      )
+
+      if (!options.detachPoints) return
+
+      const detach = (point: TrailPoint): TrailPoint =>
+        removedMedia.reduce(stripMediaFromPoint, point)
+      setPoints((current) => current.map(detach))
+      setSelectedPoint((current) => (current ? detach(current) : current))
+    },
+    [],
+  )
+
+  const deleteStoredMedia = useCallback(
+    async (media: ImportedMedia): Promise<void> => {
+      if (!accessCode.trim()) {
+        throw new Error('Renseigne le code de la carte avant la suppression.')
+      }
+      const idToken = (await getIdToken()) ?? undefined
+      if (!idToken && !adminPassword) {
+        throw new Error('Connecte-toi ou saisis le mot de passe Studio.')
+      }
+      await deleteUploadedMedia({
+        mediaUrl: media.url,
+        thumbnailUrl: media.thumbnailUrl,
+        adminPassword,
+        idToken,
+        trailCode: accessCode,
+      })
+    },
+    [accessCode, adminPassword],
+  )
+
+  const handleDeleteMedia = useCallback(
+    async (mediaId: string) => {
+      const media = mediaLibrary.find((item) => item.id === mediaId)
+      if (!media) {
+        setSaveStatus('Média introuvable dans la bibliothèque.')
+        return
+      }
+
+      setDeletingMediaId(mediaId)
+      setSaveStatus(`Suppression de ${media.name}...`)
+      try {
+        await deleteStoredMedia(media)
+        removeMediaLocally([media], { detachPoints: true })
+        setSaveStatus(
+          'Média supprimé du stockage. Les points liés sont conservés sans média.',
+        )
+        scheduleAutosave()
+      } catch (deleteError) {
+        const message =
+          deleteError instanceof Error
+            ? deleteError.message
+            : 'suppression R2 impossible'
+        setSaveStatus(`Suppression du média impossible : ${message}`)
+      } finally {
+        setDeletingMediaId(null)
+      }
+    },
+    [deleteStoredMedia, mediaLibrary, removeMediaLocally, scheduleAutosave],
+  )
+
   const handleCleanupUnusedMedia = useCallback(async () => {
     if (!firebaseEnabled && !adminPassword) {
       setSaveStatus('Saisis le mot de passe Studio avant le nettoyage.')
@@ -1388,6 +1536,9 @@ function App() {
     setIsCleaningUnusedMedia(true)
     setSaveStatus('Recherche des fichiers R2 inutilisés...')
     try {
+      const unusedMedia = mediaLibrary.filter(
+        (media) => !points.some((point) => pointUsesMedia(point, media)),
+      )
       const idToken = (await getIdToken()) ?? undefined
       const cleanup = await cleanupUnusedUploadedMedia({
         usedUrls: usedMediaUrls,
@@ -1395,6 +1546,7 @@ function App() {
         idToken,
         trailCode: accessCode,
       })
+      removeMediaLocally(unusedMedia, { detachPoints: false })
       const cleanupDetails = [
         cleanup.mediaDeletedCount
           ? `${cleanup.mediaDeletedCount} média(s)`
@@ -1412,6 +1564,7 @@ function App() {
             }`
           : 'Aucun fichier inutilisé trouvé dans R2.',
       )
+      if (unusedMedia.length > 0) scheduleAutosave()
     } catch (cleanupError) {
       setSaveStatus(
         cleanupError instanceof Error
@@ -1421,7 +1574,15 @@ function App() {
     } finally {
       setIsCleaningUnusedMedia(false)
     }
-  }, [accessCode, adminPassword, usedMediaUrls])
+  }, [
+    accessCode,
+    adminPassword,
+    mediaLibrary,
+    points,
+    removeMediaLocally,
+    scheduleAutosave,
+    usedMediaUrls,
+  ])
 
   const findImportReportMedia = useCallback(
     (mediaId: string): ImportedMedia | undefined => {
@@ -1876,10 +2037,62 @@ function App() {
     [],
   )
 
-  const handleDeletePoint = useCallback((pointId: string) => {
-    setPoints((current) => current.filter((point) => point.id !== pointId))
-    setSelectedPoint(null)
-  }, [])
+  const handleDeletePoint = useCallback(
+    (pointId: string) => {
+      const pointToDelete = points.find((point) => point.id === pointId)
+      const mediaToDelete = pointToDelete
+        ? mediaLibrary.find((media) => pointUsesMedia(pointToDelete, media))
+        : undefined
+      const mediaStillUsed = Boolean(
+        mediaToDelete &&
+          points.some(
+            (point) =>
+              point.id !== pointId && pointUsesMedia(point, mediaToDelete),
+          ),
+      )
+
+      setPoints((current) => current.filter((point) => point.id !== pointId))
+      setSelectedPoint(null)
+      setSaveStatus('Point supprimé.')
+      scheduleAutosave()
+
+      if (!mediaToDelete) return
+      if (mediaStillUsed) {
+        setSaveStatus(
+          'Point supprimé. Média conservé car il est encore utilisé par un autre point.',
+        )
+        return
+      }
+
+      setDeletingMediaId(mediaToDelete.id)
+      setSaveStatus('Point supprimé. Suppression du média associé...')
+      void (async () => {
+        try {
+          await deleteStoredMedia(mediaToDelete)
+          removeMediaLocally([mediaToDelete], { detachPoints: false })
+          setSaveStatus('Point et média associé supprimés.')
+          scheduleAutosave()
+        } catch (deleteError) {
+          const message =
+            deleteError instanceof Error
+              ? deleteError.message
+              : 'suppression R2 impossible'
+          setSaveStatus(
+            `Point supprimé, mais suppression du média impossible : ${message}`,
+          )
+        } finally {
+          setDeletingMediaId(null)
+        }
+      })()
+    },
+    [
+      deleteStoredMedia,
+      mediaLibrary,
+      points,
+      removeMediaLocally,
+      scheduleAutosave,
+    ],
+  )
 
   const handleSetPointColor = useCallback((pointId: string, color: string) => {
     setPoints((current) =>
@@ -2317,6 +2530,7 @@ function App() {
                   onImportDriveMedia={handleImportDriveMedia}
                   onImportMedia={handleImportMedia}
                   onCleanupUnusedMedia={handleCleanupUnusedMedia}
+                  onDeleteMedia={handleDeleteMedia}
                   onAcceptEstimatedMedia={handleAcceptEstimatedMedia}
                   onEstimateImportedMedia={handleEstimateImportedMedia}
                   onIgnoreImportEntry={handleIgnoreImportEntry}
@@ -2337,6 +2551,7 @@ function App() {
                   isUploading={isUploading}
                   isDriveImporting={isDriveImporting}
                   isCleaningUnusedMedia={isCleaningUnusedMedia}
+                  deletingMediaId={deletingMediaId}
                   canEstimatePlacement={canEstimatePlacement}
                   googleDriveConfigured={isGoogleDriveConfigured}
                   uploadProgress={uploadProgress}

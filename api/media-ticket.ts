@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     )
   }
 
-  let payload: { code?: unknown; scope?: unknown } = {}
+  let payload: { code?: unknown; scope?: unknown }
   try {
     payload = (await request.json()) as { code?: unknown; scope?: unknown }
   } catch {

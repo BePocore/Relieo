@@ -148,6 +148,23 @@ type MediaInventoryItem = {
   mapTitle: string
 }
 
+type MediaReviewAsset = {
+  id: string
+  mediaKind: 'image' | 'video'
+  mediaUrl: string
+}
+
+type MediaReviewGroup = {
+  id: string
+  ids: string[]
+  items: MediaModItem[]
+  primary: MediaModItem
+  scoreItem: MediaModItem
+  original: MediaReviewAsset
+  thumbnail: MediaReviewAsset | null
+  label: string
+}
+
 type MediaModUsage = {
   day: string
   dayOps: number
@@ -220,6 +237,111 @@ type Costs = {
   platforms: CostPlatform[]
   totalMonthlyEur: number
 }
+
+const isOriginalMediaKey = (id: string): boolean => id.includes('/media/')
+const isPreviewMediaKey = (id: string): boolean => id.includes('/previews/')
+
+const mediaReviewGroupKey = (id: string): string => {
+  const marker = isOriginalMediaKey(id)
+    ? '/media/'
+    : isPreviewMediaKey(id)
+      ? '/previews/'
+      : ''
+  if (!marker) return id
+
+  const markerIndex = id.indexOf(marker)
+  const prefix = id.slice(0, markerIndex)
+  const fileName = id.slice(markerIndex + marker.length).split('/').pop() ?? ''
+  const fingerprint =
+    marker === '/media/'
+      ? fileName.split('-')[0] || fileName
+      : fileName.replace(/\.[^.]+$/, '')
+
+  return `${prefix}/${fingerprint}`
+}
+
+const toReviewAsset = (
+  item: MediaModItem | MediaInventoryItem,
+): MediaReviewAsset => ({
+  id: item.id,
+  mediaKind: item.mediaKind,
+  mediaUrl: item.mediaUrl,
+})
+
+const buildMediaReviewGroups = (
+  items: MediaModItem[],
+  inventory: MediaInventoryItem[],
+): MediaReviewGroup[] => {
+  const inventoryByGroup = new Map(
+    inventory.map((item) => [mediaReviewGroupKey(item.id), item]),
+  )
+  const grouped = new Map<string, MediaModItem[]>()
+
+  for (const item of items.filter((entry) => entry.status === 'flagged')) {
+    const key = mediaReviewGroupKey(item.id)
+    grouped.set(key, [...(grouped.get(key) ?? []), item])
+  }
+
+  return [...grouped.entries()]
+    .map(([key, groupItems]) => {
+      const originalItem = groupItems.find((item) => isOriginalMediaKey(item.id))
+      const thumbnailItem = groupItems.find((item) => isPreviewMediaKey(item.id))
+      const inventoryOriginal = inventoryByGroup.get(key)
+      const primary = originalItem ?? groupItems[0]
+      const scoreItem = groupItems.reduce((best, item) =>
+        item.aiScore > best.aiScore ? item : best,
+      )
+      const original = toReviewAsset(originalItem ?? inventoryOriginal ?? primary)
+      const thumbnail =
+        thumbnailItem && thumbnailItem.id !== original.id
+          ? toReviewAsset(thumbnailItem)
+          : null
+      const label =
+        originalItem && thumbnailItem
+          ? 'Original + vignette'
+          : thumbnailItem
+            ? 'Vignette signalee'
+            : 'Original signale'
+
+      return {
+        id: key,
+        ids: groupItems.map((item) => item.id),
+        items: groupItems,
+        primary,
+        scoreItem,
+        original,
+        thumbnail,
+        label,
+      }
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.scoreItem.scannedAt).getTime() -
+        new Date(a.scoreItem.scannedAt).getTime(),
+    )
+}
+
+const renderReviewAsset = (
+  asset: MediaReviewAsset,
+  alt: string,
+  className?: string,
+): ReactNode =>
+  asset.mediaKind === 'video' ? (
+    <video
+      className={className}
+      src={asset.mediaUrl}
+      controls
+      preload="metadata"
+      crossOrigin="use-credentials"
+    />
+  ) : (
+    <img
+      className={className}
+      src={asset.mediaUrl}
+      alt={alt}
+      crossOrigin="use-credentials"
+    />
+  )
 
 const formatDateTime = (value: string): string =>
   new Intl.DateTimeFormat('fr-FR', {
@@ -332,7 +454,7 @@ export function AdminApp({
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
   const [mediaMod, setMediaMod] = useState<MediaModeration | null>(null)
   // Modale de rejet d'un média + message transmis au propriétaire.
-  const [rejectMediaTarget, setRejectMediaTarget] = useState<MediaModItem | null>(null)
+  const [rejectMediaTarget, setRejectMediaTarget] = useState<MediaReviewGroup | null>(null)
   const [rejectMediaMessage, setRejectMediaMessage] = useState('')
   // Retour du dernier scan déclenché à la main.
   const [scanInfo, setScanInfo] = useState<string | null>(null)
@@ -643,18 +765,24 @@ export function AdminApp({
     }
   }
 
-  const approveMedia = async (item: MediaModItem) => {
-    setBusyAction(`media-${item.id}`)
+  const approveMedia = async (group: MediaReviewGroup) => {
+    setBusyAction(`media-${group.id}`)
     try {
       const response = await authFetch('/api/admin/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'media-mod', op: 'approve', id: item.id }),
+        body: JSON.stringify({
+          action: 'media-mod',
+          op: 'approve',
+          id: group.primary.id,
+          ids: group.ids,
+        }),
       })
       if (!response.ok) throw new Error()
+      const approved = new Set(group.ids)
       setMediaMod((current) =>
         current
-          ? { ...current, items: current.items.filter((i) => i.id !== item.id) }
+          ? { ...current, items: current.items.filter((i) => !approved.has(i.id)) }
           : current,
       )
     } catch {
@@ -664,8 +792,8 @@ export function AdminApp({
     }
   }
 
-  const rejectMedia = async (item: MediaModItem, message: string) => {
-    setBusyAction(`media-${item.id}`)
+  const rejectMedia = async (group: MediaReviewGroup, message: string) => {
+    setBusyAction(`media-${group.id}`)
     try {
       const response = await authFetch('/api/admin/action', {
         method: 'POST',
@@ -673,10 +801,10 @@ export function AdminApp({
         body: JSON.stringify({
           action: 'media-mod',
           op: 'reject',
-          id: item.id,
-          uid: item.ownerUid,
-          code: item.mapCode,
-          title: item.mapTitle,
+          id: group.primary.id,
+          uid: group.primary.ownerUid,
+          code: group.primary.mapCode,
+          title: group.primary.mapTitle,
           message,
         }),
       })
@@ -748,7 +876,10 @@ export function AdminApp({
   }, [users, rangeMonths])
 
   const unreadCount = notifications.filter((n) => !n.read).length
-  const flaggedMedia = (mediaMod?.items ?? []).filter((i) => i.status === 'flagged')
+  const mediaReviewGroups = useMemo(
+    () => buildMediaReviewGroups(mediaMod?.items ?? [], mediaMod?.inventory ?? []),
+    [mediaMod?.inventory, mediaMod?.items],
+  )
 
   const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode; badge?: number }> = [
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
@@ -760,7 +891,7 @@ export function AdminApp({
       id: 'media-moderation',
       label: 'Modération IA',
       icon: <ShieldAlert size={18} />,
-      badge: flaggedMedia.length || undefined,
+      badge: mediaReviewGroups.length || undefined,
     },
     { id: 'media-inventory', label: 'Médias', icon: <ImageIcon size={18} /> },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
@@ -1698,7 +1829,7 @@ export function AdminApp({
           <article className="admin-stat-card featured">
             <span><ShieldAlert size={18} /></span>
             <p>En attente de revue</p>
-            <strong>{flaggedMedia.length}</strong>
+            <strong>{mediaReviewGroups.length}</strong>
           </article>
           <article className="admin-stat-card">
             <span><ScanLine size={18} /></span>
@@ -1726,40 +1857,47 @@ export function AdminApp({
           {scanInfo ? <span className="admin-mediamod-scaninfo">{scanInfo}</span> : null}
         </div>
 
-        {flaggedMedia.length > 0 ? (
+        {mediaReviewGroups.length > 0 ? (
           <div className="admin-mediamod-grid">
-            {flaggedMedia.map((item) => (
-              <article className="admin-mediamod-card" key={item.id}>
+            {mediaReviewGroups.map((group) => (
+              <article className="admin-mediamod-card" key={group.id}>
                 <div className="admin-mediamod-preview">
-                  {item.mediaKind === 'video' ? (
+                  {group.original.mediaKind === 'video' ? (
                     <video
-                      src={item.mediaUrl}
+                      src={group.original.mediaUrl}
                       controls
                       preload="metadata"
                       crossOrigin="use-credentials"
                     />
                   ) : (
                     <img
-                      src={item.mediaUrl}
+                      src={group.original.mediaUrl}
                       alt="Média signalé"
                       crossOrigin="use-credentials"
                     />
                   )}
+                  {group.thumbnail ? (
+                    <div className="admin-mediamod-thumb">
+                      {renderReviewAsset(group.thumbnail, 'Vignette signalee')}
+                      <span>Vignette</span>
+                    </div>
+                  ) : null}
                   <span className="admin-mediamod-score">
-                    {item.aiCategory} · {Math.round(item.aiScore * 100)}%
+                    {group.scoreItem.aiCategory} · {Math.round(group.scoreItem.aiScore * 100)}%
                   </span>
                 </div>
                 <div className="admin-mediamod-info">
-                  <strong>{item.mapTitle}</strong>
-                  <small>{item.ownerEmail ?? item.ownerUid}</small>
-                  <small>Scanné le {formatDateTime(item.scannedAt)}</small>
+                  <strong>{group.primary.mapTitle}</strong>
+                  <small>{group.primary.ownerEmail ?? group.primary.ownerUid}</small>
+                  <small>{group.label} · {group.ids.length} signalement(s)</small>
+                  <small>Scanné le {formatDateTime(group.scoreItem.scannedAt)}</small>
                 </div>
                 <div className="admin-actions">
                   <button
                     className="admin-action success"
                     type="button"
-                    disabled={busyAction === `media-${item.id}`}
-                    onClick={() => void approveMedia(item)}
+                    disabled={busyAction === `media-${group.id}`}
+                    onClick={() => void approveMedia(group)}
                     title="L’IA s’est trompée : rétablir le média"
                   >
                     <Check size={15} /> Approuver
@@ -1767,10 +1905,10 @@ export function AdminApp({
                   <button
                     className="admin-action danger"
                     type="button"
-                    disabled={busyAction === `media-${item.id}`}
+                    disabled={busyAction === `media-${group.id}`}
                     onClick={() => {
                       setRejectMediaMessage('')
-                      setRejectMediaTarget(item)
+                      setRejectMediaTarget(group)
                     }}
                     title="Non conforme : supprimer le média"
                   >
@@ -2171,9 +2309,9 @@ export function AdminApp({
             </h2>
             <p>
               Action <strong>définitive</strong>. Le média (et sa vignette) sera
-              supprimé de la carte « {rejectMediaTarget.mapTitle} » et de Cloudflare
+              supprimé de la carte « {rejectMediaTarget.primary.mapTitle} » et de Cloudflare
               R2. Le propriétaire
-              ({rejectMediaTarget.ownerEmail ?? rejectMediaTarget.ownerUid}) sera
+              ({rejectMediaTarget.primary.ownerEmail ?? rejectMediaTarget.primary.ownerUid}) sera
               notifié avec le message ci-dessous.
             </p>
             <label className="admin-modal-label" htmlFor="reject-media-message">

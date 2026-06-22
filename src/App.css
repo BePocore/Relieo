@@ -2133,12 +2133,20 @@
   min-height: 58px;
   padding: 8px;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr) 36px;
   align-items: center;
   gap: 9px;
   border: 1px solid var(--glass-border);
   border-radius: 10px;
   background: var(--surface);
+}
+
+.media-delete-action {
+  width: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 9px;
 }
 
 .field-grid {
