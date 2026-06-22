@@ -12,6 +12,58 @@
 >
 > Ajout : section **Brique 1.6 — Coût & budget** (suivi des opérations, garde-fous).
 
+## ⚡ ACTIVATION + TESTS (2026-06-22) — état réel, à lire en premier
+
+**La modération est ACTIVÉE et tourne** (compte Sightengine créé, 4 secrets posés sur le videur +
+`MODERATION_SIGNAL_SECRET` sur Vercel, videur déployé). Résultats des tests bout-en-bout :
+
+- **Images : OK et fiable.** Nudité explicite, gore, symboles offensants, et **violence** (modèle
+  `violence` ajouté ce jour, sur retour de test où une bagarre passait « Validé ») sont détectés.
+  Seuils 0.5. La grille de test classe bien (nudity 99%, violence 79%, paysages/char validés, fichiers
+  0 octet repérés « fichier vide (cassé) »).
+- **Suppression automatique ≥ 70%** (décision Quentin) : un média ≥ `MODERATION_AUTO_THRESHOLD`
+  (défaut 0.7) est rejeté **sans revue** ; entre le seuil de flag (0.5) et 0.7 → revue manuelle.
+  **Gated sur `MODERATION_ENFORCE=1`** : en rodage (enforce=0) on observe, rien n'est supprimé ni
+  masqué côté public. Code : `api/admin/action.ts` (`autoRejectFlaggedMedia`, cœur `rejectMediaCore`
+  partagé avec le bouton « Rejeter »).
+- **🔴 VIDÉO : NON DISPONIBLE sur le palier GRATUIT Sightengine — À RÉGLER EN AUTRE SESSION.**
+  Confirmé par les logs (`wrangler tail relieo-media`) :
+  - Upload API (vidéos > 50 Mo, `create-video.json`) → **400 code 1101** « Access to the Upload API is
+    restricted. Feature not available on the free plan. »
+  - POST direct (vidéos ≤ 50 Mo, `video/check.json`) → **400 `error.type:"usage_limit"`** (vérifié sur
+    une vidéo fraîche de 38 Mo / 33 s).
+  Donc **toute vidéo échoue quelle que soit la taille** : la modération vidéo n'est pas incluse dans le
+  gratuit (les images, si). **Mitigation en place** : une soumission qui lève `SightengineUnsupportedError`
+  (détection par **parsing JSON** de `error.type==='usage_limit'` ou code 1100-1110, pas un regex) envoie
+  le média en **revue manuelle** (flaggé `verification-manuelle`, marqué scanné pour sortir de la boucle,
+  masqué au public, l'admin décide). **À DÉCIDER (autre session)** : (a) passer Sightengine en **payant**
+  (prévu pour le déploiement), OU (b) **contournement gratuit** = échantillonner des frames de la vidéo
+  (côté client à l'upload, comme le poster) et les modérer via l'**API image** (gratuite).
+- **Cron 2×/jour TOUJOURS KO** : `wrangler deploy` réussit pour le script mais les triggers cron
+  échouent en **403 Cloudflare code 10063** « You need a workers.dev subdomain in order to proceed ».
+  Fix : **créer une fois le sous-domaine workers.dev** (dashboard Cloudflare → Workers & Pages) puis
+  redéployer. Non bloquant (scan manuel + signal de publication OK), à faire avant lancement public.
+- **Message de scan** corrigé : un scan > ~9 s (timeout Vercel Hobby) affichait « non configurée » à
+  tort ; distingue désormais `configured` (présence de `MODERATION_SIGNAL_SECRET`) → « scan en cours en
+  arrière-plan, relance ».
+- **Console admin enrichie** : page « Tous les médias » (inventaire complet, arborescence repliable
+  utilisateur ▸ carte, **taille des fichiers**, statuts Vérification / Décision IA / Décision admin +
+  « Analyse en cours » pour les vidéos en attente de callback) ; regroupement original+vignette en
+  revue (fait par **Codex** en parallèle, commité `8997ab6`).
+- **`MODERATION_ENFORCE` reste à 0** (rodage). À passer à 1 (videur `wrangler.jsonc` + Vercel) pour
+  activer le blocage public + l'auto-suppression, **après** validation.
+
+> ⚠️ **Process** : Codex (OpenAI) a tourné en parallèle sur le même dépôt ce jour (regroupement revue
+> + nettoyage médias + posters). Risque de collisions entre deux agents : éviter, committer entre chaque.
+
+**Reste à faire (autre session), par priorité :**
+1. **Vidéo** : décider payant Sightengine vs contournement frames→API image (cf. plus haut).
+2. **Cron** : créer le sous-domaine workers.dev puis redéployer le videur.
+3. **`MODERATION_ENFORCE=1`** (videur + Vercel) quand prêt à bloquer pour de vrai.
+4. **CGU** : compléter le nom de l'éditeur (particulier) + relecture juridique ; créer la redirection
+   `contact@relieo.fr` → bepocore@gmail.com chez OVH.
+5. **DevGate** : retirer `SITE_GATE_PASSWORD` au lancement public.
+
 ## État d'avancement (handoff, mis à jour 2026-06-21)
 
 **Fait, commité (repo Relieo, commit `a2d49dc`) — moteur côté videur, compile, INACTIF (`MODERATION_ENFORCE=0`) :**
