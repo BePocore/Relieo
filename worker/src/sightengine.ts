@@ -9,10 +9,11 @@
 
 const API_BASE = 'https://api.sightengine.com/1.0'
 
-// Modeles demandes (images ET frames video). nudity-2.1 = derniere version NSFW ; gore = violence ;
-// offensive = symboles/gestes haineux. (weapon/wad volontairement non active : peu pertinent pour
-// un site voyage/sport et generateur de faux positifs.)
-const MODELS = 'nudity-2.1,gore,offensive'
+// Modeles demandes (images ET frames video). nudity-2.1 = derniere version NSFW ; gore = sang/blessures ;
+// offensive = symboles/gestes haineux ; violence = scenes de bagarre/agression (un char ou une arme
+// dans un paysage calme n'est PAS une scene violente -> reste OK). (weapon/wad volontairement non
+// actives : generateurs de faux positifs sur un site voyage/sport, chasse/tir/couteau de cuisine.)
+const MODELS = 'nudity-2.1,gore,offensive,violence'
 
 export interface SightengineConfig {
   apiUser: string
@@ -21,6 +22,7 @@ export interface SightengineConfig {
   nudityThreshold: number
   goreThreshold: number
   offensiveThreshold: number
+  violenceThreshold: number
 }
 
 export interface ModerationVerdict {
@@ -86,6 +88,11 @@ const verdictFromImageResponse = (
       category: 'offensive',
       score: maxNumericValue(data.offensive),
       threshold: config.offensiveThreshold,
+    },
+    {
+      category: 'violence',
+      score: num((data.violence as Record<string, unknown> | undefined)?.prob),
+      threshold: config.violenceThreshold,
     },
   ]
 

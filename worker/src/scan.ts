@@ -46,6 +46,7 @@ export interface ModerationEnv {
   MODERATION_NUDITY_THRESHOLD?: string
   MODERATION_GORE_THRESHOLD?: string
   MODERATION_OFFENSIVE_THRESHOLD?: string
+  MODERATION_VIOLENCE_THRESHOLD?: string
 }
 
 const MEDIA_PREFIX = 'relieo/users/'
@@ -79,6 +80,7 @@ const buildConfig = (env: ModerationEnv): SightengineConfig | null => {
     nudityThreshold: threshold(env.MODERATION_NUDITY_THRESHOLD, 0.5),
     goreThreshold: threshold(env.MODERATION_GORE_THRESHOLD, 0.5),
     offensiveThreshold: threshold(env.MODERATION_OFFENSIVE_THRESHOLD, 0.5),
+    violenceThreshold: threshold(env.MODERATION_VIOLENCE_THRESHOLD, 0.5),
   }
 }
 

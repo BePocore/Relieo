@@ -41,7 +41,8 @@
     // Seuils de flag (0-1). Bas = flag large. Reglables sans toucher au code.
     "MODERATION_NUDITY_THRESHOLD": "0.5",
     "MODERATION_GORE_THRESHOLD": "0.5",
-    "MODERATION_OFFENSIVE_THRESHOLD": "0.5"
+    "MODERATION_OFFENSIVE_THRESHOLD": "0.5",
+    "MODERATION_VIOLENCE_THRESHOLD": "0.5"
   },
 
   // Secrets a poser hors fichier (wrangler secret put ... / .dev.vars en local) :
