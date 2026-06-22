@@ -2,7 +2,7 @@ import {
   mediaBaseUrl,
   r2GetText,
   r2KeyFromPublicUrl,
-  r2ListKeys,
+  r2ListObjects,
   r2PutText,
 } from './r2.js'
 
@@ -186,6 +186,7 @@ export type MediaInventoryEntry = {
   ownerUid: string
   mapFolder: string
   mediaKind: 'image' | 'video'
+  sizeBytes: number
   scanned: boolean
   exempt: boolean
   aiStatus: MediaInventoryAiStatus
@@ -219,12 +220,13 @@ const segmentAfter = (key: string, marker: string): string => {
 export const buildMediaInventory = async (
   items: MediaModerationEntry[],
 ): Promise<MediaInventoryEntry[]> => {
-  const [keys, scanned] = await Promise.all([
-    r2ListKeys(MEDIA_USERS_PREFIX),
+  const [objects, scanned] = await Promise.all([
+    r2ListObjects(MEDIA_USERS_PREFIX),
     readScannedIds(),
   ])
   const exempt = exemptFolders()
   const byId = new Map(items.map((item) => [item.id, item]))
+  const sizeByKey = new Map(objects.map((object) => [object.key, object.size]))
 
   const toEntry = (key: string): MediaInventoryEntry => {
     const mapFolder = segmentAfter(key, 'randonnees')
@@ -252,6 +254,7 @@ export const buildMediaInventory = async (
       ownerUid: segmentAfter(key, 'users'),
       mapFolder,
       mediaKind: VIDEO_EXTENSION.test(key) ? 'video' : 'image',
+      sizeBytes: sizeByKey.get(key) ?? 0,
       scanned: isScanned,
       exempt: isExempt,
       aiStatus,
@@ -264,7 +267,9 @@ export const buildMediaInventory = async (
   }
 
   // Originaux présents dans R2 (on ignore les vignettes `previews/` et le reste).
-  const originals = keys.filter((key) => key.includes('/media/'))
+  const originals = objects
+    .map((object) => object.key)
+    .filter((key) => key.includes('/media/'))
   const entries = originals.map(toEntry)
 
   // Médias rejetés : supprimés de R2 (absents du listing) mais conservés en trace.

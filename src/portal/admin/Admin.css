@@ -997,12 +997,14 @@
   color: var(--admin-muted);
 }
 .admin-inv-media { display: flex; align-items: center; gap: 10px; }
+.admin-inv-media-meta { display: flex; flex-direction: column; min-width: 0; }
 .admin-inv-media small {
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.admin-inv-broken { color: #b3261e; font-weight: 700; }
 .admin-inv-thumb {
   display: inline-flex;
   align-items: center;

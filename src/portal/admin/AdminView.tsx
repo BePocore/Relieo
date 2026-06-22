@@ -133,6 +133,7 @@ type MediaInventoryItem = {
   ownerUid: string
   mapFolder: string
   mediaKind: 'image' | 'video'
+  sizeBytes: number
   scanned: boolean
   exempt: boolean
   aiStatus: 'pending' | 'exempt' | 'ok' | 'flagged' | 'rejected'
@@ -1529,9 +1530,16 @@ export function AdminApp({
                   />
                 )}
               </span>
-              <small title={item.id}>
-                {decodeURIComponent(item.id.split('/').pop() ?? '')}
-              </small>
+              <span className="admin-inv-media-meta">
+                <small title={item.id}>
+                  {decodeURIComponent(item.id.split('/').pop() ?? '')}
+                </small>
+                {item.sizeBytes <= 0 ? (
+                  <small className="admin-inv-broken">fichier vide (cassé)</small>
+                ) : (
+                  <small>{formatBytes(item.sizeBytes)}</small>
+                )}
+              </span>
             </div>
           </td>
           <td>

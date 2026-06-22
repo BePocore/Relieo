@@ -304,6 +304,32 @@ export const r2ListKeys = async (prefix: string): Promise<string[]> => {
   return keys
 }
 
+// Comme r2ListKeys mais renvoie aussi la taille (octets) de chaque objet. Sert au
+// diagnostic des médias cassés (taille 0/quasi nulle = upload incomplet).
+export const r2ListObjects = async (
+  prefix: string,
+): Promise<Array<{ key: string; size: number }>> => {
+  const { bucket } = config()
+  let continuationToken: string | undefined
+  const objects: Array<{ key: string; size: number }> = []
+  do {
+    const page = await client().send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    )
+    for (const object of page.Contents ?? []) {
+      if (object.Key) objects.push({ key: object.Key, size: object.Size ?? 0 })
+    }
+    continuationToken = page.IsTruncated
+      ? page.NextContinuationToken
+      : undefined
+  } while (continuationToken)
+  return objects
+}
+
 export const r2CopyPrefix = async (
   sourcePrefix: string,
   destinationPrefix: string,
