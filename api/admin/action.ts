@@ -18,6 +18,8 @@ import {
 } from '../../server/hikeIndex.js'
 import {
   approveModerationItem,
+  autoRejectThreshold,
+  moderationEnforced,
   readModerationItems as readMediaModerationItems,
   rejectModerationItems,
   triggerModerationScan,
@@ -315,19 +317,29 @@ const handleMediaMod = async (admin: AuthedUser, body: ActionBody) => {
     return json({ id, op, approved: true })
   }
 
-  // Rejeter : non conforme. On résout la carte via l'index (source de vérité),
-  // on retire le média (original + sa vignette) du project.json et de R2, puis on
-  // notifie le propriétaire.
+  // Rejeter : non conforme. Cœur factorisé (réutilisé par l'auto-suppression).
+  await rejectMediaCore(id, { uid: admin.uid, email: admin.email }, body.message?.trim() ?? '')
+  return json({ id, op, rejected: true })
+}
+
+// Cœur du rejet d'un média, partagé par le bouton « Rejeter » (manuel) et la
+// suppression automatique (score >= seuil auto). Résout la carte via l'index,
+// retire le média (original + sa vignette) du project.json et de R2, marque rejeté,
+// notifie le propriétaire (in-app + email best-effort) et journalise la sanction.
+// Renvoie les clés R2 effacées (pour dédupliquer original/vignette en auto).
+const rejectMediaCore = async (
+  id: string,
+  reviewer: { uid: string; email: string | null },
+  message: string,
+): Promise<Set<string>> => {
   const entry = (await readMediaModerationItems()).find((item) => item.id === id)
-  const folder = entry?.mapFolder || segmentAfter(id, 'randonnees') || body.code?.trim()
+  const folder = entry?.mapFolder || segmentAfter(id, 'randonnees') || ''
   const hike = folder
     ? (await readHikeIndex()).find((item) => item.folder === folder)
     : undefined
-  const ownerUid =
-    hike?.ownerId || entry?.ownerUid || body.uid?.trim() || segmentAfter(id, 'users') || ''
-  const code = hike?.code || body.code?.trim() || folder || ''
-  const mapTitle = hike?.title || body.title?.trim() || code || 'votre carte'
-  const message = body.message?.trim() ?? ''
+  const ownerUid = hike?.ownerId || entry?.ownerUid || segmentAfter(id, 'users') || ''
+  const code = hike?.code || folder || ''
+  const mapTitle = hike?.title || code || 'votre carte'
 
   // Couple de clés à effacer : la clé flaggée + l'original et la vignette du même
   // média (le flag peut viser l'un OU l'autre des deux objets scannés).
@@ -379,7 +391,7 @@ const handleMediaMod = async (admin: AuthedUser, body: ActionBody) => {
   }
 
   // Bloque définitivement (rejeté) puis efface les octets de R2.
-  await rejectModerationItems([...keysToDelete], admin.uid)
+  await rejectModerationItems([...keysToDelete], reviewer.uid)
   for (const key of keysToDelete) await r2DeleteObject(key)
 
   // Notifie le propriétaire (in-app + email best-effort) et journalise la sanction.
@@ -401,12 +413,35 @@ const handleMediaMod = async (admin: AuthedUser, body: ActionBody) => {
     mapTitle,
     ownerId: ownerUid,
     ownerEmail,
-    adminUid: admin.uid,
-    adminEmail: admin.email,
+    adminUid: reviewer.uid,
+    adminEmail: reviewer.email,
     message,
     createdAt: new Date().toISOString(),
   })
-  return json({ id, op, rejected: true })
+  return keysToDelete
+}
+
+// Suppression automatique des cas évidents : tout média signalé dont le score
+// dépasse le seuil auto est rejeté sans revue. Gated sur enforce=1 (en rodage on
+// observe, on ne supprime rien). Renvoie le nombre de médias auto-supprimés.
+const autoRejectFlaggedMedia = async (): Promise<number> => {
+  if (!moderationEnforced()) return 0
+  const threshold = autoRejectThreshold()
+  const done = new Set<string>()
+  let removed = 0
+  for (const item of await readMediaModerationItems()) {
+    if (item.status !== 'flagged' || (item.aiScore ?? 0) < threshold) continue
+    if (done.has(item.id)) continue
+    const pct = Math.round((item.aiScore ?? 0) * 100)
+    const deleted = await rejectMediaCore(
+      item.id,
+      { uid: 'ai-auto', email: null },
+      `Média retiré automatiquement par la modération (${item.aiCategory}, confiance ${pct}%).`,
+    )
+    deleted.forEach((key) => done.add(key))
+    removed += 1
+  }
+  return removed
 }
 
 // Endpoint admin unique pour TOUTES les écritures (anciens `set-plan`, `map`,
@@ -441,9 +476,11 @@ export async function POST(request: Request) {
         return handleMediaMod(admin, body)
       case 'scan-media': {
         // Bouton « Lancer un scan » : déclenche un passage immédiat dans le videur
-        // et renvoie son rapport (null tant que la modération n'est pas configurée).
+        // et renvoie son rapport (null tant que la modération n'est pas configurée),
+        // puis auto-supprime les cas évidents (>= seuil auto) si enforce=1.
         const report = await triggerModerationScan()
-        return json({ report })
+        const autoRemoved = await autoRejectFlaggedMedia()
+        return json({ report, autoRemoved })
       }
       case 'reply-appeal': {
         const notifId = body.notifId?.trim()

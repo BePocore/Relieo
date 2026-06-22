@@ -617,8 +617,10 @@ export function AdminApp({
           videosSubmitted: number
           capReached: boolean
         } | null
+        autoRemoved?: number
       } | null
       const report = data?.report
+      const autoRemoved = data?.autoRemoved ?? 0
       if (!report) {
         setScanInfo(
           'Modération non configurée (aucun compte Sightengine) : le scan reste inactif.',
@@ -629,6 +631,7 @@ export function AdminApp({
         setScanInfo(
           `Scan terminé : ${report.processed} média(s) traité(s), ${report.flagged} flaggé(s)` +
             `${report.videosSubmitted ? `, ${report.videosSubmitted} vidéo(s) en analyse` : ''}` +
+            `${autoRemoved ? `, ${autoRemoved} supprimé(s) automatiquement` : ''}` +
             `${report.capReached ? ' · cap quotidien atteint' : ''}.`,
         )
       }

@@ -62,6 +62,14 @@ export type ScanReport = {
 // encore). Les deux côtés se basculent ensemble.
 export const moderationEnforced = (): boolean => process.env.MODERATION_ENFORCE === '1'
 
+// Score (0-1) au-dessus duquel un média signalé est SUPPRIMÉ automatiquement (sans
+// revue admin). En dessous (mais au-dessus du seuil de flag du videur), il reste en
+// revue manuelle. Réglable via MODERATION_AUTO_THRESHOLD ; défaut 0.7.
+export const autoRejectThreshold = (): number => {
+  const raw = Number(process.env.MODERATION_AUTO_THRESHOLD)
+  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : 0.7
+}
+
 export const readScannedIds = async (): Promise<Set<string>> => {
   const ids = new Set<string>()
   const body = await r2GetText(scannedPath)
