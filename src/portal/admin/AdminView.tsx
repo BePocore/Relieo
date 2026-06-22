@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import {
   AlertTriangle,
   Ban,
@@ -9,8 +16,10 @@ import {
   Euro,
   ExternalLink,
   EyeOff,
+  Film,
   Gavel,
   HardDrive,
+  Image as ImageIcon,
   LayoutDashboard,
   LineChart,
   LogOut,
@@ -115,6 +124,27 @@ type MediaModItem = {
   mapTitle: string
 }
 
+// Une entrée de l'inventaire complet (tous les originaux + leur état de modération),
+// enrichie côté serveur comme les médias flaggés.
+type MediaInventoryItem = {
+  id: string
+  ownerUid: string
+  mapFolder: string
+  mediaKind: 'image' | 'video'
+  scanned: boolean
+  exempt: boolean
+  aiStatus: 'pending' | 'exempt' | 'ok' | 'flagged' | 'rejected'
+  adminStatus: 'none' | 'to-review' | 'rejected'
+  aiCategory: string | null
+  aiScore: number | null
+  reviewedAt: string | null
+  reviewedBy: string | null
+  mediaUrl: string
+  ownerEmail: string | null
+  mapCode: string
+  mapTitle: string
+}
+
 type MediaModUsage = {
   day: string
   dayOps: number
@@ -125,6 +155,7 @@ type MediaModUsage = {
 
 type MediaModeration = {
   items: MediaModItem[]
+  inventory: MediaInventoryItem[]
   usage: MediaModUsage
   dailyLimit: number
   monthlyLimit: number
@@ -193,6 +224,26 @@ const formatDateTime = (value: string): string =>
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+
+// Libellés + couleurs des pastilles de l'inventaire des médias.
+const INVENTORY_AI_PILL: Record<
+  MediaInventoryItem['aiStatus'],
+  { label: string; cls: string }
+> = {
+  pending: { label: 'En attente', cls: 'warn' },
+  exempt: { label: 'Exempté', cls: 'neutral' },
+  ok: { label: 'Validé', cls: 'ok' },
+  flagged: { label: 'Signalé', cls: 'danger' },
+  rejected: { label: 'Rejeté', cls: 'danger' },
+}
+const INVENTORY_ADMIN_PILL: Record<
+  MediaInventoryItem['adminStatus'],
+  { label: string; cls: string }
+> = {
+  none: { label: '—', cls: 'muted' },
+  'to-review': { label: 'À traiter', cls: 'warn' },
+  rejected: { label: 'Rejeté', cls: 'danger' },
+}
 
 const formatEur = (value: number): string =>
   `${value.toLocaleString('fr-FR', {
@@ -280,6 +331,8 @@ export function AdminApp({
   const [rejectMediaMessage, setRejectMediaMessage] = useState('')
   // Retour du dernier scan déclenché à la main.
   const [scanInfo, setScanInfo] = useState<string | null>(null)
+  // Inventaire des médias : tri primaire (par utilisateur ou par carte).
+  const [inventorySort, setInventorySort] = useState<'user' | 'map'>('user')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
@@ -306,11 +359,13 @@ export function AdminApp({
   const [replyTarget, setReplyTarget] = useState<AdminNotification | null>(null)
   const [replyMessage, setReplyMessage] = useState('')
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     try {
       const token = await getIdToken()
       if (!token) throw new Error('Connexion requise.')
-      setLoading(true)
+      // Rafraîchissement silencieux (auto-refresh) : on ne repasse pas l'écran en
+      // « chargement » pour ne pas faire clignoter la vue.
+      if (!silent) setLoading(true)
       setError(null)
       const headers = { Authorization: `Bearer ${token}` }
       // Ticket « scope all » (admin) posé AVANT de rendre les covers de la console.
@@ -360,6 +415,15 @@ export function AdminApp({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
+
+  // Sur l'onglet Modération IA, rafraîchissement silencieux périodique : l'inventaire
+  // et la file de revue se mettent à jour au fur et à mesure des scans (cron, callbacks
+  // vidéo) sans intervention. Inactif ailleurs pour ne pas relister R2 en boucle.
+  useEffect(() => {
+    if (section !== 'media-moderation') return
+    const timer = setInterval(() => void load(true), 12_000)
+    return () => clearInterval(timer)
+  }, [section, load])
 
   // Renouvellement du ticket d'accès média « scope all » (covers de la console).
   useEffect(() => startMediaTicketRefresh({ scope: 'all' }, getIdToken), [])
@@ -1385,6 +1449,140 @@ export function AdminApp({
     )
   })()
 
+  // Inventaire complet : tous les originaux, triés/groupés par utilisateur ou par
+  // carte, avec leur état (vérifié / non / exempté), le verdict IA et la décision admin.
+  const inventoryTable = (() => {
+    const inventory = mediaMod?.inventory ?? []
+    const groupOf = (item: MediaInventoryItem) =>
+      inventorySort === 'user' ? item.ownerEmail ?? item.ownerUid : item.mapTitle
+    const detailOf = (item: MediaInventoryItem) =>
+      inventorySort === 'user' ? item.mapTitle : item.ownerEmail ?? item.ownerUid
+    const sorted = [...inventory].sort(
+      (a, b) =>
+        groupOf(a).localeCompare(groupOf(b)) ||
+        detailOf(a).localeCompare(detailOf(b)) ||
+        a.id.localeCompare(b.id),
+    )
+    return (
+      <section className="admin-mediamod-inventory" aria-label="Tous les médias">
+        <div className="admin-mediamod-invhead">
+          <h3>
+            Tous les médias <span>({inventory.length})</span>
+          </h3>
+          <label className="admin-inv-sort">
+            Trier par
+            <select
+              value={inventorySort}
+              onChange={(event) =>
+                setInventorySort(event.target.value as 'user' | 'map')
+              }
+            >
+              <option value="user">Utilisateur</option>
+              <option value="map">Carte</option>
+            </select>
+          </label>
+        </div>
+        {inventory.length === 0 ? (
+          <p className="admin-empty">
+            Aucun média.
+            {mediaMod?.usage ? '' : ' La modération IA n’a pas encore tourné.'}
+          </p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Média</th>
+                  <th>{inventorySort === 'user' ? 'Carte' : 'Propriétaire'}</th>
+                  <th>Type</th>
+                  <th>Vérification</th>
+                  <th>Décision IA</th>
+                  <th>Décision admin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((item, index) => {
+                  const group = groupOf(item)
+                  const showGroup =
+                    index === 0 || groupOf(sorted[index - 1]) !== group
+                  const ai = INVENTORY_AI_PILL[item.aiStatus]
+                  const adm = INVENTORY_ADMIN_PILL[item.adminStatus]
+                  return (
+                    <Fragment key={item.id}>
+                      {showGroup ? (
+                        <tr className="admin-inv-group">
+                          <td colSpan={6}>{group}</td>
+                        </tr>
+                      ) : null}
+                      <tr>
+                        <td>
+                          <div className="admin-inv-media">
+                            <span className="admin-inv-thumb">
+                              {item.mediaKind === 'video' ? (
+                                <Film size={16} />
+                              ) : (
+                                <img
+                                  src={item.mediaUrl}
+                                  alt=""
+                                  crossOrigin="use-credentials"
+                                  loading="lazy"
+                                />
+                              )}
+                            </span>
+                            <small title={item.id}>
+                              {decodeURIComponent(item.id.split('/').pop() ?? '')}
+                            </small>
+                          </div>
+                        </td>
+                        <td>{detailOf(item)}</td>
+                        <td>
+                          <span className="admin-inv-type">
+                            {item.mediaKind === 'video' ? (
+                              <Film size={14} />
+                            ) : (
+                              <ImageIcon size={14} />
+                            )}
+                            {item.mediaKind === 'video' ? 'Vidéo' : 'Image'}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`admin-pill ${
+                              item.exempt ? 'neutral' : item.scanned ? 'ok' : 'warn'
+                            }`}
+                          >
+                            {item.exempt
+                              ? 'Exempté'
+                              : item.scanned
+                                ? 'Vérifié'
+                                : 'Non vérifié'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`admin-pill ${ai.cls}`}>
+                            {ai.label}
+                            {item.aiStatus === 'flagged' && item.aiCategory
+                              ? ` · ${item.aiCategory} ${Math.round(
+                                  (item.aiScore ?? 0) * 100,
+                                )}%`
+                              : ''}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`admin-pill ${adm.cls}`}>{adm.label}</span>
+                        </td>
+                      </tr>
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    )
+  })()
+
   const mediaModerationView = (() => {
     const usage = mediaMod?.usage
     const dailyLimit = mediaMod?.dailyLimit ?? 500
@@ -1483,6 +1681,8 @@ export function AdminApp({
             {usage ? '' : ' La modération IA n’a pas encore tourné.'}
           </p>
         )}
+
+        {inventoryTable}
       </>
     )
   })()

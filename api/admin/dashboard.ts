@@ -11,6 +11,7 @@ import {
 import {
   MODERATION_DAILY_LIMIT,
   MODERATION_MONTHLY_LIMIT,
+  buildMediaInventory,
   readModerationItems as readMediaModerationItems,
   readModerationUsage as readMediaModerationUsage,
 } from '../../server/mediaModeration.js'
@@ -205,14 +206,20 @@ export async function GET(request: Request) {
     // l'email du propriétaire, le code/titre de la carte et l'URL d'aperçu (réécrite
     // vers le videur par rewriteMediaUrls plus bas, chargée avec le ticket admin).
     const hikeByFolder = new Map(hikes.map((hike) => [hike.folder, hike]))
+    const enrich = <T extends { id: string; ownerUid: string; mapFolder: string }>(
+      entry: T,
+    ) => ({
+      ...entry,
+      mediaUrl: r2PublicUrl(entry.id),
+      ownerEmail: emailByUid.get(entry.ownerUid) ?? null,
+      mapCode: hikeByFolder.get(entry.mapFolder)?.code ?? entry.mapFolder,
+      mapTitle: hikeByFolder.get(entry.mapFolder)?.title ?? entry.mapFolder,
+    })
+    // Inventaire complet (tous les originaux + leur état) pour la console admin.
+    const inventory = (await buildMediaInventory(mediaModItems)).map(enrich)
     const mediaModeration = {
-      items: mediaModItems.map((item) => ({
-        ...item,
-        mediaUrl: r2PublicUrl(item.id),
-        ownerEmail: emailByUid.get(item.ownerUid) ?? null,
-        mapCode: hikeByFolder.get(item.mapFolder)?.code ?? item.mapFolder,
-        mapTitle: hikeByFolder.get(item.mapFolder)?.title ?? item.mapFolder,
-      })),
+      items: mediaModItems.map(enrich),
+      inventory,
       usage: mediaModUsage,
       dailyLimit: MODERATION_DAILY_LIMIT,
       monthlyLimit: MODERATION_MONTHLY_LIMIT,

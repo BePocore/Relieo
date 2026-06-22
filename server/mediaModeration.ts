@@ -1,4 +1,10 @@
-import { mediaBaseUrl, r2GetText, r2KeyFromPublicUrl, r2PutText } from './r2.js'
+import {
+  mediaBaseUrl,
+  r2GetText,
+  r2KeyFromPublicUrl,
+  r2ListKeys,
+  r2PutText,
+} from './r2.js'
 
 // Pendant Vercel de l'état de modération écrit par le videur (cf. worker/src/moderation.ts et
 // docs/STORAGE-moderation.md). Sert au filtrage public (api/project), à la console admin (lecture +
@@ -154,6 +160,125 @@ export const readModerationUsage = async (): Promise<ModerationUsage | null> => 
   } catch {
     return null
   }
+}
+
+// --- Inventaire complet des médias (console admin) ----------------------
+// Liste TOUS les originaux (clés sous `.../media/`) avec leur état de modération :
+// scanné ou non, exempté (carte non analysée par l'IA, ex. Halsa), verdict IA et
+// décision admin. Construit côté Vercel à partir du listing R2 + des fichiers
+// d'état ; `dashboard.ts` enrichit ensuite chaque entrée (email du propriétaire,
+// code/titre de la carte, URL d'aperçu via le videur).
+
+const MEDIA_USERS_PREFIX = 'relieo/users/'
+const VIDEO_EXTENSION = /\.(mp4|mov|webm|mkv|avi|m4v|3gp)$/i
+
+export type MediaInventoryAiStatus =
+  | 'pending' // pas encore scanné
+  | 'exempt' // carte exemptée (jamais envoyée à Sightengine)
+  | 'ok' // scanné, validé par l'IA
+  | 'flagged' // signalé par l'IA, en attente de revue admin
+  | 'rejected' // supprimé par l'admin
+
+export type MediaInventoryAdminStatus = 'none' | 'to-review' | 'rejected'
+
+export type MediaInventoryEntry = {
+  id: string
+  ownerUid: string
+  mapFolder: string
+  mediaKind: 'image' | 'video'
+  scanned: boolean
+  exempt: boolean
+  aiStatus: MediaInventoryAiStatus
+  adminStatus: MediaInventoryAdminStatus
+  aiCategory: string | null
+  aiScore: number | null
+  reviewedAt: string | null
+  reviewedBy: string | null
+}
+
+// Cartes exemptées du scan (mêmes valeurs que le videur : var MODERATION_EXEMPT_FOLDERS,
+// défaut « halsa »). Comparaison en minuscules.
+const exemptFolders = (): Set<string> =>
+  new Set(
+    (process.env.MODERATION_EXEMPT_FOLDERS ?? 'halsa')
+      .split(',')
+      .map((folder) => folder.trim().toLowerCase())
+      .filter(Boolean),
+  )
+
+const segmentAfter = (key: string, marker: string): string => {
+  const parts = key.split('/')
+  const index = parts.indexOf(marker)
+  return index >= 0 && index + 1 < parts.length ? parts[index + 1] : ''
+}
+
+/**
+ * Inventaire de TOUS les médias (originaux) avec leur état de modération. `items` =
+ * entrées flaggées/rejetées déjà lues par l'appelant (évite une relecture).
+ */
+export const buildMediaInventory = async (
+  items: MediaModerationEntry[],
+): Promise<MediaInventoryEntry[]> => {
+  const [keys, scanned] = await Promise.all([
+    r2ListKeys(MEDIA_USERS_PREFIX),
+    readScannedIds(),
+  ])
+  const exempt = exemptFolders()
+  const byId = new Map(items.map((item) => [item.id, item]))
+
+  const toEntry = (key: string): MediaInventoryEntry => {
+    const mapFolder = segmentAfter(key, 'randonnees')
+    const isExempt = exempt.has(mapFolder.toLowerCase())
+    const isScanned = scanned.has(key)
+    const mod = byId.get(key)
+    const aiStatus: MediaInventoryAiStatus =
+      mod?.status === 'rejected'
+        ? 'rejected'
+        : mod?.status === 'flagged'
+          ? 'flagged'
+          : isExempt
+            ? 'exempt'
+            : isScanned
+              ? 'ok'
+              : 'pending'
+    const adminStatus: MediaInventoryAdminStatus =
+      mod?.status === 'rejected'
+        ? 'rejected'
+        : mod?.status === 'flagged'
+          ? 'to-review'
+          : 'none'
+    return {
+      id: key,
+      ownerUid: segmentAfter(key, 'users'),
+      mapFolder,
+      mediaKind: VIDEO_EXTENSION.test(key) ? 'video' : 'image',
+      scanned: isScanned,
+      exempt: isExempt,
+      aiStatus,
+      adminStatus,
+      aiCategory: mod?.aiCategory ?? null,
+      aiScore: typeof mod?.aiScore === 'number' ? mod.aiScore : null,
+      reviewedAt: mod?.reviewedAt ?? null,
+      reviewedBy: mod?.reviewedBy ?? null,
+    }
+  }
+
+  // Originaux présents dans R2 (on ignore les vignettes `previews/` et le reste).
+  const originals = keys.filter((key) => key.includes('/media/'))
+  const entries = originals.map(toEntry)
+
+  // Médias rejetés : supprimés de R2 (absents du listing) mais conservés en trace.
+  const present = new Set(originals)
+  for (const item of items) {
+    if (
+      item.status === 'rejected' &&
+      item.id.includes('/media/') &&
+      !present.has(item.id)
+    ) {
+      entries.push(toEntry(item.id))
+    }
+  }
+  return entries
 }
 
 /**
