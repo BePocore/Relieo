@@ -9,9 +9,11 @@
 import {
   moderateImageBinary,
   submitVideoBinary,
+  submitVideoViaUpload,
   parseVideoCallback,
   SightengineError,
   VIDEO_DIRECT_MAX_BYTES,
+  VIDEO_UPLOAD_MAX_BYTES,
   type SightengineConfig,
   type ModerationVerdict,
 } from './sightengine'
@@ -217,19 +219,23 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
 
     try {
       if (contentType.startsWith('video/')) {
-        if (object.size > VIDEO_DIRECT_MAX_BYTES) {
-          // > 50 Mo : Upload API à brancher. Laissé non scanné -> masqué au public (fail-closed).
+        if (object.size > VIDEO_UPLOAD_MAX_BYTES) {
+          // Trop gros même pour l'Upload API en un PUT (envoi resumable par morceaux non
+          // implémenté). Laissé non scanné -> masqué au public (fail-closed).
           report.skipped += 1
           continue
         }
-        const bytes = await object.arrayBuffer()
-        const { mediaId } = await submitVideoBinary(
-          bytes,
-          fileName,
-          contentType,
-          callbackUrl,
-          config,
-        )
+        // <= 50 Mo : POST direct ; > 50 Mo : Upload API (PUT streamé depuis R2, pas de buffer).
+        const { mediaId } =
+          object.size > VIDEO_DIRECT_MAX_BYTES
+            ? await submitVideoViaUpload(object.body, object.size, contentType, callbackUrl, config)
+            : await submitVideoBinary(
+                await object.arrayBuffer(),
+                fileName,
+                contentType,
+                callbackUrl,
+                config,
+              )
         await addPendingJob(bucket, {
           mediaId,
           mediaKey: key,

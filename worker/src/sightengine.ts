@@ -138,15 +138,22 @@ export const moderateImageBinary = async (
 // =========================================================================
 // Video : soumission asynchrone + parsing du callback.
 //
-// Flux : on POUSSE la video (< 50 Mo) sur /1.0/video/check.json avec un callback_url. Sightengine
-// repond un media id "med_..." (a memoriser -> cle R2, cf. pending store), puis appelle le
-// callback en differe avec les frames analysees. Le verdict video = la frame la plus risquee.
-// (Videos > 50 Mo : Upload API a brancher ensuite ; en attendant elles restent non scannees =
-// masquees au public, fail-closed.)
+// Deux flux selon la taille (limite Sightengine : 50 Mo pour le POST direct) :
+//  - <= 50 Mo : on POUSSE la video sur /1.0/video/check.json (multipart) avec un callback_url.
+//  - >  50 Mo : Upload API en 3 temps (cf. submitVideoViaUpload) : creer une URL d'upload, y PUT le
+//    fichier en STREAMING depuis R2 (binaire brut, pas de buffer memoire), puis lancer la moderation
+//    sur le media_id.
+// Dans les deux cas Sightengine repond un media id "med_..." (a memoriser -> cle R2, cf. pending
+// store) et appelle le callback en differe avec les frames analysees. Verdict = la frame la plus
+// risquee.
 // =========================================================================
 
-/** Taille max pour le POST direct ; au-dela il faut l'Upload API. */
+/** Taille max pour le POST direct ; au-dela il faut l'Upload API (limite Sightengine). */
 export const VIDEO_DIRECT_MAX_BYTES = 50 * 1024 * 1024
+
+/** Plafond pour l'Upload API en un seul PUT : au-dela, un envoi resumable par morceaux serait
+ *  necessaire (non implemente). Cas pathologique -> laisse non scanne = masque (fail-closed). */
+export const VIDEO_UPLOAD_MAX_BYTES = 512 * 1024 * 1024
 
 export interface VideoSubmitResult {
   /** Identifiant Sightengine "med_..." a relier a la cle R2 (pending store). */
@@ -193,6 +200,111 @@ export const submitVideoBinary = async (
     throw new SightengineError(data.error?.message ?? 'Soumission video Sightengine refusee.')
   }
   return { mediaId: data.media.id }
+}
+
+interface CreateVideoUpload {
+  uploadUrl: string
+  mediaId: string
+}
+
+// Etape 1 de l'Upload API : cree une URL d'upload (resumable) + un media id. GET avec les
+// identifiants en query string (cf. https://sightengine.com/docs/upload-api).
+const createVideoUpload = async (config: SightengineConfig): Promise<CreateVideoUpload> => {
+  const url =
+    `${API_BASE}/upload/create-video.json` +
+    `?api_user=${encodeURIComponent(config.apiUser)}` +
+    `&api_secret=${encodeURIComponent(config.apiSecret)}`
+  let response: Response
+  try {
+    response = await fetch(url)
+  } catch (error) {
+    throw new SightengineError(
+      error instanceof Error ? error.message : 'Creation d’upload Sightengine impossible.',
+    )
+  }
+  if (!response.ok) {
+    throw new SightengineError(`Sightengine (create-upload) a repondu ${response.status}.`)
+  }
+  const data = (await response.json()) as {
+    status?: string
+    upload?: { url?: string }
+    media?: { id?: string }
+    error?: { message?: string }
+  }
+  if (data.status !== 'success' || !data.upload?.url || typeof data.media?.id !== 'string') {
+    throw new SightengineError(data.error?.message ?? 'Creation d’upload Sightengine refusee.')
+  }
+  return { uploadUrl: data.upload.url, mediaId: data.media.id }
+}
+
+/**
+ * Modere une VIDEO > 50 Mo via l'Upload API, en 3 temps :
+ *  1. cree une URL d'upload Sightengine (+ media id),
+ *  2. y POUSSE le fichier en STREAMING depuis R2 (PUT binaire brut). On fixe le Content-Length via
+ *     `FixedLengthStream(size)` (le stockage attend une taille connue, pas du chunked) : aucun
+ *     chargement complet en memoire du Worker, meme pour plusieurs centaines de Mo.
+ *  3. lance la moderation async sur le media_id (callback differe, comme le flux < 50 Mo).
+ * Throw `SightengineError` en cas d'echec (le media n'est alors pas marque, re-tente au passage suivant).
+ */
+export const submitVideoViaUpload = async (
+  body: ReadableStream<Uint8Array>,
+  size: number,
+  contentType: string,
+  callbackUrl: string,
+  config: SightengineConfig,
+): Promise<VideoSubmitResult> => {
+  const { uploadUrl, mediaId } = await createVideoUpload(config)
+
+  // PUT binaire brut en flux, Content-Length connu (FixedLengthStream).
+  const fixed = new FixedLengthStream(size)
+  void body.pipeTo(fixed.writable).catch(() => {
+    // Une erreur de pipe fera echouer le fetch ci-dessous (flux en erreur) -> SightengineError.
+  })
+  let putResponse: Response
+  try {
+    putResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: fixed.readable,
+    })
+  } catch (error) {
+    throw new SightengineError(
+      error instanceof Error ? error.message : 'Upload video Sightengine impossible.',
+    )
+  }
+  if (!putResponse.ok) {
+    throw new SightengineError(`Sightengine (PUT upload) a repondu ${putResponse.status}.`)
+  }
+
+  // Lance la moderation async sur le media deja uploade.
+  const form = new FormData()
+  form.append('models', MODELS)
+  form.append('callback_url', callbackUrl)
+  form.append('api_user', config.apiUser)
+  form.append('api_secret', config.apiSecret)
+  form.append('media_id', mediaId)
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}/video/check.json`, { method: 'POST', body: form })
+  } catch (error) {
+    throw new SightengineError(
+      error instanceof Error ? error.message : 'Soumission video Sightengine impossible.',
+    )
+  }
+  if (!response.ok) {
+    throw new SightengineError(`Sightengine (video) a repondu ${response.status}.`)
+  }
+  const data = (await response.json()) as {
+    status?: string
+    media?: { id?: string }
+    error?: { message?: string }
+  }
+  if (data.status !== 'success') {
+    throw new SightengineError(data.error?.message ?? 'Soumission video Sightengine refusee.')
+  }
+  // Le callback reference l'id du media (celui de create-video, conserve par check.json).
+  return { mediaId: typeof data.media?.id === 'string' ? data.media.id : mediaId }
 }
 
 export interface VideoCallbackResult {

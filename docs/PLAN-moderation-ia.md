@@ -55,10 +55,18 @@
   l'onglet Paramètres. Routage `/terms` au niveau racine (lisible connecté comme déconnecté).
 - ⚠️ Le contenu juridique est un **brouillon** : identité de l'éditeur à compléter, relecture conseillée.
 
-**Reste à faire :**
-1. Reliquat **Upload API vidéos > 50 Mo** côté videur (`worker/src/sightengine.ts`) : aujourd'hui une telle
-   vidéo est `skipped` au scan → reste non scannée = masquée au public (sûr mais pas publiable). Nécessite
-   un upload **streamé** R2 → Sightengine (mémoire Worker) à valider contre l'API réelle.
+**Fait — BLOC B « Upload API vidéos > 50 Mo » (worker typecheck OK) :**
+- `worker/src/sightengine.ts` : `submitVideoViaUpload(body, size, …)` en 3 temps — `GET /1.0/upload/create-video.json`
+  (URL d'upload + media id), **PUT binaire brut streamé depuis R2** via `FixedLengthStream(size)` (Content-Length
+  connu, aucun buffer mémoire, jusqu'à plusieurs centaines de Mo), puis `POST /1.0/video/check.json` avec
+  `media_id` + `callback_url`. Le callback est traité par le flux existant (`parseVideoCallback`, pending store).
+- `worker/src/scan.ts` : le flux vidéo choisit selon la taille — ≤ 50 Mo POST direct, > 50 Mo Upload API. Au-delà
+  de `VIDEO_UPLOAD_MAX_BYTES` (512 Mo, envoi resumable par morceaux non implémenté) la vidéo reste `skipped` =
+  masquée (fail-closed). Contrat API vérifié sur la doc Sightengine (upload-api).
+
+**Reste à faire : plus rien côté code.** Le chantier est complet et compile ; il ne reste que l'activation
+ci-dessous (et la relecture juridique des CGU). La validation bout-en-bout des vidéos > 50 Mo se fera contre
+l'API réelle au moment de l'activation (non testable sans compte Sightengine).
 
 **À activer le moment venu (Quentin) — RIEN n'est créé/posé pour l'instant :**
 - Créer un compte **Sightengine** (API user + secret).

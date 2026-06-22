@@ -92,7 +92,9 @@ The videur Worker hosts the **AI moderation engine** (Sightengine), added 2026-0
 
 **Terms & consent gate**: a `/terms` page (`TermsView` in `PortalApp.tsx`: CGU + privacy policy citing Sightengine + legal notice, **first draft to review**) is public (top-level route, readable logged-in or out), and a **blocking** consent screen (`TermsOnboarding`) is shown after plan choice, before the dashboard (existing users see it next login; admins are exempt). Profile carries `termsAccepted`/`termsAcceptedAt` (`saveTermsAcceptance`). This is the explicit consent for AI moderation, required before public launch.
 
-**Full design, data contract and remaining work (only the Upload API for >50 MB videos is left): `docs/PLAN-moderation-ia.md` (handoff section) + `docs/STORAGE-moderation.md`.**
+**Large videos (>50 MB)**: `worker/src/sightengine.ts:submitVideoViaUpload` uses Sightengine's Upload API — `create-video.json` (presigned URL + media id), a **raw streamed PUT from R2** via `FixedLengthStream` (no Worker buffering), then `video/check.json` with `media_id`. `scan.ts` picks direct POST (≤50 MB) vs Upload API (>50 MB); above `VIDEO_UPLOAD_MAX_BYTES` (512 MB) it stays skipped/masked.
+
+**The whole engine is now code-complete and compiles; nothing is left to build — only activation (Sightengine account + secrets + `wrangler deploy` + `MODERATION_ENFORCE=1`) and the legal review of the draft CGU. Full design + data contract + handoff: `docs/PLAN-moderation-ia.md` + `docs/STORAGE-moderation.md`.**
 
 ### Drafts vs published
 
