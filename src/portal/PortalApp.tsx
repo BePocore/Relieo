@@ -1096,7 +1096,7 @@ function PlanOnboarding({
 // connecté comme déconnecté), atteinte sur /terms. PREMIER JET juridique : à faire
 // relire avant le lancement public (cf. docs/PLAN-moderation-ia.md, brique 3).
 function TermsView({ onClose }: { onClose: () => void }) {
-  const updatedOn = '21 juin 2026'
+  const updatedOn = '22 juin 2026'
   return (
     <main className="terms-page">
       <header className="terms-head">
@@ -1112,71 +1112,147 @@ function TermsView({ onClose }: { onClose: () => void }) {
 
         <section className="terms-section">
           <h2>1. Conditions générales d’utilisation</h2>
+
           <h3>1.1 Objet</h3>
           <p>
             Relieo est un service en ligne permettant de créer des cartes
-            interactives 3D et d’y associer des photos et vidéos. L’utilisation du
-            service implique l’acceptation pleine et entière des présentes
-            conditions.
+            interactives en 3D et d’y associer des photos et vidéos, puis de les
+            consulter en privé ou de les publier. Une carte publiée est accessible à
+            toute personne disposant de son lien ou de son code d’accès.
+            L’utilisation du service implique l’acceptation pleine et entière des
+            présentes conditions.
           </p>
-          <h3>1.2 Compte</h3>
+
+          <h3>1.2 Inscription et compte</h3>
           <p>
             La création d’un compte nécessite une adresse email valide, vérifiée à
-            l’inscription. Vous êtes responsable de la confidentialité de vos
-            identifiants et de toute activité réalisée depuis votre compte.
+            l’inscription. Vous devez être âgé d’au moins 15 ans ; en deçà, l’accord
+            d’un titulaire de l’autorité parentale est requis. Vous êtes responsable
+            de la confidentialité de vos identifiants et de toute activité réalisée
+            depuis votre compte.
           </p>
-          <h3>1.3 Vos contenus</h3>
+
+          <h3>1.3 Vos contenus et licence d’utilisation</h3>
           <p>
-            Vous conservez la propriété des médias et cartes que vous publiez. Vous
-            garantissez disposer des droits nécessaires sur les contenus mis en
-            ligne et vous engagez à ne pas publier de contenu illicite, haineux,
-            violent ou à caractère sexuel explicite.
+            Vous conservez l’entière propriété des médias et cartes que vous créez.
+            Pour les besoins du service, vous nous accordez une licence non
+            exclusive, mondiale et gratuite permettant d’héberger, stocker,
+            reproduire, adapter (notamment générer des vignettes), transmettre à nos
+            sous-traitants techniques et afficher vos contenus, pour la seule
+            exécution du service et la durée de leur mise en ligne. Cette licence
+            prend fin lorsque vous supprimez le contenu concerné, sous réserve des
+            copies de sauvegarde temporaires.
           </p>
-          <h3>1.4 Modération des contenus par une IA</h3>
+
+          <h3>1.4 Contenus interdits</h3>
+          <p>
+            Vous garantissez disposer de tous les droits nécessaires sur les contenus
+            que vous mettez en ligne et vous engagez à ne pas publier de contenu
+            illicite, notamment : nudité ou contenu sexuel explicite, violence ou
+            contenu choquant, symboles ou propos haineux, atteinte aux droits de
+            tiers (droit d’auteur, droit à l’image, vie privée), ou tout contenu
+            contraire à la loi.
+          </p>
+
+          <h3>1.5 Modération des contenus par une intelligence artificielle</h3>
           <p>
             <strong>
               Vous acceptez expressément que les médias (photos et vidéos) que vous
-              publiez soient analysés par un service automatisé de modération afin
-              de détecter les contenus inappropriés (nudité explicite, violence,
+              publiez soient analysés par un service automatisé de modération afin de
+              détecter les contenus inappropriés (nudité explicite, violence,
               symboles ou gestes haineux).
             </strong>{' '}
-            Cette analyse est réalisée par notre sous-traitant <strong>Sightengine</strong>
-            {' '}(société française, traitement des données dans l’Union européenne,
-            suppression des fichiers immédiatement après analyse). Un contenu signalé
-            peut être masqué au public puis, après revue, retiré. Voir la politique
-            de confidentialité ci-dessous.
+            Cette analyse est réalisée par notre sous-traitant{' '}
+            <strong>Sightengine</strong> (société française, traitement des données
+            dans l’Union européenne, suppression des fichiers immédiatement après
+            analyse). Aucune adresse publique de vos fichiers n’est communiquée : les
+            fichiers sont transmis de façon sécurisée pour la seule durée de
+            l’analyse. Un contenu signalé peut être masqué au public puis, après
+            revue humaine, rétabli ou retiré. Voir la politique de confidentialité
+            ci-dessous.
           </p>
-          <h3>1.5 Modération et sanctions</h3>
+
+          <h3>1.6 Modération et sanctions</h3>
           <p>
             Nous nous réservons le droit de dépublier ou supprimer un contenu, et de
             suspendre ou supprimer un compte ne respectant pas ces conditions. Vous
             êtes informé par notification et, le cas échéant, par email, et pouvez
-            adresser un message de contestation.
+            adresser un message de contestation auquel il sera répondu.
           </p>
-          <h3>1.6 Disponibilité &amp; responsabilité</h3>
+
+          <h3>1.7 Forfaits et stockage</h3>
+          <p>
+            Le service est aujourd’hui proposé gratuitement, avec une capacité de
+            stockage limitée par compte. Des forfaits payants pourront être
+            introduits ultérieurement ; leurs conditions tarifaires et de résiliation
+            vous seraient alors présentées avant toute souscription.
+          </p>
+
+          <h3>1.8 Propriété intellectuelle de Relieo</h3>
+          <p>
+            La marque « Relieo », le nom de domaine, l’interface, les textes et le
+            code du service sont protégés et demeurent notre propriété exclusive.
+            Aucune reproduction ou réutilisation n’est autorisée sans accord
+            préalable.
+          </p>
+
+          <h3>1.9 Disponibilité et responsabilité</h3>
           <p>
             Le service est fourni « en l’état », sans garantie de disponibilité
-            continue. Nous ne saurions être tenus responsables d’une perte de
-            données, dans la limite permise par la loi. Pensez à conserver une copie
-            de vos contenus importants.
+            continue. Dans la limite permise par la loi, nous ne saurions être tenus
+            responsables d’une perte de données ou d’une indisponibilité. Pensez à
+            conserver une copie de vos contenus importants.
           </p>
-          <h3>1.7 Évolution des conditions</h3>
+
+          <h3>1.10 Résiliation</h3>
           <p>
-            Ces conditions peuvent évoluer. En cas de modification substantielle,
-            une nouvelle acceptation pourra vous être demandée.
+            Vous pouvez supprimer votre compte à tout moment depuis votre profil.
+            Nous pouvons résilier ou suspendre l’accès en cas de manquement aux
+            présentes conditions. La suppression du compte entraîne l’effacement de
+            vos contenus, dans les conditions de la politique de confidentialité.
+          </p>
+
+          <h3>1.11 Évolution des conditions</h3>
+          <p>
+            Ces conditions peuvent évoluer. En cas de modification substantielle, une
+            nouvelle acceptation pourra vous être demandée.
+          </p>
+
+          <h3>1.12 Droit applicable et litiges</h3>
+          <p>
+            Les présentes conditions sont régies par le droit français. En cas de
+            litige, et à défaut de résolution amiable, les tribunaux français sont
+            compétents. Toute réclamation peut être adressée à l’adresse de contact
+            indiquée dans les mentions légales.
           </p>
         </section>
 
         <section className="terms-section">
           <h2>2. Politique de confidentialité</h2>
-          <h3>2.1 Données collectées</h3>
+
+          <h3>2.1 Responsable du traitement</h3>
+          <p>
+            Le responsable du traitement de vos données personnelles est l’éditeur du
+            service, identifié dans les mentions légales ci-dessous. Pour toute
+            question relative à vos données, vous pouvez le contacter à l’adresse{' '}
+            <a href="mailto:contact@relieo.fr">contact@relieo.fr</a>.
+          </p>
+
+          <h3>2.2 Données collectées</h3>
           <p>
             Nous traitons : votre adresse email et les informations de votre profil
             (nom, localisation, bio, photo), vos cartes et médias, ainsi que des
-            données techniques nécessaires au fonctionnement du service.
+            données techniques nécessaires au fonctionnement et à la sécurité du
+            service (données de connexion et journaux techniques).
           </p>
-          <h3>2.2 Finalités &amp; sous-traitants</h3>
-          <p>Vos données sont utilisées pour fournir le service. Nos sous-traitants :</p>
+
+          <h3>2.3 Finalités, bases légales &amp; sous-traitants</h3>
+          <p>
+            Vos données sont utilisées pour fournir le service (exécution du
+            contrat), en assurer la sécurité et la modération (intérêt légitime et,
+            pour l’analyse des médias par IA, votre consentement exprès recueilli à
+            l’acceptation des présentes). Nos sous-traitants :
+          </p>
           <ul>
             <li><strong>Firebase (Google)</strong> — authentification et profils.</li>
             <li><strong>Cloudflare R2</strong> — stockage des cartes et médias.</li>
@@ -1184,37 +1260,71 @@ function TermsView({ onClose }: { onClose: () => void }) {
             <li><strong>Resend</strong> — envoi des emails transactionnels.</li>
             <li>
               <strong>Sightengine</strong> — modération automatisée des médias
-              publiés (UE, suppression immédiate après analyse). Base légale :
-              intérêt légitime à garantir un service sûr et votre consentement
-              exprès recueilli à l’acceptation des présentes.
+              publiés (Union européenne, suppression immédiate après analyse).
             </li>
           </ul>
-          <h3>2.3 Conservation</h3>
+
+          <h3>2.4 Transferts hors Union européenne</h3>
           <p>
-            Vos données sont conservées tant que votre compte est actif. Les
-            fichiers transmis à Sightengine pour analyse sont supprimés
-            immédiatement après traitement. La suppression de votre compte efface
-            vos contenus.
+            Certains sous-traitants (notamment Google et Vercel) peuvent traiter des
+            données en dehors de l’Union européenne, en particulier aux États-Unis.
+            Ces transferts sont encadrés par les garanties prévues par le RGPD
+            (clauses contractuelles types ou mécanismes équivalents). L’analyse des
+            médias par Sightengine est réalisée au sein de l’Union européenne.
           </p>
-          <h3>2.4 Vos droits</h3>
+
+          <h3>2.5 Durées de conservation</h3>
           <p>
-            Conformément au RGPD, vous disposez d’un droit d’accès, de
-            rectification, d’effacement et de portabilité de vos données. Vous
-            pouvez supprimer votre compte depuis votre profil, ou nous contacter à
-            l’adresse ci-dessous.
+            Vos données et contenus sont conservés tant que votre compte est actif.
+            Les fichiers transmis à Sightengine pour analyse sont supprimés
+            immédiatement après traitement. La suppression de votre compte efface vos
+            contenus ; certaines données peuvent subsister temporairement dans les
+            sauvegardes techniques ou être conservées lorsque la loi l’impose.
+          </p>
+
+          <h3>2.6 Cookies et traceurs</h3>
+          <p>
+            Relieo n’utilise que des cookies et identifiants strictement nécessaires
+            à son fonctionnement (maintien de votre session et accès sécurisé à vos
+            médias). Aucun cookie publicitaire ni traceur de profilage n’est utilisé.
+          </p>
+
+          <h3>2.7 Vos droits</h3>
+          <p>
+            Conformément au RGPD, vous disposez d’un droit d’accès, de rectification,
+            d’effacement, de portabilité, de limitation et d’opposition, ainsi que du
+            droit de retirer votre consentement à tout moment. Vous pouvez supprimer
+            votre compte depuis votre profil ou exercer vos droits en nous contactant
+            à l’adresse ci-dessous. Vous pouvez également introduire une réclamation
+            auprès de la CNIL (
+            <a href="https://www.cnil.fr" target="_blank" rel="noreferrer">
+              www.cnil.fr
+            </a>
+            ).
           </p>
         </section>
 
         <section className="terms-section">
           <h2>3. Mentions légales</h2>
           <p>
-            Éditeur : Relieo — <em>[identité de l’éditeur à compléter]</em>.<br />
+            Éditeur : Relieo —{' '}
+            <em>
+              [identité de l’éditeur à compléter : nom ou raison sociale, statut
+              juridique, adresse, et le cas échéant SIRET]
+            </em>
+            .<br />
+            Directeur de la publication : <em>[à compléter]</em>.<br />
             Contact : <a href="mailto:contact@relieo.fr">contact@relieo.fr</a>.<br />
-            Hébergement : Vercel Inc. et Cloudflare, Inc.
+            Hébergement de l’application : Vercel Inc. (340 S Lemon Ave #4133,
+            Walnut, CA 91789, États-Unis).<br />
+            Hébergement des médias : Cloudflare, Inc. (101 Townsend St, San
+            Francisco, CA 94107, États-Unis).<br />
+            Authentification et profils : Google Ireland Ltd (service Firebase).
           </p>
           <p className="terms-draft-note">
-            Document de travail (premier jet) à faire relire avant le lancement
-            public.
+            Document de travail à faire valider par un professionnel du droit avant
+            le lancement public. Les mentions légales doivent être complétées avec
+            l’identité réelle de l’éditeur (et le directeur de la publication).
           </p>
         </section>
       </div>
