@@ -21,6 +21,7 @@ import {
   approveModerationItem,
   autoRejectThreshold,
   moderationEnforced,
+  moderationSignalConfigured,
   readModerationItems as readMediaModerationItems,
   rejectModerationItems,
   triggerModerationScan,
@@ -549,7 +550,8 @@ export async function POST(request: Request) {
         // puis auto-supprime les cas évidents (>= seuil auto) si enforce=1.
         const report = await triggerModerationScan()
         const autoRemoved = await autoRejectFlaggedMedia()
-        return json({ report, autoRemoved })
+        // `configured` distingue « pas de modération » d'un simple timeout du scan.
+        return json({ report, autoRemoved, configured: moderationSignalConfigured() })
       }
       case 'reply-appeal': {
         const notifId = body.notifId?.trim()

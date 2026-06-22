@@ -82,6 +82,11 @@ export type ScanReport = {
 // encore). Les deux côtés se basculent ensemble.
 export const moderationEnforced = (): boolean => process.env.MODERATION_ENFORCE === '1'
 
+// Le signal vers le videur est-il configuré ? Sert à distinguer « pas de modération »
+// (aucun secret) d'un simple timeout du scan (secret présent mais réponse > ~9 s).
+export const moderationSignalConfigured = (): boolean =>
+  Boolean(process.env.MODERATION_SIGNAL_SECRET)
+
 // Score (0-1) au-dessus duquel un média signalé est SUPPRIMÉ automatiquement (sans
 // revue admin). En dessous (mais au-dessus du seuil de flag du videur), il reste en
 // revue manuelle. Réglable via MODERATION_AUTO_THRESHOLD ; défaut 0.7.

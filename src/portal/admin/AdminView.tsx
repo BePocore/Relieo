@@ -799,12 +799,17 @@ export function AdminApp({
           capReached: boolean
         } | null
         autoRemoved?: number
+        configured?: boolean
       } | null
       const report = data?.report
       const autoRemoved = data?.autoRemoved ?? 0
       if (!report) {
+        // Pas de rapport : soit la modération n'est pas configurée, soit le scan a
+        // dépassé ~9 s (limite Vercel) et continue en arrière-plan dans le videur.
         setScanInfo(
-          'Modération non configurée (aucun compte Sightengine) : le scan reste inactif.',
+          data?.configured
+            ? 'Scan lancé : il continue en arrière-plan (gros lot ou vidéos). Relance dans un instant pour voir le reste.'
+            : 'Modération non configurée (aucun compte Sightengine) : le scan reste inactif.',
         )
       } else if (!report.ok) {
         setScanInfo(report.reason ?? 'Scan indisponible.')
