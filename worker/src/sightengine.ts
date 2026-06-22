@@ -41,6 +41,23 @@ export class SightengineError extends Error {}
 // re-tenter, le média part en revue manuelle.
 export class SightengineUnsupportedError extends SightengineError {}
 
+// Vrai si le corps de réponse indique une restriction de plan/usage (palier gratuit).
+// On PARSE le JSON (type/code de l'objet error) au lieu d'un regex, pour ne pas matcher
+// par accident un timestamp ou un id contenant « 1101 ».
+const isPlanRestriction = (body: string): boolean => {
+  try {
+    const parsed = JSON.parse(body) as { error?: { type?: unknown; code?: unknown } }
+    const type = parsed.error?.type
+    const code = parsed.error?.code
+    return (
+      type === 'usage_limit' ||
+      (typeof code === 'number' && code >= 1100 && code <= 1110)
+    )
+  } catch {
+    return false
+  }
+}
+
 const num = (value: unknown): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0
 
@@ -200,7 +217,7 @@ export const submitVideoBinary = async (
   }
   if (!response.ok) {
     const body = await response.text().catch(() => '')
-    if (/usage_limit|not available|1101|1103/i.test(body)) {
+    if (isPlanRestriction(body)) {
       throw new SightengineUnsupportedError(
         `Moderation video Sightengine indisponible (palier gratuit) : ${body.slice(0, 200)}`,
       )
@@ -243,8 +260,7 @@ const createVideoUpload = async (config: SightengineConfig): Promise<CreateVideo
   }
   if (!response.ok) {
     const body = await response.text().catch(() => '')
-    // Palier gratuit : Upload API restreinte (code 1101 / usage_limit) -> erreur permanente.
-    if (/usage_limit|upload api|1101/i.test(body)) {
+    if (isPlanRestriction(body)) {
       throw new SightengineUnsupportedError(
         `Upload API Sightengine indisponible (palier gratuit) : ${body.slice(0, 200)}`,
       )
@@ -322,7 +338,7 @@ export const submitVideoViaUpload = async (
   }
   if (!response.ok) {
     const body = await response.text().catch(() => '')
-    if (/usage_limit|not available|1101|1103/i.test(body)) {
+    if (isPlanRestriction(body)) {
       throw new SightengineUnsupportedError(
         `Moderation video Sightengine indisponible (palier gratuit) : ${body.slice(0, 200)}`,
       )
