@@ -180,7 +180,7 @@ export const moderateImageBinary = async (
 export const VIDEO_DIRECT_MAX_BYTES = 50 * 1024 * 1024
 
 /** Plafond pour l'Upload API en un seul PUT : au-dela, un envoi resumable par morceaux serait
- *  necessaire (non implemente). Cas pathologique -> laisse non scanne = masque (fail-closed). */
+ *  necessaire (non implemente). Le scan bascule ces videos en revue manuelle. */
 export const VIDEO_UPLOAD_MAX_BYTES = 512 * 1024 * 1024
 
 export interface VideoSubmitResult {

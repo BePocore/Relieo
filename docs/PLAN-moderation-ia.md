@@ -36,7 +36,9 @@
   gratuit (les images, si). **Mitigation en place** : une soumission qui lève `SightengineUnsupportedError`
   (détection par **parsing JSON** de `error.type==='usage_limit'` ou code 1100-1110, pas un regex) envoie
   le média en **revue manuelle** (flaggé `verification-manuelle`, marqué scanné pour sortir de la boucle,
-  masqué au public, l'admin décide). **À DÉCIDER (autre session)** : (a) passer Sightengine en **payant**
+  masqué au public, l'admin décide). Les vidéos au-delà du plafond local `VIDEO_UPLOAD_MAX_BYTES` (512 Mo,
+  envoi resumable non implémenté) suivent le même chemin de revue manuelle. **À DÉCIDER (autre session)** :
+  (a) passer Sightengine en **payant**
   (prévu pour le déploiement), OU (b) **contournement gratuit** = échantillonner des frames de la vidéo
   (côté client à l'upload, comme le poster) et les modérer via l'**API image** (gratuite).
 - **Cron 2×/jour TOUJOURS KO** : `wrangler deploy` réussit pour le script mais les triggers cron
@@ -113,8 +115,9 @@
   connu, aucun buffer mémoire, jusqu'à plusieurs centaines de Mo), puis `POST /1.0/video/check.json` avec
   `media_id` + `callback_url`. Le callback est traité par le flux existant (`parseVideoCallback`, pending store).
 - `worker/src/scan.ts` : le flux vidéo choisit selon la taille — ≤ 50 Mo POST direct, > 50 Mo Upload API. Au-delà
-  de `VIDEO_UPLOAD_MAX_BYTES` (512 Mo, envoi resumable par morceaux non implémenté) la vidéo reste `skipped` =
-  masquée (fail-closed). Contrat API vérifié sur la doc Sightengine (upload-api).
+  de `VIDEO_UPLOAD_MAX_BYTES` (512 Mo, envoi resumable par morceaux non implémenté), la vidéo est basculée en
+  revue manuelle (`verification-manuelle`) et marquée scannée pour éviter une boucle sans décision.
+  Contrat API vérifié sur la doc Sightengine (upload-api).
 
 **Reste à faire : plus rien côté code.** Le chantier est complet et compile ; il ne reste que l'activation
 ci-dessous (et la relecture juridique des CGU). La validation bout-en-bout des vidéos > 50 Mo se fera contre

@@ -62,7 +62,7 @@ export interface ScanReport {
   flagged: number
   videosSubmitted: number
   seeded: number // exemptées marquées sans appel
-  skipped: number // ex : vidéo > 50 Mo (Upload API à brancher)
+  skipped: number // réservé aux cas temporairement différés
   capReached: boolean
   dayOps: number
   monthOps: number
@@ -224,8 +224,21 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
       if (contentType.startsWith('video/')) {
         if (object.size > VIDEO_UPLOAD_MAX_BYTES) {
           // Trop gros même pour l'Upload API en un PUT (envoi resumable par morceaux non
-          // implémenté). Laissé non scanné -> masqué au public (fail-closed).
-          report.skipped += 1
+          // implémenté). On le bascule en revue manuelle pour éviter un état non scanné
+          // permanent : l'admin garde une décision explicite à prendre.
+          await upsertModerationItem(
+            bucket,
+            buildFlaggedEntry(key, 'video', {
+              decision: 'flag',
+              topCategory: 'verification-manuelle',
+              score: 0,
+              framesAnalyzed: 0,
+            }),
+          )
+          await addScannedIds(bucket, [key])
+          report.flagged += 1
+          report.processed += 1
+          done.push(key)
           continue
         }
         // <= 50 Mo : POST direct ; > 50 Mo : Upload API (PUT streamé depuis R2, pas de buffer).
@@ -277,6 +290,7 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
         )
         await addScannedIds(bucket, [key])
         report.flagged += 1
+        report.processed += 1
         done.push(key)
         continue
       }
