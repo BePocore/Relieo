@@ -12,6 +12,7 @@ import {
   submitVideoViaUpload,
   parseVideoCallback,
   SightengineError,
+  SightengineUnsupportedError,
   VIDEO_DIRECT_MAX_BYTES,
   VIDEO_UPLOAD_MAX_BYTES,
   type SightengineConfig,
@@ -260,7 +261,33 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
       report.processed += 1
       done.push(key)
     } catch (error) {
-      // Panne Sightengine : on ne marque pas scanné (re-tenté au prochain passage), jamais bloquant.
+      // Erreur PERMANENTE (ex: vidéo > 50 Mo, Upload API non dispo sur le palier gratuit) :
+      // inutile de re-tenter. On envoie en REVUE MANUELLE (flaggé) + marqué scanné pour
+      // sortir de la boucle ; reste masqué au public jusqu'à décision admin.
+      if (error instanceof SightengineUnsupportedError) {
+        await upsertModerationItem(
+          bucket,
+          buildFlaggedEntry(key, 'video', {
+            decision: 'flag',
+            topCategory: 'verification-manuelle',
+            score: 0,
+            framesAnalyzed: 0,
+          }),
+        )
+        await addScannedIds(bucket, [key])
+        report.flagged += 1
+        done.push(key)
+        continue
+      }
+      // Panne transitoire : on ne marque pas scanné (re-tenté au prochain passage).
+      // Log de diagnostic (visible via `wrangler tail`) : clé, type, taille, raison.
+      console.warn(
+        '[moderation] echec scan media',
+        key,
+        contentType,
+        object.size,
+        error instanceof Error ? error.message : String(error),
+      )
       if (!(error instanceof SightengineError)) throw error
     }
   }

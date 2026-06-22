@@ -37,6 +37,10 @@ export interface ModerationVerdict {
 
 export class SightengineError extends Error {}
 
+// Erreur PERMANENTE (ex: Upload API non dispo sur le palier gratuit) : inutile de
+// re-tenter, le média part en revue manuelle.
+export class SightengineUnsupportedError extends SightengineError {}
+
 const num = (value: unknown): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0
 
@@ -230,7 +234,16 @@ const createVideoUpload = async (config: SightengineConfig): Promise<CreateVideo
     )
   }
   if (!response.ok) {
-    throw new SightengineError(`Sightengine (create-upload) a repondu ${response.status}.`)
+    const body = await response.text().catch(() => '')
+    // Palier gratuit : Upload API restreinte (code 1101 / usage_limit) -> erreur permanente.
+    if (/usage_limit|upload api|1101/i.test(body)) {
+      throw new SightengineUnsupportedError(
+        `Upload API Sightengine indisponible (palier gratuit) : ${body.slice(0, 200)}`,
+      )
+    }
+    throw new SightengineError(
+      `Sightengine (create-upload) a repondu ${response.status}. ${body.slice(0, 400)}`,
+    )
   }
   const data = (await response.json()) as {
     status?: string
