@@ -94,7 +94,13 @@ type AdminMap = {
 
 type Sanction = {
   id: string
-  action: 'unpublish' | 'delete' | 'block' | 'unblock' | 'delete-account'
+  action:
+    | 'unpublish'
+    | 'delete'
+    | 'block'
+    | 'unblock'
+    | 'delete-account'
+    | 'media-reject'
   mapCode: string
   mapTitle: string
   ownerId: string
@@ -1309,6 +1315,8 @@ export function AdminApp({
         return <span className="admin-sanction-badge unblock"><Unlock size={13} /> Déblocage</span>
       case 'delete-account':
         return <span className="admin-sanction-badge delete-account"><Trash2 size={13} /> Suppression compte</span>
+      case 'media-reject':
+        return <span className="admin-sanction-badge media-reject"><ImageIcon size={13} /> Média retiré</span>
       default:
         return <span className="admin-sanction-badge unpublish"><EyeOff size={13} /> Dépublication</span>
     }
@@ -2133,10 +2141,18 @@ export function AdminApp({
             </div>
             {mediaHistoryStats.days.length > 0 ? (
               <div className="admin-mediamod-bars" role="img" aria-label="Suppressions par jour">
-                {mediaHistoryStats.days.map((day) => {
+                {mediaHistoryStats.days.map((day, index) => {
                   const height = day.rejected
                     ? Math.max(8, (day.rejected / mediaHistoryStats.maxRejected) * 100)
                     : 0
+                  const labelStep =
+                    mediaHistoryStats.days.length > 18
+                      ? Math.ceil(mediaHistoryStats.days.length / 10)
+                      : 1
+                  const showLabel =
+                    index === 0 ||
+                    index === mediaHistoryStats.days.length - 1 ||
+                    index % labelStep === 0
                   return (
                     <div
                       className="admin-mediamod-bar-col"
@@ -2144,7 +2160,7 @@ export function AdminApp({
                       title={`${formatDayLabel(day.day)} : ${day.rejected} suppression(s), ${day.approved} validation(s)`}
                     >
                       <span style={{ height: `${height}%` }} />
-                      <small>{formatDayLabel(day.day)}</small>
+                      <small>{showLabel ? formatDayLabel(day.day) : ''}</small>
                     </div>
                   )
                 })}
