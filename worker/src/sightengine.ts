@@ -199,7 +199,15 @@ export const submitVideoBinary = async (
     )
   }
   if (!response.ok) {
-    throw new SightengineError(`Sightengine (video) a repondu ${response.status}.`)
+    const body = await response.text().catch(() => '')
+    if (/usage_limit|not available|1101|1103/i.test(body)) {
+      throw new SightengineUnsupportedError(
+        `Moderation video Sightengine indisponible (palier gratuit) : ${body.slice(0, 200)}`,
+      )
+    }
+    throw new SightengineError(
+      `Sightengine (video) a repondu ${response.status}. ${body.slice(0, 400)}`,
+    )
   }
 
   const data = (await response.json()) as {
@@ -313,7 +321,15 @@ export const submitVideoViaUpload = async (
     )
   }
   if (!response.ok) {
-    throw new SightengineError(`Sightengine (video) a repondu ${response.status}.`)
+    const body = await response.text().catch(() => '')
+    if (/usage_limit|not available|1101|1103/i.test(body)) {
+      throw new SightengineUnsupportedError(
+        `Moderation video Sightengine indisponible (palier gratuit) : ${body.slice(0, 200)}`,
+      )
+    }
+    throw new SightengineError(
+      `Sightengine (video) a repondu ${response.status}. ${body.slice(0, 400)}`,
+    )
   }
   const data = (await response.json()) as {
     status?: string

@@ -265,6 +265,7 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
       // inutile de re-tenter. On envoie en REVUE MANUELLE (flaggé) + marqué scanné pour
       // sortir de la boucle ; reste masqué au public jusqu'à décision admin.
       if (error instanceof SightengineUnsupportedError) {
+        console.warn('[moderation] revue manuelle (non analysable)', key, error.message)
         await upsertModerationItem(
           bucket,
           buildFlaggedEntry(key, 'video', {
