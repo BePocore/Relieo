@@ -11,6 +11,8 @@ import {
   Ban,
   Bell,
   Check,
+  ChevronDown,
+  ChevronRight,
   CreditCard,
   Database,
   Euro,
@@ -335,6 +337,17 @@ export function AdminApp({
   const [scanInfo, setScanInfo] = useState<string | null>(null)
   // Inventaire des médias : tri primaire (par utilisateur ou par carte).
   const [inventorySort, setInventorySort] = useState<'user' | 'map'>('user')
+  // Groupes repliés de l'inventaire (clés `g:<groupe>` niveau 1, `s:<groupe>»<sous>` niveau 2).
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const toggleGroup = (key: string) =>
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
@@ -426,6 +439,44 @@ export function AdminApp({
     const timer = setInterval(() => void load(true), 12_000)
     return () => clearInterval(timer)
   }, [section, load])
+
+  // Inventaire en arborescence à deux niveaux : groupe primaire (utilisateur ou
+  // carte selon le tri) → groupe secondaire (l'autre) → médias. Trié à chaque cran.
+  const inventoryTree = useMemo(() => {
+    const inventory = mediaMod?.inventory ?? []
+    const primary = (item: MediaInventoryItem) =>
+      inventorySort === 'user' ? item.ownerEmail ?? item.ownerUid : item.mapTitle
+    const secondary = (item: MediaInventoryItem) =>
+      inventorySort === 'user' ? item.mapTitle : item.ownerEmail ?? item.ownerUid
+    const sorted = [...inventory].sort(
+      (a, b) =>
+        primary(a).localeCompare(primary(b)) ||
+        secondary(a).localeCompare(secondary(b)) ||
+        a.id.localeCompare(b.id),
+    )
+    const tree: {
+      label: string
+      count: number
+      subs: { label: string; items: MediaInventoryItem[] }[]
+    }[] = []
+    for (const item of sorted) {
+      const groupLabel = primary(item)
+      const subLabel = secondary(item)
+      let group = tree[tree.length - 1]
+      if (!group || group.label !== groupLabel) {
+        group = { label: groupLabel, count: 0, subs: [] }
+        tree.push(group)
+      }
+      group.count += 1
+      let sub = group.subs[group.subs.length - 1]
+      if (!sub || sub.label !== subLabel) {
+        sub = { label: subLabel, items: [] }
+        group.subs.push(sub)
+      }
+      sub.items.push(item)
+    }
+    return tree
+  }, [mediaMod?.inventory, inventorySort])
 
   // Renouvellement du ticket d'accès média « scope all » (covers de la console).
   useEffect(() => startMediaTicketRefresh({ scope: 'all' }, getIdToken), [])
@@ -1452,38 +1503,100 @@ export function AdminApp({
     )
   })()
 
-  // Inventaire complet : tous les originaux, triés/groupés par utilisateur ou par
-  // carte, avec leur état (vérifié / non / exempté), le verdict IA et la décision admin.
+  // Inventaire complet : tous les originaux en arborescence repliable (utilisateur ▸
+  // carte ▸ médias, ou l'inverse), avec leur état (vérifié / non / exempté), le
+  // verdict IA et la décision admin.
   const inventoryTable = (() => {
-    const inventory = mediaMod?.inventory ?? []
-    const groupOf = (item: MediaInventoryItem) =>
-      inventorySort === 'user' ? item.ownerEmail ?? item.ownerUid : item.mapTitle
-    const detailOf = (item: MediaInventoryItem) =>
-      inventorySort === 'user' ? item.mapTitle : item.ownerEmail ?? item.ownerUid
-    const sorted = [...inventory].sort(
-      (a, b) =>
-        groupOf(a).localeCompare(groupOf(b)) ||
-        detailOf(a).localeCompare(detailOf(b)) ||
-        a.id.localeCompare(b.id),
-    )
+    const total = mediaMod?.inventory?.length ?? 0
+    const collapseAll = () =>
+      setCollapsedGroups(new Set(inventoryTree.map((group) => `g:${group.label}`)))
+    const mediaRow = (item: MediaInventoryItem) => {
+      const ai = INVENTORY_AI_PILL[item.aiStatus]
+      const adm = INVENTORY_ADMIN_PILL[item.adminStatus]
+      return (
+        <tr key={item.id}>
+          <td>
+            <div className="admin-inv-media">
+              <span className="admin-inv-thumb">
+                {item.mediaKind === 'video' ? (
+                  <Film size={16} />
+                ) : (
+                  <img
+                    src={item.mediaUrl}
+                    alt=""
+                    crossOrigin="use-credentials"
+                    loading="lazy"
+                  />
+                )}
+              </span>
+              <small title={item.id}>
+                {decodeURIComponent(item.id.split('/').pop() ?? '')}
+              </small>
+            </div>
+          </td>
+          <td>
+            <span className="admin-inv-type">
+              {item.mediaKind === 'video' ? (
+                <Film size={14} />
+              ) : (
+                <ImageIcon size={14} />
+              )}
+              {item.mediaKind === 'video' ? 'Vidéo' : 'Image'}
+            </span>
+          </td>
+          <td>
+            <span
+              className={`admin-pill ${
+                item.exempt ? 'neutral' : item.scanned ? 'ok' : 'warn'
+              }`}
+            >
+              {item.exempt ? 'Exempté' : item.scanned ? 'Vérifié' : 'Non vérifié'}
+            </span>
+          </td>
+          <td>
+            <span className={`admin-pill ${ai.cls}`}>
+              {ai.label}
+              {item.aiStatus === 'flagged' && item.aiCategory
+                ? ` · ${item.aiCategory} ${Math.round((item.aiScore ?? 0) * 100)}%`
+                : ''}
+            </span>
+          </td>
+          <td>
+            <span className={`admin-pill ${adm.cls}`}>{adm.label}</span>
+          </td>
+        </tr>
+      )
+    }
     return (
       <section className="admin-mediamod-inventory" aria-label="Tous les médias">
         <div className="admin-mediamod-invhead">
-          <span className="admin-inv-count">{inventory.length} média(s)</span>
-          <label className="admin-inv-sort">
-            Trier par
-            <select
-              value={inventorySort}
-              onChange={(event) =>
-                setInventorySort(event.target.value as 'user' | 'map')
-              }
+          <span className="admin-inv-count">{total} média(s)</span>
+          <div className="admin-inv-tools">
+            <button type="button" className="admin-inv-collapseall" onClick={collapseAll}>
+              Tout replier
+            </button>
+            <button
+              type="button"
+              className="admin-inv-collapseall"
+              onClick={() => setCollapsedGroups(new Set())}
             >
-              <option value="user">Utilisateur</option>
-              <option value="map">Carte</option>
-            </select>
-          </label>
+              Tout déplier
+            </button>
+            <label className="admin-inv-sort">
+              Trier par
+              <select
+                value={inventorySort}
+                onChange={(event) =>
+                  setInventorySort(event.target.value as 'user' | 'map')
+                }
+              >
+                <option value="user">Utilisateur</option>
+                <option value="map">Carte</option>
+              </select>
+            </label>
+          </div>
         </div>
-        {inventory.length === 0 ? (
+        {total === 0 ? (
           <p className="admin-empty">
             Aucun média.
             {mediaMod?.usage ? '' : ' La modération IA n’a pas encore tourné.'}
@@ -1494,7 +1607,6 @@ export function AdminApp({
               <thead>
                 <tr>
                   <th>Média</th>
-                  <th>{inventorySort === 'user' ? 'Carte' : 'Propriétaire'}</th>
                   <th>Type</th>
                   <th>Vérification</th>
                   <th>Décision IA</th>
@@ -1502,77 +1614,58 @@ export function AdminApp({
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((item, index) => {
-                  const group = groupOf(item)
-                  const showGroup =
-                    index === 0 || groupOf(sorted[index - 1]) !== group
-                  const ai = INVENTORY_AI_PILL[item.aiStatus]
-                  const adm = INVENTORY_ADMIN_PILL[item.adminStatus]
+                {inventoryTree.map((group) => {
+                  const groupKey = `g:${group.label}`
+                  const groupCollapsed = collapsedGroups.has(groupKey)
                   return (
-                    <Fragment key={item.id}>
-                      {showGroup ? (
-                        <tr className="admin-inv-group">
-                          <td colSpan={6}>{group}</td>
-                        </tr>
-                      ) : null}
-                      <tr>
-                        <td>
-                          <div className="admin-inv-media">
-                            <span className="admin-inv-thumb">
-                              {item.mediaKind === 'video' ? (
-                                <Film size={16} />
-                              ) : (
-                                <img
-                                  src={item.mediaUrl}
-                                  alt=""
-                                  crossOrigin="use-credentials"
-                                  loading="lazy"
-                                />
-                              )}
-                            </span>
-                            <small title={item.id}>
-                              {decodeURIComponent(item.id.split('/').pop() ?? '')}
-                            </small>
-                          </div>
-                        </td>
-                        <td>{detailOf(item)}</td>
-                        <td>
-                          <span className="admin-inv-type">
-                            {item.mediaKind === 'video' ? (
-                              <Film size={14} />
-                            ) : (
-                              <ImageIcon size={14} />
-                            )}
-                            {item.mediaKind === 'video' ? 'Vidéo' : 'Image'}
-                          </span>
-                        </td>
-                        <td>
-                          <span
-                            className={`admin-pill ${
-                              item.exempt ? 'neutral' : item.scanned ? 'ok' : 'warn'
-                            }`}
+                    <Fragment key={groupKey}>
+                      <tr className="admin-inv-group admin-inv-l1">
+                        <td colSpan={5}>
+                          <button
+                            type="button"
+                            className="admin-inv-toggle"
+                            onClick={() => toggleGroup(groupKey)}
                           >
-                            {item.exempt
-                              ? 'Exempté'
-                              : item.scanned
-                                ? 'Vérifié'
-                                : 'Non vérifié'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`admin-pill ${ai.cls}`}>
-                            {ai.label}
-                            {item.aiStatus === 'flagged' && item.aiCategory
-                              ? ` · ${item.aiCategory} ${Math.round(
-                                  (item.aiScore ?? 0) * 100,
-                                )}%`
-                              : ''}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`admin-pill ${adm.cls}`}>{adm.label}</span>
+                            {groupCollapsed ? (
+                              <ChevronRight size={16} />
+                            ) : (
+                              <ChevronDown size={16} />
+                            )}
+                            {group.label}
+                            <span className="admin-inv-grpcount">{group.count}</span>
+                          </button>
                         </td>
                       </tr>
+                      {groupCollapsed
+                        ? null
+                        : group.subs.map((sub) => {
+                            const subKey = `s:${group.label}»${sub.label}`
+                            const subCollapsed = collapsedGroups.has(subKey)
+                            return (
+                              <Fragment key={subKey}>
+                                <tr className="admin-inv-group admin-inv-l2">
+                                  <td colSpan={5}>
+                                    <button
+                                      type="button"
+                                      className="admin-inv-toggle sub"
+                                      onClick={() => toggleGroup(subKey)}
+                                    >
+                                      {subCollapsed ? (
+                                        <ChevronRight size={15} />
+                                      ) : (
+                                        <ChevronDown size={15} />
+                                      )}
+                                      {sub.label}
+                                      <span className="admin-inv-grpcount">
+                                        {sub.items.length}
+                                      </span>
+                                    </button>
+                                  </td>
+                                </tr>
+                                {subCollapsed ? null : sub.items.map(mediaRow)}
+                              </Fragment>
+                            )
+                          })}
                     </Fragment>
                   )
                 })}

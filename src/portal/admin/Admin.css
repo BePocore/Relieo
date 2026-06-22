@@ -927,6 +927,23 @@
   margin-bottom: 12px;
 }
 .admin-inv-count { font-size: 14px; color: var(--admin-muted); }
+.admin-inv-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-inv-collapseall {
+  padding: 5px 10px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--admin-muted);
+  cursor: pointer;
+}
+.admin-inv-collapseall:hover { background: var(--admin-soft, #f4f6fb); }
 .admin-inv-sort {
   display: inline-flex;
   align-items: center;
@@ -942,15 +959,42 @@
   font-size: 13px;
   color: inherit;
 }
+/* En-têtes de groupe repliables (niveau 1 = primaire, niveau 2 = secondaire) */
 .admin-table tr.admin-inv-group td {
+  padding: 0;
   background: var(--admin-soft, #f4f6fb);
+}
+.admin-table tr.admin-inv-l2 td { background: #fafbfd; }
+.admin-inv-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: 0;
+  font-size: 13.5px;
   font-weight: 700;
-  font-size: 12.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  color: var(--admin-text, #1d2430);
+  cursor: pointer;
+  text-align: left;
+}
+.admin-inv-toggle.sub {
+  padding-left: 38px;
+  font-weight: 600;
+  font-size: 13px;
   color: var(--admin-muted);
-  padding-top: 10px;
-  padding-bottom: 10px;
+}
+.admin-inv-toggle:hover { background: rgba(0, 0, 0, 0.03); }
+.admin-inv-toggle > svg { flex: 0 0 auto; color: var(--admin-muted); }
+.admin-inv-grpcount {
+  min-width: 22px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--admin-muted);
 }
 .admin-inv-media { display: flex; align-items: center; gap: 10px; }
 .admin-inv-media small {
