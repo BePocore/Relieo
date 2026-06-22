@@ -216,6 +216,7 @@ export function MapLibreTrailMap({
   createPointOnClick = false,
   flat2D = false,
   videoPosters = {},
+  framedThumbnails = {},
   onMovePoint,
   onCreatePoint,
   onMarkerClick,
@@ -541,12 +542,15 @@ export function MapLibreTrailMap({
         const point = points[index]
         const id = pointKey(point, index)
         const media = resolvePointMedia(point, mediaLibrary)
-        const thumbnailSource =
+        const rawThumbnailSource =
           media?.kind === 'image'
             ? (media.thumbnailSrc ?? media.src)
             : media?.kind === 'video'
-              ? (media.thumbnailSrc ?? videoPosters[media.src])
+              ? (videoPosters[media.src] ?? media.thumbnailSrc)
               : undefined
+        const thumbnailSource = rawThumbnailSource
+          ? (framedThumbnails[rawThumbnailSource] ?? rawThumbnailSource)
+          : undefined
         if (thumbnailSource) mediaMarkers.push({ point, thumbnailSource })
         features.push({
           type: 'Feature',
@@ -647,6 +651,7 @@ export function MapLibreTrailMap({
     points,
     mediaLibrary,
     videoPosters,
+    framedThumbnails,
     selectedPoint,
     styleReady,
     compact,

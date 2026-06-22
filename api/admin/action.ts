@@ -17,6 +17,7 @@ import {
   upsertHikeIndex,
 } from '../../server/hikeIndex.js'
 import {
+  appendModerationHistory,
   approveModerationItem,
   autoRejectThreshold,
   moderationEnforced,
@@ -41,6 +42,10 @@ import { PLAN_STORAGE_LIMITS } from '../../server/plans.js'
 import { emailConfigured, sendEmail } from '../../server/email.js'
 import { moderationEmailHtml } from '../../server/emailTemplates.js'
 import type { AuthedUser } from '../../server/firebaseAdmin.js'
+import type {
+  MediaModerationDecision,
+  MediaModerationEntry,
+} from '../../server/mediaModeration.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -85,6 +90,42 @@ const emailOf = async (uid: string | null): Promise<string | null> => {
   } catch {
     return null
   }
+}
+
+const mediaKindFromKey = (key: string): 'image' | 'video' =>
+  /\.(mp4|mov|webm|mkv|avi|m4v|3gp)$/i.test(key) ? 'video' : 'image'
+
+const appendMediaModerationDecision = async (
+  decision: MediaModerationDecision,
+  entries: MediaModerationEntry[],
+  mediaIds: string[],
+  reviewer: { uid: string; email: string | null },
+  message: string,
+): Promise<void> => {
+  const ids = [...new Set(mediaIds.filter(Boolean))]
+  const primary = entries[0]
+  const firstId = primary?.id ?? ids[0] ?? ''
+  if (!firstId) return
+  const scoreItem = entries.reduce<MediaModerationEntry | null>(
+    (best, item) => (!best || item.aiScore > best.aiScore ? item : best),
+    null,
+  )
+
+  await appendModerationHistory({
+    id: `media-${decision}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    decision,
+    mediaIds: ids.length ? ids : [firstId],
+    ownerUid: primary?.ownerUid ?? segmentAfter(firstId, 'users') ?? '',
+    mapFolder: primary?.mapFolder ?? segmentAfter(firstId, 'randonnees') ?? '',
+    mediaKind: primary?.mediaKind ?? mediaKindFromKey(firstId),
+    aiCategory: scoreItem?.aiCategory ?? '',
+    aiScore: typeof scoreItem?.aiScore === 'number' ? scoreItem.aiScore : 0,
+    decidedAt: new Date().toISOString(),
+    decidedBy: reviewer.uid,
+    decidedByEmail: reviewer.email,
+    message,
+    source: reviewer.uid === 'ai-auto' ? 'auto' : 'admin',
+  })
 }
 
 // Double une notification de modération in-app par un email (si un fournisseur
@@ -321,9 +362,18 @@ const handleMediaMod = async (admin: AuthedUser, body: ActionBody) => {
   // Approuver : l'IA s'est trompée. On retire l'entrée -> le média redevient
   // servable (il reste « scanné »). Aucune suppression.
   if (op === 'approve') {
+    const approvedEntries: MediaModerationEntry[] = []
     for (const targetId of targetIds) {
-      await approveModerationItem(targetId)
+      const entry = await approveModerationItem(targetId)
+      if (entry) approvedEntries.push(entry)
     }
+    await appendMediaModerationDecision(
+      'approved',
+      approvedEntries,
+      approvedEntries.map((entry) => entry.id),
+      { uid: admin.uid, email: admin.email },
+      '',
+    )
     return json({ ids: targetIds, op, approved: true })
   }
 
@@ -342,7 +392,8 @@ const rejectMediaCore = async (
   reviewer: { uid: string; email: string | null },
   message: string,
 ): Promise<Set<string>> => {
-  const entry = (await readMediaModerationItems()).find((item) => item.id === id)
+  const moderationItems = await readMediaModerationItems()
+  const entry = moderationItems.find((item) => item.id === id)
   const folder = entry?.mapFolder || segmentAfter(id, 'randonnees') || ''
   const hike = folder
     ? (await readHikeIndex()).find((item) => item.folder === folder)
@@ -428,6 +479,14 @@ const rejectMediaCore = async (
     message,
     createdAt: new Date().toISOString(),
   })
+  const relatedEntries = moderationItems.filter((item) => keysToDelete.has(item.id))
+  await appendMediaModerationDecision(
+    'rejected',
+    relatedEntries.length > 0 ? relatedEntries : entry ? [entry] : [],
+    [...keysToDelete],
+    reviewer,
+    message,
+  )
   return keysToDelete
 }
 

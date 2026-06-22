@@ -165,6 +165,25 @@ type MediaReviewGroup = {
   label: string
 }
 
+type MediaModerationHistoryItem = {
+  id: string
+  decision: 'approved' | 'rejected'
+  mediaIds: string[]
+  ownerUid: string
+  mapFolder: string
+  mediaKind: 'image' | 'video'
+  aiCategory: string
+  aiScore: number
+  decidedAt: string
+  decidedBy: string
+  decidedByEmail: string | null
+  message: string
+  source: 'admin' | 'auto'
+  ownerEmail: string | null
+  mapCode: string
+  mapTitle: string
+}
+
 type MediaModUsage = {
   day: string
   dayOps: number
@@ -176,6 +195,7 @@ type MediaModUsage = {
 type MediaModeration = {
   items: MediaModItem[]
   inventory: MediaInventoryItem[]
+  history: MediaModerationHistoryItem[]
   usage: MediaModUsage
   dailyLimit: number
   monthlyLimit: number
@@ -352,6 +372,39 @@ const formatDateTime = (value: string): string =>
     minute: '2-digit',
   }).format(new Date(value))
 
+const addDays = (date: Date, days: number): Date => {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+const dateInputValue = (date: Date): string => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 10)
+}
+
+const dateInputBoundary = (
+  value: string,
+  boundary: 'start' | 'end',
+): number => {
+  if (!value) return boundary === 'start' ? -Infinity : Infinity
+  const suffix = boundary === 'start' ? 'T00:00:00' : 'T23:59:59.999'
+  const time = new Date(`${value}${suffix}`).getTime()
+  return Number.isFinite(time)
+    ? time
+    : boundary === 'start'
+      ? -Infinity
+      : Infinity
+}
+
+const dayKeyFromIso = (value: string): string => dateInputValue(new Date(value))
+
+const formatDayLabel = (day: string): string =>
+  new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+  }).format(new Date(`${day}T12:00:00`))
+
 // Libellés + couleurs des pastilles de l'inventaire des médias.
 const INVENTORY_AI_PILL: Record<
   MediaInventoryItem['aiStatus'],
@@ -458,6 +511,12 @@ export function AdminApp({
   const [rejectMediaMessage, setRejectMediaMessage] = useState('')
   // Retour du dernier scan déclenché à la main.
   const [scanInfo, setScanInfo] = useState<string | null>(null)
+  const [mediaHistoryFrom, setMediaHistoryFrom] = useState(() =>
+    dateInputValue(addDays(new Date(), -29)),
+  )
+  const [mediaHistoryTo, setMediaHistoryTo] = useState(() =>
+    dateInputValue(new Date()),
+  )
   // Inventaire des médias : tri primaire (par utilisateur ou par carte).
   const [inventorySort, setInventorySort] = useState<'user' | 'map'>('user')
   // Groupes repliés de l'inventaire (clés `g:<groupe>` niveau 1, `s:<groupe>»<sous>` niveau 2).
@@ -785,6 +844,7 @@ export function AdminApp({
           ? { ...current, items: current.items.filter((i) => !approved.has(i.id)) }
           : current,
       )
+      await load(true)
     } catch {
       setError('Approbation du média impossible.')
     } finally {
@@ -880,6 +940,85 @@ export function AdminApp({
     () => buildMediaReviewGroups(mediaMod?.items ?? [], mediaMod?.inventory ?? []),
     [mediaMod?.inventory, mediaMod?.items],
   )
+  const setMediaHistoryPreset = (days: number | 'all') => {
+    if (days === 'all') {
+      setMediaHistoryFrom('')
+      setMediaHistoryTo('')
+      return
+    }
+    const today = new Date()
+    setMediaHistoryFrom(dateInputValue(addDays(today, -(days - 1))))
+    setMediaHistoryTo(dateInputValue(today))
+  }
+  const mediaHistoryStats = useMemo(() => {
+    const fromMs = dateInputBoundary(mediaHistoryFrom, 'start')
+    const toMs = dateInputBoundary(mediaHistoryTo, 'end')
+    const filtered = (mediaMod?.history ?? [])
+      .filter((entry) => {
+        const time = new Date(entry.decidedAt).getTime()
+        return Number.isFinite(time) && time >= fromMs && time <= toMs
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.decidedAt).getTime() - new Date(a.decidedAt).getTime(),
+      )
+
+    const dayMap = new Map<string, { approved: number; rejected: number }>()
+    for (const entry of filtered) {
+      const day = dayKeyFromIso(entry.decidedAt)
+      const current = dayMap.get(day) ?? { approved: 0, rejected: 0 }
+      current[entry.decision] += 1
+      dayMap.set(day, current)
+    }
+
+    const days: Array<{ day: string; approved: number; rejected: number }> = []
+    const fromDate = mediaHistoryFrom
+      ? new Date(`${mediaHistoryFrom}T00:00:00`)
+      : null
+    const toDate = mediaHistoryTo ? new Date(`${mediaHistoryTo}T00:00:00`) : null
+    if (
+      fromDate &&
+      toDate &&
+      Number.isFinite(fromDate.getTime()) &&
+      Number.isFinite(toDate.getTime()) &&
+      fromDate <= toDate
+    ) {
+      const cursor = new Date(fromDate)
+      let guard = 0
+      while (cursor <= toDate && guard < 370) {
+        const day = dateInputValue(cursor)
+        const counts = dayMap.get(day) ?? { approved: 0, rejected: 0 }
+        days.push({ day, ...counts })
+        cursor.setDate(cursor.getDate() + 1)
+        guard += 1
+      }
+    } else {
+      for (const day of [...dayMap.keys()].sort()) {
+        const counts = dayMap.get(day) ?? { approved: 0, rejected: 0 }
+        days.push({ day, ...counts })
+      }
+    }
+
+    const approvedCount = filtered.filter(
+      (entry) => entry.decision === 'approved',
+    ).length
+    const rejectedCount = filtered.filter(
+      (entry) => entry.decision === 'rejected',
+    ).length
+    const autoRejectedCount = filtered.filter(
+      (entry) => entry.decision === 'rejected' && entry.source === 'auto',
+    ).length
+    const maxRejected = Math.max(1, ...days.map((day) => day.rejected))
+
+    return {
+      filtered,
+      days,
+      approvedCount,
+      rejectedCount,
+      autoRejectedCount,
+      maxRejected,
+    }
+  }, [mediaHistoryFrom, mediaHistoryTo, mediaMod?.history])
 
   const navItems: Array<{ id: AdminSection; label: string; icon: ReactNode; badge?: number }> = [
     { id: 'overview', label: 'Vue d’ensemble', icon: <LayoutDashboard size={18} /> },
@@ -1924,6 +2063,142 @@ export function AdminApp({
             {usage ? '' : ' La modération IA n’a pas encore tourné.'}
           </p>
         )}
+
+        <section className="admin-mediamod-history">
+          <div className="admin-mediamod-history-head">
+            <div>
+              <p className="admin-kicker"><LineChart size={13} /> Historique IA</p>
+              <h2>Décisions de modération</h2>
+            </div>
+            <div className="admin-mediamod-range">
+              <button type="button" onClick={() => setMediaHistoryPreset(7)}>
+                7 jours
+              </button>
+              <button type="button" onClick={() => setMediaHistoryPreset(30)}>
+                30 jours
+              </button>
+              <button type="button" onClick={() => setMediaHistoryPreset(90)}>
+                90 jours
+              </button>
+              <button type="button" onClick={() => setMediaHistoryPreset('all')}>
+                Tout
+              </button>
+              <label>
+                Du
+                <input
+                  type="date"
+                  value={mediaHistoryFrom}
+                  onChange={(event) => setMediaHistoryFrom(event.target.value)}
+                />
+              </label>
+              <label>
+                Au
+                <input
+                  type="date"
+                  value={mediaHistoryTo}
+                  onChange={(event) => setMediaHistoryTo(event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="admin-mediamod-history-stats">
+            <article>
+              <span><Check size={16} /></span>
+              <p>Validations</p>
+              <strong>{mediaHistoryStats.approvedCount}</strong>
+            </article>
+            <article>
+              <span><Trash2 size={16} /></span>
+              <p>Suppressions</p>
+              <strong>{mediaHistoryStats.rejectedCount}</strong>
+            </article>
+            <article>
+              <span><ScanLine size={16} /></span>
+              <p>Suppressions auto</p>
+              <strong>{mediaHistoryStats.autoRejectedCount}</strong>
+            </article>
+          </div>
+
+          <div className="admin-mediamod-chart">
+            <div className="admin-mediamod-chart-title">
+              <strong>Suppressions par jour</strong>
+              <small>{mediaHistoryStats.filtered.length} décision(s) dans la période</small>
+            </div>
+            {mediaHistoryStats.days.length > 0 ? (
+              <div className="admin-mediamod-bars" role="img" aria-label="Suppressions par jour">
+                {mediaHistoryStats.days.map((day) => {
+                  const height = day.rejected
+                    ? Math.max(8, (day.rejected / mediaHistoryStats.maxRejected) * 100)
+                    : 0
+                  return (
+                    <div
+                      className="admin-mediamod-bar-col"
+                      key={day.day}
+                      title={`${formatDayLabel(day.day)} : ${day.rejected} suppression(s), ${day.approved} validation(s)`}
+                    >
+                      <span style={{ height: `${height}%` }} />
+                      <small>{formatDayLabel(day.day)}</small>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="admin-empty compact">Aucune décision sur cette période.</p>
+            )}
+          </div>
+
+          {mediaHistoryStats.filtered.length > 0 ? (
+            <div className="admin-table-wrap admin-mediamod-history-table">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Décision</th>
+                    <th>Date</th>
+                    <th>Carte</th>
+                    <th>Propriétaire</th>
+                    <th>IA</th>
+                    <th>Médias</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mediaHistoryStats.filtered.slice(0, 80).map((entry) => (
+                    <tr key={entry.id}>
+                      <td>
+                        <span
+                          className={`admin-pill ${
+                            entry.decision === 'approved' ? 'ok' : 'danger'
+                          }`}
+                        >
+                          {entry.decision === 'approved' ? 'Validation' : 'Suppression'}
+                        </span>
+                      </td>
+                      <td>{formatDateTime(entry.decidedAt)}</td>
+                      <td>
+                        <span className="admin-cell-stack">
+                          <strong>{entry.mapTitle}</strong>
+                          <small>{entry.mapCode}</small>
+                        </span>
+                      </td>
+                      <td>{entry.ownerEmail ?? entry.ownerUid}</td>
+                      <td>
+                        {entry.aiCategory || 'Signalement'} · {Math.round(entry.aiScore * 100)}%
+                      </td>
+                      <td>{entry.mediaIds.length}</td>
+                      <td>{entry.source === 'auto' ? 'Auto' : entry.decidedByEmail ?? entry.decidedBy}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {mediaHistoryStats.filtered.length > 80 ? (
+                <p className="admin-mediamod-history-note">
+                  {mediaHistoryStats.filtered.length - 80} décision(s) plus ancienne(s) masquée(s).
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
       </>
     )
   })()

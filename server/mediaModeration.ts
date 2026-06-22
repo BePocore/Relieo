@@ -14,6 +14,8 @@ import {
 const scannedPath = 'relieo/media-scanned.json'
 const moderationPath = 'relieo/media-moderation.json'
 const usagePath = 'relieo/media-moderation-usage.json'
+const historyPath = 'relieo/media-moderation-history.json'
+const maxHistoryEntries = 1500
 
 // Plafonds du palier gratuit Sightengine (affichés dans l'onglet Coûts).
 export const MODERATION_DAILY_LIMIT = 500
@@ -40,6 +42,24 @@ export type ModerationUsage = {
   month: string
   monthOps: number
   updatedAt: string
+}
+
+export type MediaModerationDecision = 'approved' | 'rejected'
+
+export type MediaModerationHistoryEntry = {
+  id: string
+  decision: MediaModerationDecision
+  mediaIds: string[]
+  ownerUid: string
+  mapFolder: string
+  mediaKind: 'image' | 'video'
+  aiCategory: string
+  aiScore: number
+  decidedAt: string
+  decidedBy: string
+  decidedByEmail: string | null
+  message: string
+  source: 'admin' | 'auto'
 }
 
 // Rapport d'un passage de scan, renvoyé par le videur (voir worker/src/scan.ts:ScanReport).
@@ -168,6 +188,33 @@ export const readModerationUsage = async (): Promise<ModerationUsage | null> => 
   } catch {
     return null
   }
+}
+
+export const readModerationHistory = async (): Promise<MediaModerationHistoryEntry[]> => {
+  const body = await r2GetText(historyPath)
+  if (!body) return []
+  try {
+    const value = JSON.parse(body) as { entries?: unknown }
+    return Array.isArray(value.entries)
+      ? (value.entries as MediaModerationHistoryEntry[])
+      : []
+  } catch {
+    return []
+  }
+}
+
+export const appendModerationHistory = async (
+  entry: MediaModerationHistoryEntry,
+): Promise<void> => {
+  const entries = await readModerationHistory()
+  const next = [entry, ...entries.filter((item) => item.id !== entry.id)].slice(
+    0,
+    maxHistoryEntries,
+  )
+  await r2PutText(
+    historyPath,
+    JSON.stringify({ entries: next, updatedAt: new Date().toISOString() }),
+  )
 }
 
 // --- Inventaire complet des médias (console admin) ----------------------

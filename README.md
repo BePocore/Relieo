@@ -57,8 +57,9 @@ Les fichiers transverses principaux sont :
   notifications admin.
 - `relieo/email-usage.json` : dernier snapshot d'usage Resend.
 - `relieo/media-scanned.json`, `relieo/media-moderation.json`,
+  `relieo/media-moderation-history.json`,
   `relieo/media-moderation-usage.json`, `relieo/media-moderation-queue.json` :
-  etat de moderation IA des medias.
+  etat, historique et usage de moderation IA des medias.
 
 Le modele projet garde `traces: Trace[]` pour les traces multiples, mais le champ
 legacy `track: TrackPoint[]` reste alimente par concatenation des traces parce
@@ -130,6 +131,8 @@ La console admin expose :
 - une file de revue IA pour approuver/rejeter les medias flagges ;
 - un inventaire complet de tous les medias avec etat `pending`, `exempt`, `ok`,
   `flagged` ou `rejected` ;
+- un historique des validations/suppressions avec filtre de dates et graphe des
+  suppressions par jour ;
 - les compteurs journaliers/mensuels du palier gratuit Sightengine.
 
 `MODERATION_AUTO_THRESHOLD` permet de supprimer automatiquement les cas evidents

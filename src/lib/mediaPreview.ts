@@ -41,8 +41,10 @@ const videoPreview = (file: File): Promise<Blob | null> => {
     const video = document.createElement('video')
     video.muted = true
     video.playsInline = true
-    video.preload = 'metadata'
+    video.preload = 'auto'
     let settled = false
+    let seekRequested = false
+    let seekSettled = false
 
     const finish = (value: Blob | null) => {
       if (settled) return
@@ -53,11 +55,47 @@ const videoPreview = (file: File): Promise<Blob | null> => {
       resolve(value)
     }
 
+    const capture = () => {
+      void drawPreview(video, video.videoWidth, video.videoHeight).then(finish)
+    }
+
+    type VideoRVFC = HTMLVideoElement & {
+      requestVideoFrameCallback?: (cb: () => void) => number
+    }
+    const rvfc = (video as VideoRVFC).requestVideoFrameCallback?.bind(video)
+    const captureDecodedFrame = () => {
+      if (settled) return
+      if (rvfc) rvfc(capture)
+      else window.setTimeout(capture, 0)
+    }
+    const canCaptureDecodedFrame = () =>
+      !seekRequested || seekSettled || video.currentTime > 0.05
+
     video.onloadedmetadata = () => {
-      video.currentTime = Math.min(1, Math.max(0, video.duration / 4))
+      try {
+        if (Number.isFinite(video.duration) && video.duration > 0) {
+          seekRequested = true
+          video.currentTime = Math.min(1, Math.max(0, video.duration / 4))
+          return
+        }
+      } catch {
+        /* lecture muette en repli */
+      }
+      captureDecodedFrame()
+    }
+    video.onloadeddata = () => {
+      if (canCaptureDecodedFrame()) captureDecodedFrame()
     }
     video.onseeked = () => {
-      void drawPreview(video, video.videoWidth, video.videoHeight).then(finish)
+      seekSettled = true
+      captureDecodedFrame()
+    }
+    video.oncanplay = () => {
+      void video.play().then(() => {
+        if (canCaptureDecodedFrame()) captureDecodedFrame()
+      }).catch(() => {
+        if (canCaptureDecodedFrame()) captureDecodedFrame()
+      })
     }
     video.onerror = () => finish(null)
     window.setTimeout(() => finish(null), 8_000)

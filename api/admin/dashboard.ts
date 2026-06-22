@@ -12,6 +12,7 @@ import {
   MODERATION_DAILY_LIMIT,
   MODERATION_MONTHLY_LIMIT,
   buildMediaInventory,
+  readModerationHistory as readMediaModerationHistory,
   readModerationItems as readMediaModerationItems,
   readModerationUsage as readMediaModerationUsage,
 } from '../../server/mediaModeration.js'
@@ -64,6 +65,7 @@ export async function GET(request: Request) {
       emailUsage,
       mediaModItems,
       mediaModUsage,
+      mediaModHistory,
     ] = await Promise.all([
       getAuth(adminApp()).listUsers(1000),
       readHikeIndex(),
@@ -75,6 +77,7 @@ export async function GET(request: Request) {
       readEmailUsage(),
       readMediaModerationItems(),
       readMediaModerationUsage(),
+      readMediaModerationHistory(),
     ])
 
     const publishedCount = hikes.filter((h) => h.status === 'published').length
@@ -220,6 +223,12 @@ export async function GET(request: Request) {
     const mediaModeration = {
       items: mediaModItems.map(enrich),
       inventory,
+      history: mediaModHistory.map((entry) => ({
+        ...entry,
+        ownerEmail: emailByUid.get(entry.ownerUid) ?? null,
+        mapCode: hikeByFolder.get(entry.mapFolder)?.code ?? entry.mapFolder,
+        mapTitle: hikeByFolder.get(entry.mapFolder)?.title ?? entry.mapFolder,
+      })),
       usage: mediaModUsage,
       dailyLimit: MODERATION_DAILY_LIMIT,
       monthlyLimit: MODERATION_MONTHLY_LIMIT,
