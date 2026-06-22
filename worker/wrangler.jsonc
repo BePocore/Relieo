@@ -29,7 +29,7 @@
     "ALLOW_HEADER_TICKET": "0",
     // "1" active le blocage des medias non valides par la moderation IA (fail-closed cote public).
     // Laisser a "0" tant que le scan + le seed Halsa ne sont pas en place (sinon tout est bloque).
-    "MODERATION_ENFORCE": "0",
+    "MODERATION_ENFORCE": "1",
     // Cartes exemptees du SCAN (CSV de folders). Halsa = carte de test safe : marquee scannee sans
     // appel Sightengine (seed implicite au 1er passage). N'affecte PAS l'acces (le videur reste sans
     // exception, Halsa passe car seedee).
@@ -50,9 +50,9 @@
   //   MODERATION_SIGNAL_SECRET                       -> protege POST /_moderation/scan (appel Vercel)
   //   MODERATION_CALLBACK_SECRET                     -> protege POST /_moderation/callback (Sightengine)
 
-  // Cron 2x/jour (UTC) : balayage de fond de la moderation.
+  // Cron toutes les 4 h (UTC) : balayage de fond de la moderation.
   "triggers": {
-    "crons": ["0 6 * * *", "0 18 * * *"]
+    "crons": ["0 */4 * * *"]
   },
 
   "observability": {

@@ -234,7 +234,7 @@ export default {
     return new Response(object.body, { status: 200, headers })
   },
 
-  // Cron 2x/jour (cf. wrangler.jsonc triggers.crons) : balayage de fond de la modération.
+  // Cron toutes les 4 h (cf. wrangler.jsonc triggers.crons) : balayage de fond de la modération.
   async scheduled(_controller, env, ctx): Promise<void> {
     ctx.waitUntil(runScan(env))
   },

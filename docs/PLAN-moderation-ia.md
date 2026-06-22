@@ -41,7 +41,7 @@
   (a) passer Sightengine en **payant**
   (prévu pour le déploiement), OU (b) **contournement gratuit** = échantillonner des frames de la vidéo
   (côté client à l'upload, comme le poster) et les modérer via l'**API image** (gratuite).
-- **Cron 2×/jour TOUJOURS KO** : `wrangler deploy` réussit pour le script mais les triggers cron
+- **Cron toutes les 4 h TOUJOURS KO** : `wrangler deploy` réussit pour le script mais les triggers cron
   échouent en **403 Cloudflare code 10063** « You need a workers.dev subdomain in order to proceed ».
   Fix : **créer une fois le sous-domaine workers.dev** (dashboard Cloudflare → Workers & Pages) puis
   redéployer. Non bloquant (scan manuel + signal de publication OK), à faire avant lancement public.
@@ -52,8 +52,8 @@
   utilisateur ▸ carte, **taille des fichiers**, statuts Vérification / Décision IA / Décision admin +
   « Analyse en cours » pour les vidéos en attente de callback) ; regroupement original+vignette en
   revue (fait par **Codex** en parallèle, commité `8997ab6`).
-- **`MODERATION_ENFORCE` reste à 0** (rodage). À passer à 1 (videur `wrangler.jsonc` + Vercel) pour
-  activer le blocage public + l'auto-suppression, **après** validation.
+- **`MODERATION_ENFORCE` est passé à 1** côté videur pour valider le blocage public ; garder Vercel
+  aligné à 1 pour que le filtrage API reste cohérent.
 
 > ⚠️ **Process** : Codex (OpenAI) a tourné en parallèle sur le même dépôt ce jour (regroupement revue
 > + nettoyage médias + posters). Risque de collisions entre deux agents : éviter, committer entre chaque.
@@ -73,7 +73,7 @@
 - `worker/src/moderation.ts` : refus d'octet `canServe` (chemin chaud) + store des 5 fichiers d'état R2.
 - `worker/src/scan.ts` : boucle de scan (file prioritaire publication → balayage → seed Halsa auto →
   cap quotidien) + `handleVideoCallback`.
-- `worker/src/index.ts` : endpoints `/_moderation/scan` + `/_moderation/callback` + cron 2×/jour
+- `worker/src/index.ts` : endpoints `/_moderation/scan` + `/_moderation/callback` + cron toutes les 4 h
   (`wrangler.jsonc`).
 - Docs : ce plan + `docs/STORAGE-moderation.md` (contrat des 5 fichiers d'état).
 
@@ -286,7 +286,7 @@ fichiers à Sightengine. Il accède au bucket R2 par **binding natif** (pas de s
 lire/lister) et sert l'endpoint HTTP qui reçoit les **callbacks vidéo**.
 
 **Deux déclencheurs complémentaires :**
-- **Cron 2×/jour** (Worker scheduled) : balayage de fond de tous les nouveaux médias, **même en
+- **Cron toutes les 4 h** (Worker scheduled) : balayage de fond de tous les nouveaux médias, **même en
   brouillon**. Filet de sécurité, garde tout propre en continu.
 - **À la demande de publication** : quand un user publie sa carte, la route Vercel (`api/hikes`) appelle
   l'endpoint HTTP du videur (secret partagé `MODERATION_SIGNAL_SECRET`) pour un **scan ciblé immédiat
@@ -341,7 +341,7 @@ Pas besoin de réécrire les `project.json`.
   restent visibles.
 - Le **nouveau média** est automatiquement invisible au public (pas encore scanné), visible seulement
   pour le propriétaire avec le badge « en attente de vérification ».
-- Il sera scanné au prochain cron 2×/jour (ou via un signal de publication si le user republie) ; au
+- Il sera scanné au prochain cron toutes les 4 h (ou via un signal de publication si le user republie) ; au
   verdict OK il apparaît tout seul, au verdict flag il part en modération admin.
 
 ### 1.5 Initialisation (seed) — pré-valider Halsa sans payer
@@ -405,7 +405,7 @@ Suit exactement le pattern des onglets existants (Sanctions, Notifications) dans
   (badge = nombre de médias `flagged` en attente).
 - **Bouton « Lancer un scan maintenant » en haut de la vue** : déclenche un scan à l'appui
   (`action: 'scan-media'`, cf. 2.3), avec retour d'état (en cours / nombre traité / reste). Pratique
-  pour tester sans attendre le cron 2×/jour.
+  pour tester sans attendre le cron toutes les 4 h.
 - Nouveau composant `MediaModerationView` : tableau / galerie des entrées `flagged`, chaque ligne
   affiche **l'aperçu du média original** (image, ou poster pour une vidéo, chargé via ticket admin
   scope all), le propriétaire, la carte, la catégorie IA + score, et deux actions :
@@ -426,7 +426,7 @@ Ajouter au switch existant (réutilise `requireAdmin`, `pushUserNotification`, `
   réf du `project.json`, `pushUserNotification(owner, {type:'media-rejected', message})`,
   `notifyByEmail(...)`, `appendSanction({action:'media-reject', ...})`, statut `rejected`.
 - `action: 'scan-media'` → **branché sur le bouton « Lancer un scan maintenant »** (2.1) : signale au
-  videur de lancer un lot de scan immédiat ; le mode normal reste le cron 2×/jour. Renvoie un état
+  videur de lancer un lot de scan immédiat ; le mode normal reste le cron toutes les 4 h. Renvoie un état
   (traités / restants) pour l'affichage admin.
 
 ### 2.4 Notification utilisateur
@@ -509,7 +509,7 @@ Ajouter au switch existant (réutilise `requireAdmin`, `pushUserNotification`, `
 1. Intégrité preview/original (brique 0) — le moteur scanne l'original ET la vignette (pas de refonte
    du flux d'upload).
 2. Videur : appels Sightengine (upload binaire image + Upload API vidéo) + état R2
-   (`media-scanned.json` / `media-moderation.json`) + compteur d'ops (1.6) + cron 2×/jour + endpoint
+   (`media-scanned.json` / `media-moderation.json`) + compteur d'ops (1.6) + cron toutes les 4 h + endpoint
    callback vidéo + endpoint signal de publication (brique 1).
 3. Seed Halsa (1.5) — avant le premier passage du videur, pour ne pas la scanner.
 4. Refus d'octet côté public + double filtrage + signal de publication depuis `api/hikes` (1.4).

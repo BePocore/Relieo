@@ -81,9 +81,9 @@ Media are **not public**: the R2 bucket's public `r2.dev` access is **disabled**
 - **Client** — `src/lib/mediaTicket.ts` (request + refresh loop), `src/lib/mediaAccess.ts` (canvas thumbnails/posters load with `crossOrigin="use-credentials"` when the URL is `media.relieo.fr`, so the cookie is sent). Wired in `App.tsx` (per-map ticket), `PortalApp` (scope user) and `AdminView` (scope all).
 - **DNSSEC** was reactivated on Cloudflare after the DNS migration (DS published at OVH, algorithm 13).
 
-### AI media moderation (Sightengine) — wired, still inactive
+### AI media moderation (Sightengine) — wired, enforce-ready
 
-The videur Worker hosts the **AI moderation engine** (Sightengine), added 2026-06-21, **inactive** until enabled (`MODERATION_ENFORCE` unset, `MODERATION_SIGNAL_SECRET` unset, no Sightengine account/keys). Engine = `worker/src/{sightengine,moderation,scan}.ts` + `/_moderation/scan` & `/_moderation/callback` endpoints + a 2×/day cron: it pushes media bytes to Sightengine (private bucket, no URL exposed), images sync + videos async (callback), and writes verdicts to 5 R2 state files. The videur's `canServe` refuses non-validated media to the public (fail-closed).
+The videur Worker hosts the **AI moderation engine** (Sightengine), added 2026-06-21, activated by `MODERATION_ENFORCE`, `MODERATION_SIGNAL_SECRET` and Sightengine keys. Engine = `worker/src/{sightengine,moderation,scan}.ts` + `/_moderation/scan` & `/_moderation/callback` endpoints + a cron every 4 hours: it pushes media bytes to Sightengine (private bucket, no URL exposed), images sync + videos async (callback), and writes verdicts to 5 R2 state files. The videur's `canServe` refuses non-validated media to the public (fail-closed).
 
 **Vercel side is now fully wired (`server/mediaModeration.ts`), but every branch is a no-op until the env vars are set:**
 - **Public read filter** (`api/project.ts`): for a *public visitor only* (owner/admin see everything), media not yet scanned or flagged are stripped from the `?code=` and default reads, behind `moderationEnforced()` (`MODERATION_ENFORCE==='1'`).
