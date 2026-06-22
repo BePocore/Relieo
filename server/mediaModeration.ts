@@ -234,6 +234,7 @@ const VIDEO_EXTENSION = /\.(mp4|mov|webm|mkv|avi|m4v|3gp)$/i
 
 export type MediaInventoryAiStatus =
   | 'pending' // pas encore scanné
+  | 'analyzing' // vidéo soumise à Sightengine, en attente du callback (analyse async)
   | 'exempt' // carte exemptée (jamais envoyée à Sightengine)
   | 'ok' // scanné, validé par l'IA
   | 'flagged' // signalé par l'IA, en attente de revue admin
@@ -273,6 +274,27 @@ const segmentAfter = (key: string, marker: string): string => {
   return index >= 0 && index + 1 < parts.length ? parts[index + 1] : ''
 }
 
+// Vidéos soumises à Sightengine et en attente de leur callback (analyse async en
+// cours). Lu par l'inventaire pour distinguer « analyse en cours » de « en attente ».
+const PENDING_PATH = 'relieo/media-moderation-pending.json'
+export const readPendingVideoKeys = async (): Promise<Set<string>> => {
+  const keys = new Set<string>()
+  const body = await r2GetText(PENDING_PATH)
+  if (!body) return keys
+  try {
+    const value = JSON.parse(body) as { jobs?: unknown }
+    if (Array.isArray(value.jobs)) {
+      for (const job of value.jobs) {
+        const key = (job as { mediaKey?: unknown }).mediaKey
+        if (typeof key === 'string') keys.add(key)
+      }
+    }
+  } catch {
+    // illisible : aucune analyse en cours connue
+  }
+  return keys
+}
+
 /**
  * Inventaire de TOUS les médias (originaux) avec leur état de modération. `items` =
  * entrées flaggées/rejetées déjà lues par l'appelant (évite une relecture).
@@ -280,9 +302,10 @@ const segmentAfter = (key: string, marker: string): string => {
 export const buildMediaInventory = async (
   items: MediaModerationEntry[],
 ): Promise<MediaInventoryEntry[]> => {
-  const [objects, scanned] = await Promise.all([
+  const [objects, scanned, analyzing] = await Promise.all([
     r2ListObjects(MEDIA_USERS_PREFIX),
     readScannedIds(),
+    readPendingVideoKeys(),
   ])
   const exempt = exemptFolders()
   const byId = new Map(items.map((item) => [item.id, item]))
@@ -302,7 +325,9 @@ export const buildMediaInventory = async (
             ? 'exempt'
             : isScanned
               ? 'ok'
-              : 'pending'
+              : analyzing.has(key)
+                ? 'analyzing'
+                : 'pending'
     const adminStatus: MediaInventoryAdminStatus =
       mod?.status === 'rejected'
         ? 'rejected'

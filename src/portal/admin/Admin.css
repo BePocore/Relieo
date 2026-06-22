@@ -1224,4 +1224,5 @@
 .admin-pill.warn { background: #fff4e0; color: #9a6207; }
 .admin-pill.danger { background: #fdecec; color: #b3261e; }
 .admin-pill.neutral { background: #eef1f6; color: #5a657a; }
+.admin-pill.info { background: #e6f0fb; color: #1f5fa8; }
 .admin-pill.muted { background: transparent; color: var(--admin-muted); font-weight: 500; }

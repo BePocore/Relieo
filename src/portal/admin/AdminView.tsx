@@ -136,7 +136,7 @@ type MediaInventoryItem = {
   sizeBytes: number
   scanned: boolean
   exempt: boolean
-  aiStatus: 'pending' | 'exempt' | 'ok' | 'flagged' | 'rejected'
+  aiStatus: 'pending' | 'analyzing' | 'exempt' | 'ok' | 'flagged' | 'rejected'
   adminStatus: 'none' | 'to-review' | 'rejected'
   aiCategory: string | null
   aiScore: number | null
@@ -411,6 +411,7 @@ const INVENTORY_AI_PILL: Record<
   { label: string; cls: string }
 > = {
   pending: { label: 'En attente', cls: 'warn' },
+  analyzing: { label: 'Analyse en cours…', cls: 'info' },
   exempt: { label: 'Exempté', cls: 'neutral' },
   ok: { label: 'Validé', cls: 'ok' },
   flagged: { label: 'Signalé', cls: 'danger' },
