@@ -1235,7 +1235,7 @@ function TermsView({ onClose }: { onClose: () => void }) {
             Le responsable du traitement de vos données personnelles est l’éditeur du
             service, identifié dans les mentions légales ci-dessous. Pour toute
             question relative à vos données, vous pouvez le contacter à l’adresse{' '}
-            <a href="mailto:contact@relieo.fr">contact@relieo.fr</a>.
+            <a href="mailto:bepocore@gmail.com">bepocore@gmail.com</a>.
           </p>
 
           <h3>2.2 Données collectées</h3>
@@ -1307,14 +1307,11 @@ function TermsView({ onClose }: { onClose: () => void }) {
         <section className="terms-section">
           <h2>3. Mentions légales</h2>
           <p>
-            Éditeur : Relieo —{' '}
-            <em>
-              [identité de l’éditeur à compléter : nom ou raison sociale, statut
-              juridique, adresse, et le cas échéant SIRET]
-            </em>
-            .<br />
-            Directeur de la publication : <em>[à compléter]</em>.<br />
-            Contact : <a href="mailto:contact@relieo.fr">contact@relieo.fr</a>.<br />
+            Éditeur : Relieo, édité par <em>[prénom et nom à compléter]</em>, en
+            tant que particulier (service proposé à titre gratuit, sans activité
+            commerciale).<br />
+            Directeur de la publication : <em>[prénom et nom à compléter]</em>.<br />
+            Contact : <a href="mailto:bepocore@gmail.com">bepocore@gmail.com</a>.<br />
             Hébergement de l’application : Vercel Inc. (340 S Lemon Ave #4133,
             Walnut, CA 91789, États-Unis).<br />
             Hébergement des médias : Cloudflare, Inc. (101 Townsend St, San
@@ -1323,8 +1320,8 @@ function TermsView({ onClose }: { onClose: () => void }) {
           </p>
           <p className="terms-draft-note">
             Document de travail à faire valider par un professionnel du droit avant
-            le lancement public. Les mentions légales doivent être complétées avec
-            l’identité réelle de l’éditeur (et le directeur de la publication).
+            le lancement public. Le nom de l’éditeur (et du directeur de la
+            publication) reste à compléter.
           </p>
         </section>
       </div>
