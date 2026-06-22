@@ -301,6 +301,15 @@ function ImportReportCard({
                           Placement manuel
                         </button>
                       )
+                    ) : section.key === 'offTrack' && entry.mediaId ? (
+                      <button
+                        className="import-report-action"
+                        type="button"
+                        onClick={() => onPlaceMedia(entry.mediaId as string)}
+                      >
+                        <Plus aria-hidden="true" size={13} />
+                        Placement manuel
+                      </button>
                     ) : null}
                     <button
                       className="import-report-ignore"
