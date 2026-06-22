@@ -95,20 +95,15 @@ const generatePoster = (src: string): Promise<string | null> =>
     const rvfc = (video as VideoRVFC).requestVideoFrameCallback?.bind(video)
 
     // On vise une image après l'intro (souvent noire) du début.
-    let seekRequested = false
-    let seekSettled = false
     const seekTarget = () => Math.min(1, (video.duration || 2) / 4)
     const seekToFrame = () => {
       try {
         if (Number.isFinite(video.duration) && video.duration > 0) {
-          seekRequested = true
           video.currentTime = seekTarget()
-          return
         }
       } catch {
         /* la lecture prendra le relais */
       }
-      captureWhenReady()
     }
 
     // Capture seulement quand une vraie image est présentée (anti-écran noir).
@@ -131,27 +126,13 @@ const generatePoster = (src: string): Promise<string | null> =>
       }
     }
 
-    const canCaptureDecodedFrame = () =>
-      !seekRequested || seekSettled || video.currentTime > 0.05
-
     video.addEventListener('loadedmetadata', seekToFrame)
-    video.addEventListener('loadeddata', () => {
-      if (canCaptureDecodedFrame()) captureWhenReady()
-    })
-    video.addEventListener('seeked', () => {
-      seekSettled = true
-      captureWhenReady()
-    })
-    video.addEventListener('timeupdate', () => {
-      if (canCaptureDecodedFrame()) captureWhenReady()
-    })
+    video.addEventListener('seeked', captureWhenReady)
 
     // iOS : lancer la lecture muette puis capturer la 1re image décodée.
     video.addEventListener('canplay', () => {
-      void video.play().then(() => {
-        if (canCaptureDecodedFrame()) captureWhenReady()
-      }).catch(() => {
-        if (canCaptureDecodedFrame()) captureWhenReady()
+      void video.play().then(captureWhenReady).catch(() => {
+        captureWhenReady()
       })
     })
 
@@ -221,26 +202,18 @@ export function useVideoPosters(
     let cancelled = false
 
     const loadBatch = async () => {
-      const fallbackPosters: Record<string, string> = {}
-      for (const { src, thumbnailSrc } of sources) {
-        if (thumbnailSrc) fallbackPosters[src] = thumbnailSrc
-      }
-      if (
-        sources.length > 0 &&
-        Object.keys(fallbackPosters).length === sources.length
-      ) {
-        setBatch({ sources, posters: fallbackPosters })
-      }
-
       const entries = await Promise.all(
         sources.map(async ({ src, thumbnailSrc }) => {
-          const poster = await loadVideoPoster(src)
-          return [src, poster ?? thumbnailSrc ?? null] as const
+          if (thumbnailSrc) {
+            posterCache.set(src, thumbnailSrc)
+            return [src, thumbnailSrc] as const
+          }
+          return [src, await loadVideoPoster(src)] as const
         }),
       )
       if (cancelled) return
 
-      const posters: Record<string, string> = { ...fallbackPosters }
+      const posters: Record<string, string> = {}
       for (const [src, dataUrl] of entries) {
         if (dataUrl) posters[src] = dataUrl
       }
