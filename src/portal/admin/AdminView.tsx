@@ -188,6 +188,7 @@ type AdminSection =
   | 'maps'
   | 'sanctions'
   | 'media-moderation'
+  | 'media-inventory'
   | 'notifications'
   | 'storage'
 
@@ -198,6 +199,7 @@ const SECTION_TITLES: Record<AdminSection, string> = {
   maps: 'Cartes',
   sanctions: 'Sanctions',
   'media-moderation': 'Modération IA',
+  'media-inventory': 'Tous les médias',
   notifications: 'Notifications',
   storage: 'Stockage R2',
 }
@@ -420,7 +422,7 @@ export function AdminApp({
   // et la file de revue se mettent à jour au fur et à mesure des scans (cron, callbacks
   // vidéo) sans intervention. Inactif ailleurs pour ne pas relister R2 en boucle.
   useEffect(() => {
-    if (section !== 'media-moderation') return
+    if (section !== 'media-moderation' && section !== 'media-inventory') return
     const timer = setInterval(() => void load(true), 12_000)
     return () => clearInterval(timer)
   }, [section, load])
@@ -705,6 +707,7 @@ export function AdminApp({
       icon: <ShieldAlert size={18} />,
       badge: flaggedMedia.length || undefined,
     },
+    { id: 'media-inventory', label: 'Médias', icon: <ImageIcon size={18} /> },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
   ]
 
@@ -1466,9 +1469,7 @@ export function AdminApp({
     return (
       <section className="admin-mediamod-inventory" aria-label="Tous les médias">
         <div className="admin-mediamod-invhead">
-          <h3>
-            Tous les médias <span>({inventory.length})</span>
-          </h3>
+          <span className="admin-inv-count">{inventory.length} média(s)</span>
           <label className="admin-inv-sort">
             Trier par
             <select
@@ -1681,8 +1682,6 @@ export function AdminApp({
             {usage ? '' : ' La modération IA n’a pas encore tourné.'}
           </p>
         )}
-
-        {inventoryTable}
       </>
     )
   })()
@@ -1770,6 +1769,8 @@ export function AdminApp({
             sanctionsView
           ) : section === 'media-moderation' ? (
             mediaModerationView
+          ) : section === 'media-inventory' ? (
+            inventoryTable
           ) : section === 'notifications' ? (
             notificationsView
           ) : (

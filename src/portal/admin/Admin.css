@@ -917,8 +917,7 @@
   margin-top: auto;
 }
 
-/* ── Inventaire complet des médias ──────────────────────────────── */
-.admin-mediamod-inventory { margin-top: 28px; }
+/* ── Inventaire complet des médias (page « Tous les médias ») ────── */
 .admin-mediamod-invhead {
   display: flex;
   align-items: center;
@@ -927,8 +926,7 @@
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
-.admin-mediamod-invhead h3 { font-size: 16px; margin: 0; }
-.admin-mediamod-invhead h3 span { color: var(--admin-muted); font-weight: 500; }
+.admin-inv-count { font-size: 14px; color: var(--admin-muted); }
 .admin-inv-sort {
   display: inline-flex;
   align-items: center;
