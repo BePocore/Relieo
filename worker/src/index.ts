@@ -11,7 +11,7 @@
 
 import { verifyTicket } from './ticket'
 import { canServe, enqueueForScan } from './moderation'
-import { handleVideoCallback, runScan, type ModerationEnv } from './scan'
+import { handleVideoCallback, runScan, runScheduledScan, type ModerationEnv } from './scan'
 
 // Env du videur = config d'accès media + toute la config de modération (ModerationEnv).
 // MEDIA_BUCKET et les MODERATION_* (dont MODERATION_ENFORCE : "1" active le blocage fail-closed,
@@ -236,6 +236,6 @@ export default {
 
   // Cron toutes les 4 h (cf. wrangler.jsonc triggers.crons) : balayage de fond de la modération.
   async scheduled(_controller, env, ctx): Promise<void> {
-    ctx.waitUntil(runScan(env))
+    ctx.waitUntil(runScheduledScan(env))
   },
 } satisfies ExportedHandler<Env>

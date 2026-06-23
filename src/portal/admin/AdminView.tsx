@@ -70,7 +70,7 @@ type AdminUser = {
 
 type AdminNotification = {
   id: string
-  type: 'appeal' | 'deletion-request' | 'media-review-needed'
+  type: 'appeal' | 'deletion-request' | 'media-review-needed' | 'media-scan-summary'
   fromUid: string
   fromEmail: string | null
   message: string
@@ -79,6 +79,16 @@ type AdminNotification = {
   mediaIds?: string[]
   mediaGroupIds?: string[]
   mediaCount?: number
+  scanSummary?: {
+    ok: boolean
+    reason?: string
+    validated: number
+    autoRejected: number
+    pendingReview: number
+    processed: number
+    videosSubmitted: number
+    capReached: boolean
+  }
   // Réponse de l'admin à CET appel (par notification).
   reply: { message: string; sentAt: string } | null
 }
@@ -805,6 +815,9 @@ export function AdminApp({
           reason?: string
           processed: number
           flagged: number
+          validated?: number
+          pendingReview?: number
+          autoRejected?: number
           videosSubmitted: number
           capReached: boolean
         } | null
@@ -1449,9 +1462,9 @@ export function AdminApp({
           <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
             <div className="admin-notif-head">
               <span className="admin-notif-from">
-                {n.type === 'media-review-needed' ? (
+                {n.type === 'media-review-needed' || n.type === 'media-scan-summary' ? (
                   <>
-                    <ShieldAlert size={14} /> Médias à modérer
+                    <ShieldAlert size={14} /> {n.type === 'media-scan-summary' ? 'Récap scan IA' : 'Médias à modérer'}
                   </>
                 ) : n.type === 'deletion-request' ? (
                   <>
@@ -1474,7 +1487,7 @@ export function AdminApp({
               </div>
             ) : null}
             <div className="admin-notif-actions">
-              {n.type === 'media-review-needed' ? (
+              {n.type === 'media-review-needed' || n.type === 'media-scan-summary' ? (
                 <button
                   className="admin-notif-mark primary"
                   type="button"

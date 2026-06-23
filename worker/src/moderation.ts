@@ -201,7 +201,7 @@ const writeJson = async (bucket: R2Bucket, key: string, value: unknown): Promise
   })
 }
 
-const mediaReviewAlertKey = (id: string): string => {
+export const mediaReviewGroupKey = (id: string): string => {
   const marker = id.includes('/media/')
     ? '/media/'
     : id.includes('/previews/')
@@ -238,7 +238,7 @@ export const appendMediaReviewNeededNotification = async (
   const alerted = await readAlertedMediaGroups(bucket)
   const byGroup = new Map<string, MediaModerationEntry>()
   for (const entry of entries) {
-    const group = mediaReviewAlertKey(entry.id)
+    const group = mediaReviewGroupKey(entry.id)
     if (!alerted.has(group) && !byGroup.has(group)) byGroup.set(group, entry)
   }
 
@@ -290,6 +290,55 @@ export const appendMediaReviewNeededNotification = async (
   await writeJson(bucket, ALERTS_KEY, { ids: [...alerted], updatedAt: now })
 
   return groups.length
+}
+
+export interface MediaScanSummary {
+  ok: boolean
+  reason?: string
+  validated: number
+  autoRejected: number
+  pendingReview: number
+  processed: number
+  videosSubmitted: number
+  capReached: boolean
+}
+
+export const appendMediaScanSummaryNotification = async (
+  bucket: R2Bucket,
+  summary: MediaScanSummary,
+): Promise<void> => {
+  const current = await readJson<{ notifications?: unknown }>(bucket, ADMIN_NOTIFICATIONS_KEY, {})
+  const notifications = Array.isArray(current.notifications)
+    ? current.notifications.filter(
+        (item): item is Record<string, unknown> =>
+          Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+      )
+    : []
+
+  const statusPrefix = summary.ok
+    ? 'Scan automatique terminé'
+    : 'Scan automatique non terminé'
+  const reason = summary.ok || !summary.reason ? '' : ` ${summary.reason}`
+  const cap = summary.capReached ? ' Cap quotidien atteint.' : ''
+  const videos = summary.videosSubmitted
+    ? ` ${summary.videosSubmitted} vidéo(s) envoyée(s) en analyse.`
+    : ''
+
+  const notification = {
+    id: `media-scan-summary-${Date.now()}-${crypto.randomUUID()}`,
+    type: 'media-scan-summary',
+    fromUid: 'moderation-ai',
+    fromEmail: null,
+    message: `${statusPrefix} : ${summary.validated} validé(s), ${summary.autoRejected} refusé(s) automatiquement, ${summary.pendingReview} en attente de modération.${videos}${cap}${reason}`,
+    createdAt: nowIso(),
+    read: false,
+    reply: null,
+    scanSummary: summary,
+  }
+
+  await writeJson(bucket, ADMIN_NOTIFICATIONS_KEY, {
+    notifications: [notification, ...notifications].slice(0, MAX_ADMIN_NOTIFICATIONS),
+  })
 }
 
 // --- media-scanned.json -------------------------------------------------

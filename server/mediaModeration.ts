@@ -69,6 +69,9 @@ export type ScanReport = {
   reason?: string
   processed: number
   flagged: number
+  validated: number
+  pendingReview: number
+  autoRejected: number
   videosSubmitted: number
   seeded: number
   skipped: number

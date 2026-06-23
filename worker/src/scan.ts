@@ -23,6 +23,8 @@ import {
   addScannedIds,
   upsertModerationItem,
   appendMediaReviewNeededNotification,
+  appendMediaScanSummaryNotification,
+  mediaReviewGroupKey,
   readUsage,
   bumpUsage,
   readQueue,
@@ -62,6 +64,9 @@ export interface ScanReport {
   reason?: string
   processed: number // médias traités dans ce passage (images + vidéos soumises)
   flagged: number
+  validated: number
+  pendingReview: number
+  autoRejected: number
   videosSubmitted: number
   seeded: number // exemptées marquées sans appel
   skipped: number // réservé aux cas temporairement différés
@@ -107,17 +112,18 @@ const buildFlaggedEntry = (
   key: string,
   mediaKind: 'image' | 'video',
   verdict: ModerationVerdict,
+  status: MediaModerationEntry['status'] = 'flagged',
 ): MediaModerationEntry => ({
   id: key,
   ownerUid: ownerUidFromKey(key) ?? '',
   mapFolder: mapFolderFromKey(key) ?? '',
   mediaKind,
-  status: 'flagged',
+  status,
   aiCategory: verdict.topCategory,
   aiScore: verdict.score,
   scannedAt: new Date().toISOString(),
-  reviewedAt: null,
-  reviewedBy: null,
+  reviewedAt: status === 'rejected' ? new Date().toISOString() : null,
+  reviewedBy: status === 'rejected' ? 'ai-auto' : null,
 })
 
 const shouldNotifyAdmin = (
@@ -139,6 +145,13 @@ const notifyAdminBestEffort = async (
       error instanceof Error ? error.message : String(error),
     )
   }
+}
+
+const incrementGroupCount = (groups: Set<string>, key: string): boolean => {
+  const group = mediaReviewGroupKey(key)
+  if (groups.has(group)) return false
+  groups.add(group)
+  return true
 }
 
 // Collecte jusqu'à `limit` clés à scanner : la file prioritaire d'abord, puis le balayage de fond.
@@ -188,6 +201,9 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
     ok: true,
     processed: 0,
     flagged: 0,
+    validated: 0,
+    pendingReview: 0,
+    autoRejected: 0,
     videosSubmitted: 0,
     seeded: 0,
     skipped: 0,
@@ -230,6 +246,9 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
   let usage = await readUsage(bucket)
   const done: string[] = [] // clés à retirer de la file prioritaire
   const reviewAlerts: MediaModerationEntry[] = []
+  const validatedGroups = new Set<string>()
+  const pendingReviewGroups = new Set<string>()
+  const autoRejectedGroups = new Set<string>()
 
   for (const key of toScan) {
     if (usage.dayOps >= cap) {
@@ -258,7 +277,10 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
             framesAnalyzed: 0,
           })
           await upsertModerationItem(bucket, entry)
-          if (shouldNotifyAdmin(entry, autoThreshold)) reviewAlerts.push(entry)
+          if (shouldNotifyAdmin(entry, autoThreshold)) {
+            reviewAlerts.push(entry)
+            if (incrementGroupCount(pendingReviewGroups, key)) report.pendingReview += 1
+          }
           await addScannedIds(bucket, [key])
           report.flagged += 1
           report.processed += 1
@@ -289,10 +311,23 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
         const bytes = await object.arrayBuffer()
         const verdict = await moderateImageBinary(bytes, fileName, contentType, config)
         if (verdict.decision === 'flag') {
-          const entry = buildFlaggedEntry(key, 'image', verdict)
+          const autoRejected = verdict.score >= autoThreshold
+          const entry = buildFlaggedEntry(
+            key,
+            'image',
+            verdict,
+            autoRejected ? 'rejected' : 'flagged',
+          )
           await upsertModerationItem(bucket, entry)
-          if (shouldNotifyAdmin(entry, autoThreshold)) reviewAlerts.push(entry)
+          if (autoRejected) {
+            if (incrementGroupCount(autoRejectedGroups, key)) report.autoRejected += 1
+          } else if (shouldNotifyAdmin(entry, autoThreshold)) {
+            reviewAlerts.push(entry)
+            if (incrementGroupCount(pendingReviewGroups, key)) report.pendingReview += 1
+          }
           report.flagged += 1
+        } else if (incrementGroupCount(validatedGroups, key)) {
+          report.validated += 1
         }
         await addScannedIds(bucket, [key])
         usage = await bumpUsage(bucket, verdict.framesAnalyzed) // 1 op pour une image
@@ -312,7 +347,10 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
           framesAnalyzed: 0,
         })
         await upsertModerationItem(bucket, entry)
-        if (shouldNotifyAdmin(entry, autoThreshold)) reviewAlerts.push(entry)
+        if (shouldNotifyAdmin(entry, autoThreshold)) {
+          reviewAlerts.push(entry)
+          if (incrementGroupCount(pendingReviewGroups, key)) report.pendingReview += 1
+        }
         await addScannedIds(bucket, [key])
         report.flagged += 1
         report.processed += 1
@@ -339,6 +377,34 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
   return report
 }
 
+export const runScheduledScan = async (env: ModerationEnv): Promise<void> => {
+  try {
+    const report = await runScan(env)
+    await appendMediaScanSummaryNotification(env.MEDIA_BUCKET, {
+      ok: report.ok,
+      reason: report.reason,
+      validated: report.validated,
+      autoRejected: report.autoRejected,
+      pendingReview: report.pendingReview,
+      processed: report.processed,
+      videosSubmitted: report.videosSubmitted,
+      capReached: report.capReached,
+    })
+  } catch (error) {
+    await appendMediaScanSummaryNotification(env.MEDIA_BUCKET, {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+      validated: 0,
+      autoRejected: 0,
+      pendingReview: 0,
+      processed: 0,
+      videosSubmitted: 0,
+      capReached: false,
+    })
+    throw error
+  }
+}
+
 /** Traite un callback vidéo de Sightengine : écrit le verdict, clôt le job quand il est fini. */
 export const handleVideoCallback = async (
   env: ModerationEnv,
@@ -354,9 +420,15 @@ export const handleVideoCallback = async (
   if (!job) return // inconnu ou déjà clôturé (idempotent)
 
   if (result.verdict.decision === 'flag') {
-    const entry = buildFlaggedEntry(job.mediaKey, 'video', result.verdict)
+    const autoRejected = result.verdict.score >= autoThreshold
+    const entry = buildFlaggedEntry(
+      job.mediaKey,
+      'video',
+      result.verdict,
+      autoRejected ? 'rejected' : 'flagged',
+    )
     await upsertModerationItem(env.MEDIA_BUCKET, entry)
-    if (shouldNotifyAdmin(entry, autoThreshold)) {
+    if (!autoRejected && shouldNotifyAdmin(entry, autoThreshold)) {
       await notifyAdminBestEffort(env.MEDIA_BUCKET, [entry])
     }
   }
