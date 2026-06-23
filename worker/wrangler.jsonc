@@ -4,7 +4,7 @@
   "name": "relieo-media",
   "main": "src/index.ts",
   "compatibility_date": "2025-11-01",
-  "workers_dev": true,
+  "workers_dev": false,
   "preview_urls": false,
 
   // Le Worker repond sur media.relieo.fr (zone geree par Cloudflare, meme compte).
