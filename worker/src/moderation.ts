@@ -5,6 +5,7 @@
 //   relieo/media-moderation.json        -> { items }          flaggés/rejetés (ce que l'admin voit)
 //   relieo/media-moderation-usage.json  -> compteur d'ops Sightengine (jour/mois)
 //   relieo/media-moderation-queue.json  -> { ids }            file prioritaire « publication »
+//   relieo/media-moderation-alerts.json -> { ids }            groupes déjà signalés à l'admin
 //
 // Haut du fichier = chemin chaud (canServe, lu à chaque média servi, cache 60 s).
 // Bas du fichier  = store (lecture/écriture, utilisé par le scan).
@@ -132,6 +133,9 @@ export const invalidateModerationCache = (): void => {
 
 const USAGE_KEY = 'relieo/media-moderation-usage.json'
 const QUEUE_KEY = 'relieo/media-moderation-queue.json'
+const ALERTS_KEY = 'relieo/media-moderation-alerts.json'
+const ADMIN_NOTIFICATIONS_KEY = 'relieo/admin-notifications.json'
+const MAX_ADMIN_NOTIFICATIONS = 1000
 
 /** Entrée complète d'un média flaggé/rejeté (écrite par le scan, lue par l'admin Vercel). */
 export interface MediaModerationEntry {
@@ -195,6 +199,97 @@ const writeJson = async (bucket: R2Bucket, key: string, value: unknown): Promise
       cacheControl: 'no-store',
     },
   })
+}
+
+const mediaReviewAlertKey = (id: string): string => {
+  const marker = id.includes('/media/')
+    ? '/media/'
+    : id.includes('/previews/')
+      ? '/previews/'
+      : ''
+  if (!marker) return id
+
+  const markerIndex = id.indexOf(marker)
+  const prefix = id.slice(0, markerIndex)
+  const fileName = id.slice(markerIndex + marker.length).split('/').pop() ?? ''
+  const fingerprint =
+    marker === '/media/'
+      ? fileName.split('-')[0] || fileName
+      : fileName.replace(/\.[^.]+$/, '')
+
+  return `${prefix}/${fingerprint}`
+}
+
+const readAlertedMediaGroups = async (bucket: R2Bucket): Promise<Set<string>> => {
+  const data = await readJson<{ ids?: unknown }>(bucket, ALERTS_KEY, {})
+  const ids = new Set<string>()
+  if (Array.isArray(data.ids)) {
+    for (const id of data.ids) if (typeof id === 'string') ids.add(id)
+  }
+  return ids
+}
+
+export const appendMediaReviewNeededNotification = async (
+  bucket: R2Bucket,
+  entries: MediaModerationEntry[],
+): Promise<number> => {
+  if (entries.length === 0) return 0
+
+  const alerted = await readAlertedMediaGroups(bucket)
+  const byGroup = new Map<string, MediaModerationEntry>()
+  for (const entry of entries) {
+    const group = mediaReviewAlertKey(entry.id)
+    if (!alerted.has(group) && !byGroup.has(group)) byGroup.set(group, entry)
+  }
+
+  const groups = [...byGroup.keys()]
+  if (groups.length === 0) return 0
+
+  const now = nowIso()
+  const selected = [...byGroup.values()]
+  const categories = [...new Set(selected.map((entry) => entry.aiCategory).filter(Boolean))]
+    .slice(0, 3)
+    .join(', ')
+  const maps = [...new Set(selected.map((entry) => entry.mapFolder).filter(Boolean))]
+  const countLabel = groups.length === 1 ? '1 média nécessite' : `${groups.length} médias nécessitent`
+  const mapLabel =
+    maps.length === 1
+      ? ` Carte : ${maps[0]}.`
+      : maps.length > 1
+        ? ` Cartes : ${maps.slice(0, 3).join(', ')}${maps.length > 3 ? '…' : ''}.`
+        : ''
+  const categoryLabel = categories ? ` Catégorie(s) : ${categories}.` : ''
+
+  const notification = {
+    id: `media-review-${Date.now()}-${crypto.randomUUID()}`,
+    type: 'media-review-needed',
+    fromUid: 'moderation-ai',
+    fromEmail: null,
+    message: `${countLabel} une décision de modération IA.${categoryLabel}${mapLabel} Ouvre l'onglet Modération IA pour décider.`,
+    createdAt: now,
+    read: false,
+    reply: null,
+    mediaIds: selected.map((entry) => entry.id),
+    mediaGroupIds: groups,
+    mediaCount: groups.length,
+  }
+
+  const current = await readJson<{ notifications?: unknown }>(bucket, ADMIN_NOTIFICATIONS_KEY, {})
+  const notifications = Array.isArray(current.notifications)
+    ? current.notifications.filter(
+        (item): item is Record<string, unknown> =>
+          Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+      )
+    : []
+
+  await writeJson(bucket, ADMIN_NOTIFICATIONS_KEY, {
+    notifications: [notification, ...notifications].slice(0, MAX_ADMIN_NOTIFICATIONS),
+  })
+
+  for (const group of groups) alerted.add(group)
+  await writeJson(bucket, ALERTS_KEY, { ids: [...alerted], updatedAt: now })
+
+  return groups.length
 }
 
 // --- media-scanned.json -------------------------------------------------

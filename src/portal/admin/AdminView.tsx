@@ -70,12 +70,15 @@ type AdminUser = {
 
 type AdminNotification = {
   id: string
-  type: 'appeal' | 'deletion-request'
+  type: 'appeal' | 'deletion-request' | 'media-review-needed'
   fromUid: string
   fromEmail: string | null
   message: string
   createdAt: string
   read: boolean
+  mediaIds?: string[]
+  mediaGroupIds?: string[]
+  mediaCount?: number
   // Réponse de l'admin à CET appel (par notification).
   reply: { message: string; sentAt: string } | null
 }
@@ -1411,9 +1414,9 @@ export function AdminApp({
           <strong>{unreadCount}</strong>
         </article>
         <article className="admin-stat-card">
-          <span><Ban size={18} /></span>
-          <p>Appels de bannis</p>
-          <strong>{notifications.filter((n) => n.type === 'appeal').length}</strong>
+          <span><ShieldAlert size={18} /></span>
+          <p>Médias à revoir</p>
+          <strong>{notifications.filter((n) => n.type === 'media-review-needed').length}</strong>
         </article>
         <article className="admin-stat-card">
           <span><RefreshCw size={18} /></span>
@@ -1446,7 +1449,11 @@ export function AdminApp({
           <article className={`admin-notif-card${n.read ? '' : ' unread'}`} key={n.id}>
             <div className="admin-notif-head">
               <span className="admin-notif-from">
-                {n.type === 'deletion-request' ? (
+                {n.type === 'media-review-needed' ? (
+                  <>
+                    <ShieldAlert size={14} /> Médias à modérer
+                  </>
+                ) : n.type === 'deletion-request' ? (
                   <>
                     <Trash2 size={14} /> Demande de suppression de{' '}
                     {n.fromEmail ?? n.fromUid}
@@ -1467,7 +1474,18 @@ export function AdminApp({
               </div>
             ) : null}
             <div className="admin-notif-actions">
-              {n.type === 'deletion-request' ? (
+              {n.type === 'media-review-needed' ? (
+                <button
+                  className="admin-notif-mark primary"
+                  type="button"
+                  onClick={() => {
+                    setSection('media-moderation')
+                    if (!n.read) void markNotificationsRead([n.id])
+                  }}
+                >
+                  <ShieldAlert size={14} /> Ouvrir la modération
+                </button>
+              ) : n.type === 'deletion-request' ? (
                 <>
                   <button
                     className="admin-notif-mark danger"

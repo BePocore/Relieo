@@ -1,4 +1,4 @@
-// Boucle de scan + traitement des callbacks vidéo, exécutée dans le videur (cron 2x/jour et signal
+// Boucle de scan + traitement des callbacks vidéo, exécutée dans le videur (cron toutes les 4 h et signal
 // de publication). Voir docs/PLAN-moderation-ia.md (Brique 1.3) et docs/STORAGE-moderation.md.
 //
 // On POUSSE les octets à Sightengine (binding R2, bucket privé) : images en synchrone, vidéos en
@@ -22,6 +22,7 @@ import {
   readScannedIds,
   addScannedIds,
   upsertModerationItem,
+  appendMediaReviewNeededNotification,
   readUsage,
   bumpUsage,
   readQueue,
@@ -48,6 +49,7 @@ export interface ModerationEnv {
   MODERATION_GORE_THRESHOLD?: string
   MODERATION_OFFENSIVE_THRESHOLD?: string
   MODERATION_VIOLENCE_THRESHOLD?: string
+  MODERATION_AUTO_THRESHOLD?: string
 }
 
 const MEDIA_PREFIX = 'relieo/users/'
@@ -118,6 +120,27 @@ const buildFlaggedEntry = (
   reviewedBy: null,
 })
 
+const shouldNotifyAdmin = (
+  entry: MediaModerationEntry,
+  autoThreshold: number,
+): boolean => entry.status === 'flagged' && entry.aiScore < autoThreshold
+
+const notifyAdminBestEffort = async (
+  bucket: R2Bucket,
+  entries: MediaModerationEntry[],
+): Promise<void> => {
+  if (entries.length === 0) return
+  try {
+    const count = await appendMediaReviewNeededNotification(bucket, entries)
+    if (count > 0) console.info('[moderation] notification admin media-review-needed', count)
+  } catch (error) {
+    console.warn(
+      '[moderation] echec notification admin',
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+}
+
 // Collecte jusqu'à `limit` clés à scanner : la file prioritaire d'abord, puis le balayage de fond.
 // Sépare les clés exemptées (à seeder) des clés à envoyer à Sightengine.
 const collectCandidates = async (
@@ -178,6 +201,7 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
 
   const bucket = env.MEDIA_BUCKET
   const exempt = exemptSet(env.MODERATION_EXEMPT_FOLDERS)
+  const autoThreshold = threshold(env.MODERATION_AUTO_THRESHOLD, 0.7)
   const cap =
     Number(env.MODERATION_DAILY_OP_CAP) > 0
       ? Number(env.MODERATION_DAILY_OP_CAP)
@@ -205,6 +229,7 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
 
   let usage = await readUsage(bucket)
   const done: string[] = [] // clés à retirer de la file prioritaire
+  const reviewAlerts: MediaModerationEntry[] = []
 
   for (const key of toScan) {
     if (usage.dayOps >= cap) {
@@ -226,15 +251,14 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
           // Trop gros même pour l'Upload API en un PUT (envoi resumable par morceaux non
           // implémenté). On le bascule en revue manuelle pour éviter un état non scanné
           // permanent : l'admin garde une décision explicite à prendre.
-          await upsertModerationItem(
-            bucket,
-            buildFlaggedEntry(key, 'video', {
-              decision: 'flag',
-              topCategory: 'verification-manuelle',
-              score: 0,
-              framesAnalyzed: 0,
-            }),
-          )
+          const entry = buildFlaggedEntry(key, 'video', {
+            decision: 'flag',
+            topCategory: 'verification-manuelle',
+            score: 0,
+            framesAnalyzed: 0,
+          })
+          await upsertModerationItem(bucket, entry)
+          if (shouldNotifyAdmin(entry, autoThreshold)) reviewAlerts.push(entry)
           await addScannedIds(bucket, [key])
           report.flagged += 1
           report.processed += 1
@@ -265,7 +289,9 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
         const bytes = await object.arrayBuffer()
         const verdict = await moderateImageBinary(bytes, fileName, contentType, config)
         if (verdict.decision === 'flag') {
-          await upsertModerationItem(bucket, buildFlaggedEntry(key, 'image', verdict))
+          const entry = buildFlaggedEntry(key, 'image', verdict)
+          await upsertModerationItem(bucket, entry)
+          if (shouldNotifyAdmin(entry, autoThreshold)) reviewAlerts.push(entry)
           report.flagged += 1
         }
         await addScannedIds(bucket, [key])
@@ -279,15 +305,14 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
       // sortir de la boucle ; reste masqué au public jusqu'à décision admin.
       if (error instanceof SightengineUnsupportedError) {
         console.warn('[moderation] revue manuelle (non analysable)', key, error.message)
-        await upsertModerationItem(
-          bucket,
-          buildFlaggedEntry(key, 'video', {
-            decision: 'flag',
-            topCategory: 'verification-manuelle',
-            score: 0,
-            framesAnalyzed: 0,
-          }),
-        )
+        const entry = buildFlaggedEntry(key, 'video', {
+          decision: 'flag',
+          topCategory: 'verification-manuelle',
+          score: 0,
+          framesAnalyzed: 0,
+        })
+        await upsertModerationItem(bucket, entry)
+        if (shouldNotifyAdmin(entry, autoThreshold)) reviewAlerts.push(entry)
         await addScannedIds(bucket, [key])
         report.flagged += 1
         report.processed += 1
@@ -308,6 +333,7 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
   }
 
   if (done.length) await removeFromQueue(bucket, done)
+  await notifyAdminBestEffort(bucket, reviewAlerts)
   report.dayOps = usage.dayOps
   report.monthOps = usage.monthOps
   return report
@@ -320,6 +346,7 @@ export const handleVideoCallback = async (
 ): Promise<void> => {
   const config = buildConfig(env)
   if (!config) return
+  const autoThreshold = threshold(env.MODERATION_AUTO_THRESHOLD, 0.7)
   const result = parseVideoCallback(payload, config)
   if (!result) return
 
@@ -327,10 +354,11 @@ export const handleVideoCallback = async (
   if (!job) return // inconnu ou déjà clôturé (idempotent)
 
   if (result.verdict.decision === 'flag') {
-    await upsertModerationItem(
-      env.MEDIA_BUCKET,
-      buildFlaggedEntry(job.mediaKey, 'video', result.verdict),
-    )
+    const entry = buildFlaggedEntry(job.mediaKey, 'video', result.verdict)
+    await upsertModerationItem(env.MEDIA_BUCKET, entry)
+    if (shouldNotifyAdmin(entry, autoThreshold)) {
+      await notifyAdminBestEffort(env.MEDIA_BUCKET, [entry])
+    }
   }
 
   if (result.finished || result.failed) {

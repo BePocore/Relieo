@@ -6,12 +6,15 @@ export const adminNotificationsPath = 'relieo/admin-notifications.json'
 
 export type AdminNotification = {
   id: string
-  type: 'appeal' | 'deletion-request'
+  type: 'appeal' | 'deletion-request' | 'media-review-needed'
   fromUid: string
   fromEmail: string | null
   message: string
   createdAt: string
   read: boolean
+  mediaIds?: string[]
+  mediaGroupIds?: string[]
+  mediaCount?: number
   // Réponse de l'admin À CET appel précis (par notification, pas par utilisateur).
   reply: { message: string; sentAt: string } | null
 }

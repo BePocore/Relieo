@@ -44,7 +44,9 @@
     "MODERATION_NUDITY_THRESHOLD": "0.5",
     "MODERATION_GORE_THRESHOLD": "0.5",
     "MODERATION_OFFENSIVE_THRESHOLD": "0.5",
-    "MODERATION_VIOLENCE_THRESHOLD": "0.5"
+    "MODERATION_VIOLENCE_THRESHOLD": "0.5",
+    // Au-dessus de ce score, le dashboard peut traiter le média comme évident : pas de notif admin.
+    "MODERATION_AUTO_THRESHOLD": "0.7"
   },
 
   // Secrets a poser hors fichier (wrangler secret put ... / .dev.vars en local) :
