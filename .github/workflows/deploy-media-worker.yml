@@ -1,5 +1,6 @@
 name: Deploy Media Worker
 
+# Deploys the Cloudflare media Worker whenever its code or this workflow changes.
 on:
   push:
     branches:
