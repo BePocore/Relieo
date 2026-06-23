@@ -41,7 +41,10 @@ import {
 } from '../../server/trailStorage.js'
 import { PLAN_STORAGE_LIMITS } from '../../server/plans.js'
 import { emailConfigured, sendEmail } from '../../server/email.js'
-import { moderationEmailHtml } from '../../server/emailTemplates.js'
+import {
+  adminAlertEmailHtml,
+  moderationEmailHtml,
+} from '../../server/emailTemplates.js'
 import type { AuthedUser } from '../../server/firebaseAdmin.js'
 import type {
   MediaModerationDecision,
@@ -49,6 +52,17 @@ import type {
 } from '../../server/mediaModeration.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
+
+type ScanSummaryPayload = {
+  ok?: boolean
+  reason?: string
+  validated?: number
+  autoRejected?: number
+  pendingReview?: number
+  processed?: number
+  videosSubmitted?: number
+  capReached?: boolean
+}
 
 type ActionBody = {
   action?:
@@ -59,6 +73,7 @@ type ActionBody = {
     | 'mark-read'
     | 'media-mod'
     | 'scan-media'
+    | 'notify-media-review'
   // set-plan
   plan?: string
   // map + user-action + reply-appeal
@@ -72,6 +87,9 @@ type ActionBody = {
   notifId?: string
   // media-mod (clé R2 du média flaggé)
   id?: string
+  // notify-media-review (appel interne du Worker)
+  mediaCount?: number
+  scanSummary?: ScanSummaryPayload
 }
 
 // uid/folder extraits d'une clé R2 `relieo/users/<uid>/randonnees/<folder>/…`.
@@ -83,6 +101,21 @@ const segmentAfter = (key: string, marker: string): string | null => {
 
 const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: jsonHeaders })
+
+const adminUidList = (): string[] =>
+  (process.env.ADMIN_UIDS ?? '')
+    .split(',')
+    .map((uid) => uid.trim())
+    .filter(Boolean)
+
+const adminConsoleUrl = (): string =>
+  process.env.ADMIN_CONSOLE_URL?.trim() || 'https://relieo.fr/admin'
+
+const isInternalModerationRequest = (request: Request): boolean => {
+  const secret = process.env.MODERATION_SIGNAL_SECRET?.trim()
+  if (!secret) return false
+  return request.headers.get('x-moderation-signal') === secret
+}
 
 const emailOf = async (uid: string | null): Promise<string | null> => {
   if (!uid) return null
@@ -142,6 +175,65 @@ const notifyByEmail = async (
     to,
     subject: heading,
     html: moderationEmailHtml(heading, message, mapTitle),
+  })
+}
+
+const adminEmails = async (): Promise<string[]> => {
+  const auth = getAuth(adminApp())
+  const emails = await Promise.all(
+    adminUidList().map(async (uid) => {
+      try {
+        return (await auth.getUser(uid)).email ?? null
+      } catch {
+        return null
+      }
+    }),
+  )
+  return [...new Set(emails.filter((email): email is string => Boolean(email)))]
+}
+
+const handleMediaReviewEmail = async (body: ActionBody) => {
+  const mediaCount = Math.max(0, Math.floor(Number(body.mediaCount) || 0))
+  if (mediaCount <= 0) return json({ ok: true, sent: 0 })
+
+  const recipients = await adminEmails()
+  if (!emailConfigured() || recipients.length === 0) {
+    return json({ ok: true, sent: 0, recipients: recipients.length })
+  }
+
+  const summary = body.scanSummary
+  const details = summary
+    ? ` Dernier scan : ${summary.validated ?? 0} validé(s), ${
+        summary.autoRejected ?? 0
+      } refusé(s) automatiquement, ${summary.pendingReview ?? mediaCount} en attente.`
+    : ''
+  const subject =
+    mediaCount === 1
+      ? 'Un média attend une décision de modération'
+      : `${mediaCount} médias attendent une décision de modération`
+  const message = `${subject}. Ouvre la console admin pour valider ou retirer ${
+    mediaCount === 1 ? 'ce média' : 'ces médias'
+  }.${details}`
+
+  const results = await Promise.all(
+    recipients.map((to) =>
+      sendEmail({
+        to,
+        subject,
+        html: adminAlertEmailHtml(
+          subject,
+          message,
+          adminConsoleUrl(),
+          'Ouvrir la modération IA',
+        ),
+      }),
+    ),
+  )
+
+  return json({
+    ok: true,
+    sent: results.filter(Boolean).length,
+    recipients: recipients.length,
   })
 }
 
@@ -520,13 +612,21 @@ export async function POST(request: Request) {
   if (!hasFirebaseAdmin() || !hasR2Config()) {
     return json({ message: 'Firebase Admin et Cloudflare R2 sont requis.' }, 503)
   }
-  const admin = await requireAdmin(request)
-  if (!admin) {
-    return json({ message: 'Accès réservé à l’administrateur.' }, 403)
-  }
 
   try {
     const body = (await request.json()) as ActionBody
+    if (body.action === 'notify-media-review') {
+      if (!isInternalModerationRequest(request)) {
+        return json({ message: 'Accès réservé au Worker de modération.' }, 403)
+      }
+      return handleMediaReviewEmail(body)
+    }
+
+    const admin = await requireAdmin(request)
+    if (!admin) {
+      return json({ message: 'Accès réservé à l’administrateur.' }, 403)
+    }
+
     switch (body.action) {
       case 'set-plan': {
         const uid = body.uid?.trim()

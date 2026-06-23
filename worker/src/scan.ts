@@ -47,6 +47,7 @@ export interface ModerationEnv {
   MODERATION_CALLBACK_BASE?: string
   MODERATION_CALLBACK_SECRET?: string
   MODERATION_SIGNAL_SECRET?: string
+  MODERATION_ADMIN_NOTIFY_BASE?: string
   MODERATION_NUDITY_THRESHOLD?: string
   MODERATION_GORE_THRESHOLD?: string
   MODERATION_OFFENSIVE_THRESHOLD?: string
@@ -58,6 +59,7 @@ const MEDIA_PREFIX = 'relieo/users/'
 const MAX_MEDIA_PER_RUN = 40 // sous la limite ~50 sous-requêtes externes Cloudflare Free
 const DEFAULT_DAILY_CAP = 480 // sous les 500 ops/jour du palier gratuit
 const CALLBACK_BASE_DEFAULT = 'https://media.relieo.fr'
+const ADMIN_NOTIFY_BASE_DEFAULT = 'https://relieo.fr'
 
 export interface ScanReport {
   ok: boolean
@@ -66,6 +68,7 @@ export interface ScanReport {
   flagged: number
   validated: number
   pendingReview: number
+  adminReviewAlerts: number
   autoRejected: number
   videosSubmitted: number
   seeded: number // exemptées marquées sans appel
@@ -134,14 +137,58 @@ const shouldNotifyAdmin = (
 const notifyAdminBestEffort = async (
   bucket: R2Bucket,
   entries: MediaModerationEntry[],
-): Promise<void> => {
-  if (entries.length === 0) return
+): Promise<number> => {
+  if (entries.length === 0) return 0
   try {
     const count = await appendMediaReviewNeededNotification(bucket, entries)
     if (count > 0) console.info('[moderation] notification admin media-review-needed', count)
+    return count
   } catch (error) {
     console.warn(
       '[moderation] echec notification admin',
+      error instanceof Error ? error.message : String(error),
+    )
+    return 0
+  }
+}
+
+const notifyAdminByEmailBestEffort = async (
+  env: ModerationEnv,
+  mediaCount: number,
+  report?: ScanReport,
+): Promise<void> => {
+  if (mediaCount <= 0 || !env.MODERATION_SIGNAL_SECRET) return
+  const base = (env.MODERATION_ADMIN_NOTIFY_BASE ?? ADMIN_NOTIFY_BASE_DEFAULT).replace(/\/$/, '')
+  try {
+    const response = await fetch(`${base}/api/admin/action`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-moderation-signal': env.MODERATION_SIGNAL_SECRET,
+      },
+      body: JSON.stringify({
+        action: 'notify-media-review',
+        mediaCount,
+        scanSummary: report
+          ? {
+              ok: report.ok,
+              reason: report.reason,
+              validated: report.validated,
+              autoRejected: report.autoRejected,
+              pendingReview: report.pendingReview,
+              processed: report.processed,
+              videosSubmitted: report.videosSubmitted,
+              capReached: report.capReached,
+            }
+          : undefined,
+      }),
+    })
+    if (!response.ok) {
+      console.warn('[moderation] email admin non envoye', response.status)
+    }
+  } catch (error) {
+    console.warn(
+      '[moderation] echec email admin',
       error instanceof Error ? error.message : String(error),
     )
   }
@@ -203,6 +250,7 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
     flagged: 0,
     validated: 0,
     pendingReview: 0,
+    adminReviewAlerts: 0,
     autoRejected: 0,
     videosSubmitted: 0,
     seeded: 0,
@@ -371,7 +419,7 @@ export const runScan = async (env: ModerationEnv): Promise<ScanReport> => {
   }
 
   if (done.length) await removeFromQueue(bucket, done)
-  await notifyAdminBestEffort(bucket, reviewAlerts)
+  report.adminReviewAlerts = await notifyAdminBestEffort(bucket, reviewAlerts)
   report.dayOps = usage.dayOps
   report.monthOps = usage.monthOps
   return report
@@ -390,6 +438,7 @@ export const runScheduledScan = async (env: ModerationEnv): Promise<void> => {
       videosSubmitted: report.videosSubmitted,
       capReached: report.capReached,
     })
+    await notifyAdminByEmailBestEffort(env, report.adminReviewAlerts, report)
   } catch (error) {
     await appendMediaScanSummaryNotification(env.MEDIA_BUCKET, {
       ok: false,
@@ -429,7 +478,8 @@ export const handleVideoCallback = async (
     )
     await upsertModerationItem(env.MEDIA_BUCKET, entry)
     if (!autoRejected && shouldNotifyAdmin(entry, autoThreshold)) {
-      await notifyAdminBestEffort(env.MEDIA_BUCKET, [entry])
+      const alertCount = await notifyAdminBestEffort(env.MEDIA_BUCKET, [entry])
+      await notifyAdminByEmailBestEffort(env, alertCount)
     }
   }
 

@@ -687,15 +687,25 @@
 .admin-notif-message { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
 .admin-notif-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .admin-notif-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
   padding: 7px 12px;
-  border: 1px solid var(--admin-line);
+  border: 1px solid #bfe6d2;
   border-radius: 10px;
   background: #fff;
+  color: var(--admin-green-dark);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
-.admin-notif-mark:hover { background: var(--admin-green-soft); }
+.admin-notif-mark:hover {
+  background: #eef8f3;
+  border-color: #91cfb2;
+  color: var(--admin-green-dark);
+}
 .admin-notif-mark.primary {
   border-color: transparent;
   background: var(--admin-green);
@@ -813,6 +823,10 @@
 }
 .admin-modal-cancel,
 .admin-modal-validate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   padding: 10px 16px;
   border-radius: 12px;
   font-weight: 600;
@@ -832,6 +846,59 @@
 }
 .admin-modal-validate:hover:not(:disabled) { background: var(--admin-green-dark); }
 .admin-modal-validate:disabled { opacity: 0.5; cursor: default; }
+
+.admin-popup-backdrop { background: rgba(8, 24, 18, 0.72); }
+.admin-popup-modal { width: min(620px, 100%); }
+.admin-popup-icon {
+  width: 46px;
+  height: 46px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--admin-green-soft);
+  color: var(--admin-green);
+  margin-bottom: 12px;
+}
+.admin-popup-list {
+  max-height: min(360px, 46vh);
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-popup-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d8eadf;
+  border-radius: 12px;
+  background: #f7fbf9;
+}
+.admin-popup-item > span {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--admin-green);
+}
+.admin-popup-item strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 14px;
+}
+.admin-popup-item p {
+  margin: 0 0 5px;
+  color: var(--admin-ink);
+}
+.admin-popup-item time {
+  font-size: 12px;
+  color: var(--admin-muted);
+}
 
 @media (max-width: 1000px) {
   .admin-shell { grid-template-columns: 1fr; }

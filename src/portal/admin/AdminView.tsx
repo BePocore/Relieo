@@ -93,6 +93,11 @@ type AdminNotification = {
   reply: { message: string; sentAt: string } | null
 }
 
+const ADMIN_POPUP_NOTIF_TYPES: ReadonlyArray<AdminNotification['type']> = [
+  'media-review-needed',
+  'media-scan-summary',
+]
+
 type AdminMap = {
   code: string
   folder: string
@@ -964,10 +969,20 @@ export function AdminApp({
   }, [users, rangeMonths])
 
   const unreadCount = notifications.filter((n) => !n.read).length
+  const popupNotifications = notifications.filter(
+    (n) => !n.read && ADMIN_POPUP_NOTIF_TYPES.includes(n.type),
+  )
   const mediaReviewGroups = useMemo(
     () => buildMediaReviewGroups(mediaMod?.items ?? [], mediaMod?.inventory ?? []),
     [mediaMod?.inventory, mediaMod?.items],
   )
+  const acknowledgePopupNotifications = () => {
+    void markNotificationsRead(popupNotifications.map((n) => n.id))
+  }
+  const openPopupModeration = () => {
+    setSection('media-moderation')
+    acknowledgePopupNotifications()
+  }
   const setMediaHistoryPreset = (days: number | 'all') => {
     if (days === 'all') {
       setMediaHistoryFrom('')
@@ -2348,6 +2363,53 @@ export function AdminApp({
           )}
         </div>
       </main>
+
+      {popupNotifications.length > 0 ? (
+        <div className="admin-modal-backdrop admin-popup-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-modal admin-popup-modal">
+            <span className="admin-popup-icon"><Bell size={24} /></span>
+            <h2>
+              {popupNotifications.length > 1
+                ? 'Nouvelles notifications de modération IA'
+                : 'Nouvelle notification de modération IA'}
+            </h2>
+            <p>
+              Le scan automatique a ajouté un récap ou des médias à vérifier dans
+              la console admin.
+            </p>
+            <ul className="admin-popup-list">
+              {popupNotifications.map((item) => (
+                <li className="admin-popup-item" key={item.id}>
+                  <span><ShieldAlert size={16} /></span>
+                  <div>
+                    <strong>
+                      {item.type === 'media-scan-summary' ? 'Récap scan IA' : 'Médias à modérer'}
+                    </strong>
+                    <p>{item.message}</p>
+                    <time>{formatDateTime(item.createdAt)}</time>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="admin-modal-actions">
+              <button
+                className="admin-modal-cancel"
+                type="button"
+                onClick={acknowledgePopupNotifications}
+              >
+                J’ai compris
+              </button>
+              <button
+                className="admin-modal-validate"
+                type="button"
+                onClick={openPopupModeration}
+              >
+                <ShieldAlert size={15} /> Ouvrir la modération
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {unpublishTarget ? (
         <div className="admin-modal-backdrop" role="dialog" aria-modal="true">

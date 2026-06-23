@@ -71,6 +71,7 @@ export type ScanReport = {
   flagged: number
   validated: number
   pendingReview: number
+  adminReviewAlerts: number
   autoRejected: number
   videosSubmitted: number
   seeded: number

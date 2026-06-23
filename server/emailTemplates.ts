@@ -81,3 +81,18 @@ export const moderationEmailHtml = (
       muted('Vous retrouvez aussi ce message dans vos notifications sur Relieo.'),
     ].join(''),
   )
+
+export const adminAlertEmailHtml = (
+  heading: string,
+  message: string,
+  actionUrl: string,
+  actionLabel: string,
+): string =>
+  layout(
+    heading,
+    [
+      paragraph(escapeHtml(message)),
+      `<p style="margin:18px 0;">${button(actionUrl, actionLabel)}</p>`,
+      muted('Cette alerte est aussi disponible dans la console admin Relieo.'),
+    ].join(''),
+  )
