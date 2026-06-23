@@ -54,9 +54,9 @@
   //   MODERATION_SIGNAL_SECRET                       -> protege POST /_moderation/scan (appel Vercel)
   //   MODERATION_CALLBACK_SECRET                     -> protege POST /_moderation/callback (Sightengine)
 
-  // Cron toutes les 4 h (UTC) : balayage de fond de la moderation.
+  // Cron toutes les 3 h (UTC) : balayage de fond de la moderation.
   "triggers": {
-    "crons": ["0 */4 * * *"]
+    "crons": ["0 */3 * * *"]
   },
 
   "observability": {

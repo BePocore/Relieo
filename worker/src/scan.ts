@@ -1,4 +1,4 @@
-// Boucle de scan + traitement des callbacks vidéo, exécutée dans le videur (cron toutes les 4 h et signal
+// Boucle de scan + traitement des callbacks vidéo, exécutée dans le videur (cron toutes les 3 h et signal
 // de publication). Voir docs/PLAN-moderation-ia.md (Brique 1.3) et docs/STORAGE-moderation.md.
 //
 // On POUSSE les octets à Sightengine (binding R2, bucket privé) : images en synchrone, vidéos en
