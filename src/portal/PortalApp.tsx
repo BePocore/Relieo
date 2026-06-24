@@ -1235,7 +1235,7 @@ function TermsView({ onClose }: { onClose: () => void }) {
             Le responsable du traitement de vos données personnelles est l’éditeur du
             service, identifié dans les mentions légales ci-dessous. Pour toute
             question relative à vos données, vous pouvez le contacter à l’adresse{' '}
-            <a href="mailto:bepocore@gmail.com">bepocore@gmail.com</a>.
+            <a href="mailto:contact@relieo.fr">contact@relieo.fr</a>.
           </p>
 
           <h3>2.2 Données collectées</h3>
@@ -1307,11 +1307,11 @@ function TermsView({ onClose }: { onClose: () => void }) {
         <section className="terms-section">
           <h2>3. Mentions légales</h2>
           <p>
-            Éditeur : Relieo, édité par <em>[prénom et nom à compléter]</em>, en
+            Éditeur : Relieo, édité par Quentin Tardivel, en
             tant que particulier (service proposé à titre gratuit, sans activité
             commerciale).<br />
-            Directeur de la publication : <em>[prénom et nom à compléter]</em>.<br />
-            Contact : <a href="mailto:bepocore@gmail.com">bepocore@gmail.com</a>.<br />
+            Directeur de la publication : Quentin Tardivel.<br />
+            Contact : <a href="mailto:contact@relieo.fr">contact@relieo.fr</a>.<br />
             Hébergement de l’application : Vercel Inc. (340 S Lemon Ave #4133,
             Walnut, CA 91789, États-Unis).<br />
             Hébergement des médias : Cloudflare, Inc. (101 Townsend St, San
