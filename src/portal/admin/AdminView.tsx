@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -107,6 +108,7 @@ type AdminMap = {
   status: 'published' | 'draft'
   mediaCount: number
   pointCount: number
+  bytes: number
   updatedAt: string
 }
 
@@ -170,6 +172,7 @@ type MediaInventoryItem = {
   ownerEmail: string | null
   mapCode: string
   mapTitle: string
+  mapDeleted: boolean
 }
 
 type MediaReviewAsset = {
@@ -664,26 +667,62 @@ export function AdminApp({
     const tree: {
       label: string
       count: number
-      subs: { label: string; items: MediaInventoryItem[] }[]
+      deleted: boolean
+      subs: { label: string; items: MediaInventoryItem[]; deleted: boolean }[]
     }[] = []
     for (const item of sorted) {
       const groupLabel = primary(item)
       const subLabel = secondary(item)
       let group = tree[tree.length - 1]
       if (!group || group.label !== groupLabel) {
-        group = { label: groupLabel, count: 0, subs: [] }
+        group = { label: groupLabel, count: 0, deleted: false, subs: [] }
         tree.push(group)
       }
       group.count += 1
       let sub = group.subs[group.subs.length - 1]
       if (!sub || sub.label !== subLabel) {
-        sub = { label: subLabel, items: [] }
+        sub = { label: subLabel, items: [], deleted: false }
         group.subs.push(sub)
       }
       sub.items.push(item)
     }
+    // Une carte est « supprimée » si tous ses médias portent mapDeleted (carte
+    // absente du registre). Le groupe l'est si tous ses sous-groupes le sont.
+    for (const group of tree) {
+      for (const sub of group.subs) {
+        sub.deleted = sub.items.length > 0 && sub.items.every((i) => i.mapDeleted)
+      }
+      group.deleted = group.subs.length > 0 && group.subs.every((s) => s.deleted)
+    }
     return tree
   }, [mediaMod?.inventory, inventorySort])
+
+  // Le groupe d'une carte supprimée est replié par défaut (on garde la trace sans
+  // l'étaler). `seededDeletedRef` évite de re-replier une carte que l'admin a
+  // dépliée à la main. La carte = sous-groupe en tri « Utilisateur », groupe en
+  // tri « Carte ».
+  const seededDeletedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const cardLevelIsGroup = inventorySort === 'map'
+    const toCollapse: string[] = []
+    for (const group of inventoryTree) {
+      if (cardLevelIsGroup) {
+        if (group.deleted) toCollapse.push(`g:${group.label}`)
+      } else {
+        for (const sub of group.subs) {
+          if (sub.deleted) toCollapse.push(`s:${group.label}»${sub.label}`)
+        }
+      }
+    }
+    const fresh = toCollapse.filter((key) => !seededDeletedRef.current.has(key))
+    if (fresh.length === 0) return
+    for (const key of fresh) seededDeletedRef.current.add(key)
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      for (const key of fresh) next.add(key)
+      return next
+    })
+  }, [inventoryTree, inventorySort])
 
   // Renouvellement du ticket d'accès média « scope all » (covers de la console).
   useEffect(() => startMediaTicketRefresh({ scope: 'all' }, getIdToken), [])
@@ -1257,6 +1296,7 @@ export function AdminApp({
             <th>Propriétaire</th>
             <th>Statut</th>
             <th>Médias</th>
+            <th>Taille</th>
             <th>Modifiée</th>
             <th>Actions</th>
           </tr>
@@ -1273,6 +1313,7 @@ export function AdminApp({
               <td>{m.ownerEmail ?? m.ownerId}</td>
               <td><span className={`admin-status ${m.status}`}>{m.status === 'published' ? 'Publiée' : 'Brouillon'}</span></td>
               <td>{m.mediaCount}</td>
+              <td>{formatBytes(m.bytes)}</td>
               <td>{formatDate(m.updatedAt)}</td>
               <td>
                 <div className="admin-actions">
@@ -1315,7 +1356,7 @@ export function AdminApp({
             </tr>
           ))}
           {maps.length === 0 ? (
-            <tr><td className="admin-empty" colSpan={6}>Aucune carte.</td></tr>
+            <tr><td className="admin-empty" colSpan={7}>Aucune carte.</td></tr>
           ) : null}
         </tbody>
       </table>
@@ -1958,6 +1999,8 @@ export function AdminApp({
                 {inventoryTree.map((group) => {
                   const groupKey = `g:${group.label}`
                   const groupCollapsed = collapsedGroups.has(groupKey)
+                  const groupIsDeletedCard =
+                    inventorySort === 'map' && group.deleted
                   return (
                     <Fragment key={groupKey}>
                       <tr className="admin-inv-group admin-inv-l1">
@@ -1974,6 +2017,11 @@ export function AdminApp({
                             )}
                             {group.label}
                             <span className="admin-inv-grpcount">{group.count}</span>
+                            {groupIsDeletedCard ? (
+                              <span className="admin-inv-deleted-badge">
+                                <Trash2 size={12} /> Carte supprimée
+                              </span>
+                            ) : null}
                           </button>
                         </td>
                       </tr>
@@ -1982,6 +2030,8 @@ export function AdminApp({
                         : group.subs.map((sub) => {
                             const subKey = `s:${group.label}»${sub.label}`
                             const subCollapsed = collapsedGroups.has(subKey)
+                            const subIsDeletedCard =
+                              inventorySort === 'user' && sub.deleted
                             return (
                               <Fragment key={subKey}>
                                 <tr className="admin-inv-group admin-inv-l2">
@@ -2000,6 +2050,11 @@ export function AdminApp({
                                       <span className="admin-inv-grpcount">
                                         {sub.items.length}
                                       </span>
+                                      {subIsDeletedCard ? (
+                                        <span className="admin-inv-deleted-badge">
+                                          <Trash2 size={12} /> Carte supprimée
+                                        </span>
+                                      ) : null}
                                     </button>
                                   </td>
                                 </tr>

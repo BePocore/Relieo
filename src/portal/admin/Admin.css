@@ -1263,6 +1263,18 @@
   font-weight: 700;
   color: var(--admin-muted);
 }
+.admin-inv-deleted-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #fdecec;
+  color: #b3261e;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.admin-inv-deleted-badge > svg { flex: 0 0 auto; }
 .admin-inv-media { display: flex; align-items: center; gap: 10px; }
 .admin-inv-media-meta { display: flex; flex-direction: column; min-width: 0; }
 .admin-inv-media small {

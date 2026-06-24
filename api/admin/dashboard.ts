@@ -3,6 +3,7 @@ import { adminApp, hasFirebaseAdmin } from '../../server/firebaseAdmin.js'
 import { isAdminUid, requireAdmin } from '../../server/admin.js'
 import {
   hasR2Config,
+  r2ListObjects,
   r2PublicUrl,
   r2StorageUsage,
   r2UsageForPrefixes,
@@ -194,10 +195,22 @@ export async function GET(request: Request) {
     const emailByUid = new Map<string, string | null>(
       authList.users.map((record) => [record.uid, record.email ?? null]),
     )
+    // Taille R2 par carte : un seul scan du stockage, regroupé par
+    // `<uid>/<folder>` (clé `relieo/users/<uid>/randonnees/<folder>/...`). Les
+    // traces (`/traces/`) et tout ce qui n'est pas sous `randonnees` sont ignorés.
+    const bytesByMap = new Map<string, number>()
+    for (const object of await r2ListObjects('relieo/users/')) {
+      const parts = object.key.split('/')
+      if (parts[1] === 'users' && parts[3] === 'randonnees' && parts[4]) {
+        const mapKey = `${parts[2]}/${parts[4]}`
+        bytesByMap.set(mapKey, (bytesByMap.get(mapKey) ?? 0) + object.size)
+      }
+    }
     const maps = hikes
       .map((hike) => ({
         ...hike,
         ownerEmail: hike.ownerId ? emailByUid.get(hike.ownerId) ?? null : null,
+        bytes: bytesByMap.get(`${hike.ownerId}/${hike.folder}`) ?? 0,
       }))
       .sort(
         (a, b) =>
@@ -217,6 +230,9 @@ export async function GET(request: Request) {
       ownerEmail: emailByUid.get(entry.ownerUid) ?? null,
       mapCode: hikeByFolder.get(entry.mapFolder)?.code ?? entry.mapFolder,
       mapTitle: hikeByFolder.get(entry.mapFolder)?.title ?? entry.mapFolder,
+      // La carte n'existe plus dans le registre : ses médias sont conservés en
+      // trace (la console les affiche dans un groupe « Carte supprimée »).
+      mapDeleted: !hikeByFolder.has(entry.mapFolder),
     })
     // Inventaire complet (tous les originaux + leur état) pour la console admin.
     const inventory = (await buildMediaInventory(mediaModItems)).map(enrich)
