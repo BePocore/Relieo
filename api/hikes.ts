@@ -1,12 +1,13 @@
 import {
   hasR2Config,
   r2DeleteObject,
+  r2DeletePrefix,
   r2GetText,
   r2ListKeys,
   r2PutText,
   rewriteMediaUrls,
 } from '../server/r2.js'
-import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
+import { readHikeIndex, removeHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { isAdminUser } from '../server/admin.js'
 import { activeTrailPath, trailFolder, trailLocation } from '../server/trailStorage.js'
@@ -168,6 +169,76 @@ export async function POST(request: Request) {
       {
         code: 'HIKE_STATUS_FAILED',
         message: error instanceof Error ? error.message : 'Mise à jour impossible.',
+      },
+      { status: 500, headers: jsonHeaders },
+    )
+  }
+}
+
+// Le propriétaire (ou l'admin) supprime DÉFINITIVEMENT sa carte : retrait du
+// registre, coupure du pointeur public si elle était la carte par défaut, et
+// effacement de tout son contenu R2 (project.json + médias). Irréversible.
+export async function DELETE(request: Request) {
+  if (!hasR2Config() || !hasFirebaseAdmin()) {
+    return Response.json(
+      { message: 'Service indisponible.' },
+      { status: 503, headers: jsonHeaders },
+    )
+  }
+  const user = await verifyRequestUser(request)
+  if (!user) {
+    return Response.json(
+      { message: 'Connexion requise.' },
+      { status: 401, headers: jsonHeaders },
+    )
+  }
+
+  try {
+    const body = (await request.json().catch(() => ({}))) as { code?: string }
+    const code = body.code?.trim()
+    if (!code) {
+      return Response.json(
+        { message: 'code est obligatoire.' },
+        { status: 400, headers: jsonHeaders },
+      )
+    }
+
+    const folder = trailFolder(code)
+    const entry = (await readHikeIndex()).find((hike) => hike.folder === folder)
+    if (!entry) {
+      return Response.json(
+        { message: 'Carte introuvable.' },
+        { status: 404, headers: jsonHeaders },
+      )
+    }
+    if (entry.ownerId !== user.uid && !isAdminUser(user)) {
+      return Response.json(
+        { message: 'Cette carte appartient à un autre utilisateur.' },
+        { status: 403, headers: jsonHeaders },
+      )
+    }
+
+    // Retrait du registre + coupure du pointeur public s'il visait cette carte.
+    await removeHikeIndex(folder)
+    const activeBody = await r2GetText(activeTrailPath)
+    if (activeBody) {
+      try {
+        const active = JSON.parse(activeBody) as { folder?: string }
+        if (active?.folder === folder) await r2DeleteObject(activeTrailPath)
+      } catch {
+        // active.json illisible : on n'y touche pas.
+      }
+    }
+
+    // Effacement du contenu R2 (project.json + médias) sous le préfixe de la carte.
+    await r2DeletePrefix(`${trailLocation(entry.ownerId, code).prefix}/`)
+
+    return Response.json({ code, deleted: true }, { headers: jsonHeaders })
+  } catch (error) {
+    return Response.json(
+      {
+        code: 'HIKE_DELETE_FAILED',
+        message: error instanceof Error ? error.message : 'Suppression impossible.',
       },
       { status: 500, headers: jsonHeaders },
     )

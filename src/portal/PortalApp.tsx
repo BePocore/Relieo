@@ -34,6 +34,7 @@ import {
   Menu,
   Monitor,
   Moon,
+  MoreVertical,
   Mountain,
   Pencil,
   Plus,
@@ -473,10 +474,12 @@ function HikeCard({
   hike,
   busy,
   onToggleStatus,
+  onDelete,
 }: {
   hike: PortalHike
   busy: boolean
   onToggleStatus: (hike: PortalHike) => void
+  onDelete: (hike: PortalHike) => void
 }) {
   // Publiée → ouvre le Studio sur la rando déjà en ligne (chargée depuis Vercel).
   //   `code` identifie laquelle (ignoré tant que le backend reste mono-rando).
@@ -485,6 +488,21 @@ function HikeCard({
   // Publiée ou brouillon : on ouvre la carte par son code (le Studio recharge le
   // contenu sauvegardé ; un brouillon n'est servi qu'à son propriétaire/admin).
   const openHref = `/?mode=studio&code=${encodeURIComponent(hike.code)}${title}`
+
+  // Menu « 3 points » de gestion de la carte (en haut de la cover).
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [menuOpen])
+
   return (
     <article className="hike-card">
       <div
@@ -496,6 +514,49 @@ function HikeCard({
           {hike.status === 'published' ? 'Publiée' : 'Brouillon'}
         </span>
         {!hike.coverUrl ? <Mountain size={40} /> : null}
+        <div className="hike-menu" ref={menuRef}>
+          <button
+            aria-label="Gérer la carte"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="hike-menu-button"
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <MoreVertical size={18} />
+          </button>
+          {menuOpen ? (
+            <div className="hike-menu-list" role="menu">
+              <button
+                role="menuitem"
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setMenuOpen(false)
+                  onToggleStatus(hike)
+                }}
+              >
+                {hike.status === 'published' ? (
+                  <><EyeOff size={15} /> Dépublier</>
+                ) : (
+                  <><Check size={15} /> Publier</>
+                )}
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                className="hike-menu-danger"
+                disabled={busy}
+                onClick={() => {
+                  setMenuOpen(false)
+                  onDelete(hike)
+                }}
+              >
+                <Trash2 size={15} /> Supprimer
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
       <div className="hike-card-body">
         <div>
@@ -1636,6 +1697,35 @@ function DashboardShell({
     }
   }
 
+  // Suppression définitive d'une de SES cartes (confirmation via modale).
+  const [deleteTarget, setDeleteTarget] = useState<PortalHike | null>(null)
+  const [deleteHikeBusy, setDeleteHikeBusy] = useState(false)
+  const confirmDeleteHike = async () => {
+    if (!deleteTarget) return
+    setDeleteHikeBusy(true)
+    try {
+      const token = await getIdToken()
+      if (!token) throw new Error('Connexion requise.')
+      const response = await fetch('/api/hikes', {
+        method: 'DELETE',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ code: deleteTarget.code }),
+      })
+      if (!response.ok) throw new Error()
+      setHikes((current) => current.filter((h) => h.code !== deleteTarget.code))
+      setHikesError(null)
+      setDeleteTarget(null)
+    } catch {
+      setHikesError('Suppression de la carte impossible.')
+    } finally {
+      setDeleteHikeBusy(false)
+    }
+  }
+
   const saveProfile = async (next: PortalUser) => {
     await onSaveProfile(next)
     setProfile(next)
@@ -1809,10 +1899,14 @@ function DashboardShell({
                 <div className="hikes-grid">
                   {filteredHikes.map((hike) => (
                     <HikeCard
-                      busy={statusBusy === hike.code}
+                      busy={
+                        statusBusy === hike.code ||
+                        (deleteHikeBusy && deleteTarget?.code === hike.code)
+                      }
                       hike={hike}
                       key={hike.id}
                       onToggleStatus={toggleHikeStatus}
+                      onDelete={setDeleteTarget}
                     />
                   ))}
                   <button className="new-hike-card" type="button" onClick={() => setCreateOpen(true)}><span><Plus size={23} /></span><strong>Créer une carte</strong><small>Commencer avec un Studio 3D vierge</small></button>
@@ -1873,6 +1967,44 @@ function DashboardShell({
       </main>
       {mobileMenu ? <button aria-label="Fermer le menu" className="sidebar-scrim" type="button" onClick={() => setMobileMenu(false)} /> : null}
       {createOpen ? <CreateHikeDialog onClose={() => setCreateOpen(false)} onCreate={createHike} /> : null}
+
+      {deleteTarget ? (
+        <div
+          className="portal-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={() => {
+            if (!deleteHikeBusy) setDeleteTarget(null)
+          }}
+        >
+          <div className="portal-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <span className="portal-modal-icon"><Trash2 size={24} /></span>
+            <h2>Supprimer la carte</h2>
+            <p>
+              La carte « {deleteTarget.title} » et tous ses médias seront
+              supprimés définitivement. Cette action est irréversible.
+            </p>
+            <div className="portal-modal-actions">
+              <button
+                className="portal-secondary"
+                type="button"
+                disabled={deleteHikeBusy}
+                onClick={() => setDeleteTarget(null)}
+              >
+                Annuler
+              </button>
+              <button
+                className="profile-danger-button"
+                type="button"
+                disabled={deleteHikeBusy}
+                onClick={() => void confirmDeleteHike()}
+              >
+                {deleteHikeBusy ? 'Suppression…' : 'Supprimer définitivement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {!criticalAck && popupNotifs.length > 0 ? (
         <div className="portal-modal-backdrop" role="dialog" aria-modal="true">

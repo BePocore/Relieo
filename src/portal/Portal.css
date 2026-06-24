@@ -681,6 +681,82 @@ body.portal-active.tracker-scroll-active #root {
   background: var(--c-surface-2);
 }
 
+/* Menu « 3 points » de gestion de la carte, en haut à droite de la cover. */
+.hike-menu {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 2;
+}
+
+.hike-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(8, 20, 14, 0.42);
+  backdrop-filter: blur(2px);
+  transition: background 0.15s ease;
+}
+
+.hike-menu-button:hover {
+  background: rgba(8, 20, 14, 0.62);
+}
+
+.hike-menu-list {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 168px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface);
+  box-shadow: 0 14px 34px rgba(8, 20, 14, 0.18);
+}
+
+.hike-menu-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hike-menu-list button:hover:not(:disabled) {
+  background: var(--c-surface-2);
+}
+
+.hike-menu-list button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hike-menu-list .hike-menu-danger {
+  color: var(--c-danger);
+}
+
+.hike-menu-list .hike-menu-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--c-danger) 12%, transparent);
+}
+
 .hike-card-body {
   padding: 16px;
 }
