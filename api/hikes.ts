@@ -13,6 +13,7 @@ import { isAdminUser } from '../server/admin.js'
 import { activeTrailPath, trailFolder, trailLocation } from '../server/trailStorage.js'
 import { signalModerationScan } from '../server/mediaModeration.js'
 import { pickCoverFromProjectJson } from '../server/cover.js'
+import { readHikesStats } from '../server/stats.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -60,11 +61,56 @@ export async function GET(request: Request) {
       }
     }
 
+    // Statistiques de consultation, uniquement sur demande explicite
+    // (?withStats=1, depuis l'onglet Statistiques). Sans le flag : réponse
+    // strictement inchangée, ZÉRO lecture Firestore (le dashboard normal ne
+    // paie rien).
+    const wantsStats =
+      new URL(request.url).searchParams.get('withStats') === '1'
+    let stats: {
+      total: number
+      last30: Array<{ date: string; views: number }>
+      perHike: Array<{ code: string; title: string; views: number }>
+    } | null = null
+    if (wantsStats) {
+      const statsMap = await readHikesStats(filtered.map((hike) => hike.folder))
+      // Fenêtre glissante des 30 derniers jours (UTC, comme les clés stockées).
+      const last30: Array<{ date: string; views: number }> = []
+      const dayIndex = new Map<string, number>()
+      for (let offset = 29; offset >= 0; offset -= 1) {
+        const day = new Date()
+        day.setUTCDate(day.getUTCDate() - offset)
+        const date = day.toISOString().slice(0, 10)
+        dayIndex.set(date, last30.length)
+        last30.push({ date, views: 0 })
+      }
+      let total = 0
+      const perHike = filtered.map((hike) => {
+        const entry = statsMap.get(hike.folder)
+        const views = entry?.total ?? 0
+        total += views
+        if (entry) {
+          for (const [date, count] of Object.entries(entry.daily)) {
+            const index = dayIndex.get(date)
+            if (index !== undefined) last30[index].views += count
+          }
+        }
+        return { code: hike.code, title: hike.title, views }
+      })
+      perHike.sort((a, b) => b.views - a.views)
+      stats = { total, last30, perHike }
+    }
+
     // Covers réécrites vers le videur media.relieo.fr (le dashboard les charge
     // avec un ticket « scope user »).
-    return new Response(rewriteMediaUrls(JSON.stringify({ hikes: filtered })), {
-      headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
-    })
+    return new Response(
+      rewriteMediaUrls(
+        JSON.stringify(wantsStats ? { hikes: filtered, stats } : { hikes: filtered }),
+      ),
+      {
+        headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
+      },
+    )
   } catch (error) {
     return Response.json(
       {

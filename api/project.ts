@@ -31,6 +31,7 @@ import {
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
 import { pickRandomCoverUrl } from '../server/cover.js'
+import { recordHikeView } from '../server/stats.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -73,12 +74,6 @@ const readActiveTrail = async (): Promise<ActiveTrail | null> => {
   } catch {
     return null
   }
-}
-
-const readPublishedProject = async (): Promise<string | null> => {
-  const active = await readActiveTrail()
-  if (active) return r2GetText(active.projectKey)
-  return r2GetText(legacyProjectPath)
 }
 
 const storageTarget = (
@@ -238,6 +233,14 @@ export async function GET(request: Request) {
           { status: 404, headers: jsonHeaders },
         )
       }
+      // Comptage de vue : une carte PUBLIÉE consultée par un NON-propriétaire.
+      // Best-effort (recordHikeView avale ses erreurs, jamais de blocage de la
+      // consultation). L'exclusion du propriétaire repose sur isOwnerOrAdmin,
+      // fiable tant que la modération force le décodage du jeton (cas prod
+      // MODERATION_ENFORCE=1) ; sinon une vue du propriétaire pourrait compter.
+      if (entry.status === 'published' && !isOwnerOrAdmin) {
+        await recordHikeView(folder)
+      }
       // Médias servis via le videur media.relieo.fr (réécriture à la volée), en
       // consultation publique COMME en Studio. La sauvegarde reconvertit les URLs
       // en clé R2 (`r2KeyFromPublicUrl` accepte media.relieo.fr), donc rien n'est
@@ -269,13 +272,22 @@ export async function GET(request: Request) {
       }
     }
 
-    const body = await readPublishedProject()
+    // Vue publique par défaut : la carte active. On lit `active.json` ici (plutôt
+    // que via un helper) pour récupérer son `folder` et compter la vue sans
+    // relire le fichier.
+    const active = await readActiveTrail()
+    const body = active
+      ? await r2GetText(active.projectKey)
+      : await r2GetText(legacyProjectPath)
     if (!body) {
       return Response.json(
         { message: 'Aucune randonnée enregistrée dans Cloudflare R2.' },
         { status: 404, headers: jsonHeaders },
       )
     }
+    // La vue par défaut est toujours publique (le propriétaire passe par ?code=
+    // ou le Studio) → on compte la vue, best-effort.
+    if (active?.folder) await recordHikeView(active.folder)
     // Vue publique par défaut : médias servis via le videur media.relieo.fr. Cette
     // vue est toujours « publique » (le propriétaire passe par ?code= ou le Studio),
     // donc on filtre les médias non validés si la modération est active.

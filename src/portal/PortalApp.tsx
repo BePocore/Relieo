@@ -100,6 +100,7 @@ import { AdminApp } from './admin/AdminView'
 import { requestMediaTicket, startMediaTicketRefresh } from '../lib/mediaTicket'
 import HeroSlideshow from './HeroSlideshow'
 import { TraceRecorderScreen, TracesView } from './TraceViews'
+import { StatsView } from './StatsView'
 import { hasLocalTraceDraft } from './userTraces'
 import {
   getThemePreference,
@@ -117,6 +118,7 @@ type PortalView =
   | 'admin'
   | 'settings'
   | 'traces'
+  | 'stats'
   | 'tracker'
   | 'terms'
 
@@ -1752,7 +1754,7 @@ function DashboardShell({
           <button className={view === 'plans' ? 'active' : ''} type="button" onClick={() => setPortalView('plans')}><Wallet size={18} /> Forfait</button>
           <p>OUTILS</p>
           <button className={view === 'traces' ? 'active' : ''} type="button" onClick={() => setPortalView('traces')}><Route size={18} /> Mes traces</button>
-          <button type="button"><BarChart3 size={18} /> Statistiques</button>
+          <button className={view === 'stats' ? 'active' : ''} type="button" onClick={() => setPortalView('stats')}><BarChart3 size={18} /> Statistiques</button>
           <button className={view === 'settings' ? 'active' : ''} type="button" onClick={() => setPortalView('settings')}><Settings size={18} /> Paramètres</button>
         </nav>
         <div className="sidebar-status"><span><ShieldCheck size={16} /></span><div><strong>Cloud synchronisé</strong><small>Firebase + Cloudflare R2</small></div></div>
@@ -1838,6 +1840,8 @@ function DashboardShell({
                 status: hike.status,
               }))}
             />
+          ) : view === 'stats' ? (
+            <StatsView />
           ) : view === 'notifications' ? (
             <>
               <header className="page-heading">

@@ -3226,3 +3226,115 @@ body.portal-active.tracker-scroll-active #root {
 }
 .settings-legal button:hover { background: var(--c-border); }
 .settings-legal button > :last-child { margin-left: auto; color: var(--c-text-dim); }
+
+/* --- Statistiques (onglet Statistiques) ----------------------------------- */
+.stats-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 30px;
+}
+
+.stats-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 24px;
+  text-align: center;
+  border: 1px solid var(--c-border);
+  border-radius: 18px;
+  background: var(--c-surface);
+  color: var(--c-text-dim);
+}
+.stats-state strong { color: var(--c-text); font-size: 17px; }
+.stats-state p { max-width: 420px; font-size: 14px; }
+.stats-state-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.stats-spin { color: var(--c-accent); animation: stats-spin 1s linear infinite; }
+@keyframes stats-spin { to { transform: rotate(360deg); } }
+
+.stats-panel {
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid var(--c-border);
+  border-radius: 18px;
+  background: var(--c-surface);
+}
+.stats-panel .section-heading { margin-bottom: 16px; }
+
+/* Courbe des vues */
+.stats-chart { position: relative; width: 100%; }
+.stats-chart svg { display: block; width: 100%; height: auto; }
+.stats-chart-grid { stroke: var(--c-border); stroke-width: 1; }
+.stats-chart-axis { fill: var(--c-text-dim); font-size: 11px; }
+.stats-chart-line {
+  fill: none;
+  stroke: var(--c-accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.stats-chart-cursor { stroke: var(--c-text-dim); stroke-width: 1; stroke-dasharray: 4 4; }
+.stats-chart-dot { fill: var(--c-accent); stroke: #fff; stroke-width: 2; }
+.stats-area-from { stop-color: var(--c-accent); stop-opacity: 0.22; }
+.stats-area-to { stop-color: var(--c-accent); stop-opacity: 0; }
+.stats-chart-tip {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  padding: 8px 11px;
+  border-radius: 12px;
+  background: var(--c-text);
+  color: var(--c-bg);
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: var(--c-shadow);
+}
+.stats-chart-tip-date { margin: 0 0 3px; font-size: 11px; opacity: 0.7; }
+.stats-chart-tip strong { font-size: 14px; }
+
+/* Classement des cartes */
+.stats-hike-list { display: flex; flex-direction: column; gap: 12px; }
+.stats-hike-row { display: flex; align-items: center; gap: 14px; }
+.stats-hike-rank {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.stats-hike-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.stats-hike-main strong {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--c-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stats-hike-bar { height: 7px; border-radius: 5px; background: var(--c-border); overflow: hidden; }
+.stats-hike-bar span { display: block; height: 100%; border-radius: 5px; background: var(--c-accent); }
+.stats-hike-views {
+  flex: none;
+  min-width: 48px;
+  text-align: right;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+@media (max-width: 680px) {
+  .stats-summary { grid-template-columns: 1fr; }
+}
