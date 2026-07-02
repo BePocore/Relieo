@@ -1,13 +1,13 @@
 import { isAdminUser } from '../server/admin.js'
 import { verifyRequestUser } from '../server/firebaseAdmin.js'
-import { readHikeIndex } from '../server/hikeIndex.js'
+import { resolveHikeEntry } from '../server/hikeIndex.js'
 import {
-  trailFolder,
   trailLocation,
   userStorageRoot,
 } from '../server/trailStorage.js'
 import {
   buildTicketCookie,
+  hashAccessCode,
   mintTicket,
   TICKET_TTL_MS,
   type TicketRole,
@@ -58,9 +58,13 @@ export async function POST(request: Request) {
     )
   }
 
-  let payload: { code?: unknown; scope?: unknown }
+  let payload: { code?: unknown; scope?: unknown; accessCode?: unknown }
   try {
-    payload = (await request.json()) as { code?: unknown; scope?: unknown }
+    payload = (await request.json()) as {
+      code?: unknown
+      scope?: unknown
+      accessCode?: unknown
+    }
   } catch {
     payload = {}
   }
@@ -89,26 +93,18 @@ export async function POST(request: Request) {
   }
 
   // --- Ticket d'une carte (consultation publique ou Studio) --------------
-  const code = typeof payload.code === 'string' ? payload.code.trim() : undefined
-  if (!code) {
+  // `code` = l'identifiant d'URL (slug opaque, ou folder legacy). Le code
+  // d'accès SECRET, lui, arrive à part dans `accessCode`.
+  const id = typeof payload.code === 'string' ? payload.code.trim() : undefined
+  if (!id) {
     return Response.json(
       { message: 'Le code de la carte est requis.' },
       { status: 400, headers: jsonHeaders },
     )
   }
 
-  let folder: string
-  try {
-    folder = trailFolder(code)
-  } catch {
-    return Response.json(
-      { message: 'Code de carte invalide.' },
-      { status: 400, headers: jsonHeaders },
-    )
-  }
-
-  const entry = (await readHikeIndex()).find((hike) => hike.folder === folder)
-  // Carte introuvable = mauvais code. 404 sans rien révéler.
+  const entry = await resolveHikeEntry(id)
+  // Carte introuvable = mauvais identifiant. 404 sans rien révéler.
   if (!entry) {
     return Response.json(
       { message: 'Carte introuvable.' },
@@ -129,8 +125,28 @@ export async function POST(request: Request) {
     )
   }
 
+  // ENFORCEMENT du code d'accès : pour une carte protégée, un visiteur (ni
+  // propriétaire ni admin) doit fournir le bon code AVANT d'obtenir un ticket.
+  // Sans ticket, le videur refuse les médias → contenu ET médias sont bloqués.
+  if (!isOwner && !isAdmin && entry.accessCodeHash) {
+    const submitted =
+      typeof payload.accessCode === 'string' ? payload.accessCode.trim() : ''
+    const salt = entry.slug ?? entry.folder
+    const ok =
+      submitted !== '' &&
+      (await hashAccessCode(submitted, salt)) === entry.accessCodeHash
+    if (!ok) {
+      return Response.json(
+        { message: 'Code incorrect.' },
+        { status: 401, headers: jsonHeaders },
+      )
+    }
+  }
+
   const role: TicketRole = isOwner || isAdmin ? 'owner' : 'public'
-  // Le slash final évite la collision entre "halsa" et "halsa-2".
-  const prefix = `${trailLocation(entry.ownerId, code).prefix}/`
+  // Le préfixe autorisé vient du folder de l'entrée (pas de l'identifiant
+  // d'URL, qui peut être un slug ≠ folder). Slash final = anti-collision
+  // "halsa" vs "halsa-2".
+  const prefix = `${trailLocation(entry.ownerId, entry.folder).prefix}/`
   return respondWithTicket(prefix, role, secret)
 }

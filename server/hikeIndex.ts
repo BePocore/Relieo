@@ -1,4 +1,5 @@
 import { r2GetText, r2PutText } from './r2.js'
+import { trailFolder } from './trailStorage.js'
 
 // Registre central des randonnées : permet de lister plusieurs randos (et
 // plusieurs randos par propriétaire) sans dépendre du pointeur « active.json »
@@ -8,6 +9,13 @@ export const hikeIndexPath = 'relieo/index.json'
 export type HikeIndexEntry = {
   code: string
   folder: string
+  // Identifiant OPAQUE d'URL (`?m=<slug>`), distinct du `folder` de stockage et
+  // du code d'accès. Il ne révèle rien et n'est pas secret. Optionnel tant que la
+  // migration `migrate-slugs` n'est pas passée sur les entrées historiques.
+  slug?: string
+  // Empreinte SHA-256 (salée par le slug) du CODE D'ACCÈS secret. Jamais le
+  // plaintext, jamais renvoyé au public. Présente ⇒ carte protégée (Type 1).
+  accessCodeHash?: string
   ownerId: string
   title: string
   status: 'published' | 'draft'
@@ -43,6 +51,26 @@ export const ownerForFolder = async (
   if (!folder) return null
   const hikes = await readHikeIndex()
   return hikes.find((hike) => hike.folder === folder)?.ownerId || null
+}
+
+// Résout une entrée à partir de l'identifiant d'URL. On tente d'abord le `slug`
+// opaque (nouveau schéma), puis on retombe sur le `folder` (rétrocompat des
+// vieux liens `?code=<folder>`, ex. « Halsa »). Renvoie null si rien ne matche.
+export const resolveHikeEntry = async (
+  idParam: string,
+): Promise<HikeIndexEntry | null> => {
+  const id = idParam?.trim()
+  if (!id) return null
+  const hikes = await readHikeIndex()
+  const bySlug = hikes.find((hike) => hike.slug === id)
+  if (bySlug) return bySlug
+  let folder: string
+  try {
+    folder = trailFolder(id)
+  } catch {
+    return null
+  }
+  return hikes.find((hike) => hike.folder === folder) ?? null
 }
 
 const stripUndefined = <T extends object>(value: T): Partial<T> => {

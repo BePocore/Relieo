@@ -12,13 +12,22 @@ import {
 import {
   activeTrailPath,
   cleanStorageName,
-  legacyProjectPath,
   STUDIO_OWNER,
   trailFolder,
   trailLocation,
   type ActiveTrail,
 } from '../server/trailStorage.js'
-import { readHikeIndex, upsertHikeIndex } from '../server/hikeIndex.js'
+import {
+  readHikeIndex,
+  resolveHikeEntry,
+  upsertHikeIndex,
+  type HikeIndexEntry,
+} from '../server/hikeIndex.js'
+import {
+  hashAccessCode,
+  TICKET_COOKIE,
+  verifyTicket,
+} from '../server/mediaTicket.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { isAdminUser } from '../server/admin.js'
 import { readModeration } from '../server/moderation.js'
@@ -63,6 +72,36 @@ const isProjectPayload = (value: unknown): value is StoredProject => {
   if (!value || typeof value !== 'object') return false
   const project = value as Record<string, unknown>
   return Array.isArray(project.track) && Array.isArray(project.points)
+}
+
+// Lecture d'un cookie brut dans l'en-tête `Cookie` de la requête.
+const readCookie = (request: Request, name: string): string | null => {
+  const header = request.headers.get('cookie')
+  if (!header) return null
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq < 0) continue
+    if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim()
+  }
+  return null
+}
+
+// Le visiteur a-t-il une PREUVE D'ACCÈS pour cette carte ? = un cookie ticket
+// média valide dont le préfixe couvre le dossier de la carte. Une carte
+// protégée n'a un ticket que si /api/media-ticket a validé son code d'accès.
+const hasValidGrant = async (
+  request: Request,
+  entry: HikeIndexEntry,
+): Promise<boolean> => {
+  const secret = process.env.MEDIA_TICKET_SECRET
+  if (!secret) return false
+  const token = readCookie(request, TICKET_COOKIE)
+  if (!token) return false
+  const payload = await verifyTicket(token, secret)
+  if (!payload) return false
+  const cardPrefix = `${trailLocation(entry.ownerId, entry.folder).prefix}/`
+  // Ticket carte = ce préfixe exact ; ticket user/all = préfixe plus large.
+  return cardPrefix.startsWith(payload.prefix)
 }
 
 const readActiveTrail = async (): Promise<ActiveTrail | null> => {
@@ -195,119 +234,109 @@ export async function GET(request: Request) {
   }
 
   try {
-    // `?code=<code>` → cette randonnée précise. Sans code → la rando active
-    // (consultation publique inchangée). La clé de stockage étant désormais
-    // rangée sous le préfixe du propriétaire, on résout son uid via l'index.
-    const code = new URL(request.url).searchParams.get('code')?.trim()
-    if (code) {
-      const folder = trailFolder(code)
-      const entry = (await readHikeIndex()).find(
-        (hike) => hike.folder === folder,
-      )
-      if (!entry) {
-        return Response.json(
-          { message: 'Aucune carte enregistrée pour ce code.' },
-          { status: 404, headers: jsonHeaders },
-        )
-      }
-      // On décode l'appelant une seule fois si on en a besoin : pour autoriser un
-      // brouillon, et/ou pour savoir si on doit filtrer les médias non validés (le
-      // propriétaire et l'admin voient tout, le visiteur public non).
-      const needsViewer = entry.status === 'draft' || moderationEnforced()
-      const viewer = needsViewer ? await verifyRequestUser(request) : null
-      const isOwnerOrAdmin = Boolean(
-        viewer && (viewer.uid === entry.ownerId || isAdminUser(viewer)),
-      )
-      // Brouillon : consultation réservée au propriétaire et à l'admin. On
-      // renvoie 404 (et pas 403) pour ne pas révéler l'existence du brouillon.
-      if (entry.status === 'draft' && !isOwnerOrAdmin) {
-        return Response.json(
-          { message: 'Aucune carte enregistrée pour ce code.' },
-          { status: 404, headers: jsonHeaders },
-        )
-      }
-      const body = await r2GetText(trailLocation(entry.ownerId, code).projectKey)
-      if (!body) {
-        return Response.json(
-          { message: 'Aucune randonnée enregistrée dans Cloudflare R2.' },
-          { status: 404, headers: jsonHeaders },
-        )
-      }
-      // Comptage de vue : une carte PUBLIÉE consultée par un NON-propriétaire.
-      // Best-effort (recordHikeView avale ses erreurs, jamais de blocage de la
-      // consultation). L'exclusion du propriétaire repose sur isOwnerOrAdmin,
-      // fiable tant que la modération force le décodage du jeton (cas prod
-      // MODERATION_ENFORCE=1) ; sinon une vue du propriétaire pourrait compter.
-      if (entry.status === 'published' && !isOwnerOrAdmin) {
-        await recordHikeView(folder)
-      }
-      // Médias servis via le videur media.relieo.fr (réécriture à la volée), en
-      // consultation publique COMME en Studio. La sauvegarde reconvertit les URLs
-      // en clé R2 (`r2KeyFromPublicUrl` accepte media.relieo.fr), donc rien n'est
-      // figé côté stockage (project.json garde des clés/URLs r2.dev).
-      const served = rewriteMediaUrls(body)
-      // Le statut fiable vient de l'index : une dépublication via le tableau de
-      // bord ne réécrit pas project.json. On l'injecte pour que le client
-      // connaisse l'état réel (publiée / brouillon).
-      try {
-        let project = JSON.parse(served) as Record<string, unknown>
-        // Modération (couche 2) : pour un VISITEUR public, on retire les médias
-        // non encore validés ou flaggés (le videur les refuserait de toute façon).
-        // Le propriétaire/admin garde tout. No-op tant que MODERATION_ENFORCE≠1.
-        if (moderationEnforced() && !isOwnerOrAdmin) {
-          const [scanned, blocked] = await Promise.all([
-            readScannedIds(),
-            readBlockedIds(),
-          ])
-          project = filterServableMedia(project, scanned, blocked)
-        }
-        return Response.json(
-          { ...project, hikeStatus: entry.status },
-          { headers: jsonHeaders },
-        )
-      } catch {
-        return new Response(served, {
-          headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
-        })
+    // Identifiant d'URL : `?m=<slug>` (schéma opaque) ou `?code=<code>` (legacy).
+    // Sans identifiant → carte active par défaut. On résout toujours vers une
+    // entrée d'index, dont le `folder` donne la clé de stockage.
+    const url = new URL(request.url)
+    const idParam = (
+      url.searchParams.get('m') ?? url.searchParams.get('code')
+    )?.trim()
+
+    let entry: HikeIndexEntry | null = idParam
+      ? await resolveHikeEntry(idParam)
+      : null
+    if (!idParam) {
+      const active = await readActiveTrail()
+      if (active?.folder) {
+        entry =
+          (await readHikeIndex()).find(
+            (hike) => hike.folder === active.folder,
+          ) ?? null
       }
     }
+    if (!entry) {
+      return Response.json(
+        { message: 'Aucune carte enregistrée pour ce code.' },
+        { status: 404, headers: jsonHeaders },
+      )
+    }
 
-    // Vue publique par défaut : la carte active. On lit `active.json` ici (plutôt
-    // que via un helper) pour récupérer son `folder` et compter la vue sans
-    // relire le fichier.
-    const active = await readActiveTrail()
-    const body = active
-      ? await r2GetText(active.projectKey)
-      : await r2GetText(legacyProjectPath)
+    // Décodage de l'appelant : le propriétaire et l'admin voient tout (contenu
+    // complet, pas de porte de code, médias non filtrés).
+    const viewer = await verifyRequestUser(request)
+    const isOwnerOrAdmin = Boolean(
+      viewer && (viewer.uid === entry.ownerId || isAdminUser(viewer)),
+    )
+
+    // Brouillon : réservé au propriétaire/admin. 404 (pas 403) pour ne pas
+    // révéler l'existence du brouillon.
+    if (entry.status === 'draft' && !isOwnerOrAdmin) {
+      return Response.json(
+        { message: 'Aucune carte enregistrée pour ce code.' },
+        { status: 404, headers: jsonHeaders },
+      )
+    }
+
+    const slug = entry.slug ?? entry.folder
+    // PORTE DE CODE (Type 1) : une carte protégée ne livre RIEN de son contenu
+    // au visiteur tant qu'il n'a pas de preuve d'accès (ticket valide, obtenu en
+    // validant le code via /api/media-ticket). On renvoie juste des métadonnées
+    // pour afficher l'écran de saisie.
+    if (
+      entry.accessCodeHash &&
+      !isOwnerOrAdmin &&
+      !(await hasValidGrant(request, entry))
+    ) {
+      return Response.json(
+        {
+          protected: true,
+          slug,
+          title: entry.title,
+          coverUrl: entry.coverUrl,
+          hikeStatus: entry.status,
+        },
+        { headers: jsonHeaders },
+      )
+    }
+
+    const body = await r2GetText(
+      trailLocation(entry.ownerId, entry.folder).projectKey,
+    )
     if (!body) {
       return Response.json(
         { message: 'Aucune randonnée enregistrée dans Cloudflare R2.' },
         { status: 404, headers: jsonHeaders },
       )
     }
-    // La vue par défaut est toujours publique (le propriétaire passe par ?code=
-    // ou le Studio) → on compte la vue, best-effort.
-    if (active?.folder) await recordHikeView(active.folder)
-    // Vue publique par défaut : médias servis via le videur media.relieo.fr. Cette
-    // vue est toujours « publique » (le propriétaire passe par ?code= ou le Studio),
-    // donc on filtre les médias non validés si la modération est active.
-    let served = rewriteMediaUrls(body)
-    if (moderationEnforced()) {
-      try {
+    // Comptage de vue : carte PUBLIÉE consultée par un NON-propriétaire.
+    if (entry.status === 'published' && !isOwnerOrAdmin) {
+      await recordHikeView(entry.folder)
+    }
+    // Médias servis via le videur media.relieo.fr (réécriture à la volée).
+    const served = rewriteMediaUrls(body)
+    try {
+      let project = JSON.parse(served) as Record<string, unknown>
+      // On ne renvoie JAMAIS le code d'accès (il n'est plus stocké en clair,
+      // mais on nettoie par sécurité les project.json historiques).
+      delete project.accessCode
+      // Modération (couche 2) : pour un VISITEUR public, on retire les médias
+      // non validés / flaggés (le videur les refuserait de toute façon).
+      if (moderationEnforced() && !isOwnerOrAdmin) {
         const [scanned, blocked] = await Promise.all([
           readScannedIds(),
           readBlockedIds(),
         ])
-        served = JSON.stringify(
-          filterServableMedia(JSON.parse(served), scanned, blocked),
-        )
-      } catch {
-        // project.json illisible : on sert tel quel (le videur reste la barrière).
+        project = filterServableMedia(project, scanned, blocked)
       }
+      return Response.json(
+        { ...project, hikeStatus: entry.status, slug, folder: entry.folder },
+        { headers: jsonHeaders },
+      )
+    } catch {
+      return new Response(served, {
+        headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
+      })
     }
-    return new Response(served, {
-      headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
-    })
   } catch (error) {
     return Response.json(
       {
@@ -368,18 +397,20 @@ export async function PUT(request: Request) {
         { status: 400, headers: jsonHeaders },
       )
     }
-    const code = payload.accessCode?.trim()
-    if (!code) {
+    // Identité = le slug opaque (nouveau schéma). Le code d'accès n'est PLUS
+    // l'identité : il arrive à part dans `accessCode` (secret write-only).
+    const meta = payload as Record<string, unknown>
+    const slugRaw = typeof meta.slug === 'string' ? meta.slug.trim() : ''
+    if (!slugRaw) {
       return Response.json(
-        { message: 'Le code de la randonnée est obligatoire pour son dossier R2.' },
+        { message: "L'identifiant de la carte est requis." },
         { status: 400, headers: jsonHeaders },
       )
     }
 
-    // Entrée existante (le folder ne dépend que du code, pas du propriétaire).
-    const existing = (await readHikeIndex()).find(
-      (hike) => hike.folder === trailFolder(code),
-    )
+    // Entrée existante : par slug, sinon par folder (rétrocompat).
+    const existing = await resolveHikeEntry(slugRaw)
+    const canonicalSlug = existing?.slug ?? slugRaw
 
     // Accès Dieu : un admin édite « à la place » du vrai propriétaire. L'écriture
     // se fait alors sous le préfixe du propriétaire d'origine (la propriété ne
@@ -389,7 +420,13 @@ export async function PUT(request: Request) {
       isAdmin && existing?.ownerId
         ? existing.ownerId
         : authedUser?.uid ?? STUDIO_OWNER
-    const target = trailLocation(owner, code)
+    // Dossier de stockage STABLE : celui de l'entrée existante (ex. « Halsa »),
+    // sinon dérivé du slug pour une nouvelle carte (folder = slug).
+    const folder = existing?.folder ?? trailFolder(slugRaw)
+    const target: ActiveTrail = {
+      ...trailLocation(owner, folder),
+      code: canonicalSlug,
+    }
 
     // Garde de propriété (levée pour l'admin) : on ne peut pas écraser la rando
     // d'un autre utilisateur.
@@ -407,15 +444,27 @@ export async function PUT(request: Request) {
 
     // Statut : brouillon ou publiée (par défaut publiée pour compat ascendante).
     const status: 'draft' | 'published' =
-      (payload as Record<string, unknown>).hikeStatus === 'draft'
-        ? 'draft'
-        : 'published'
+      meta.hikeStatus === 'draft' ? 'draft' : 'published'
+
+    // Code d'accès SECRET (write-only) : s'il est fourni, on (re)calcule son
+    // empreinte salée par le slug ; sinon on conserve celle en place. Jamais
+    // stocké en clair.
+    const submittedCode =
+      typeof meta.accessCode === 'string' ? meta.accessCode.trim() : ''
+    const accessCodeHash = submittedCode
+      ? await hashAccessCode(submittedCode, canonicalSlug)
+      : existing?.accessCodeHash
+
+    // On ne persiste JAMAIS le code d'accès ni le slug dans project.json.
+    const toStore = { ...payload }
+    delete toStore.accessCode
+    delete (toStore as Record<string, unknown>).slug
 
     // Multi-rando : chaque randonnée vit dans son propre dossier. On n'écrase et
     // ne supprime JAMAIS les autres randos (Halsa et toute rando déjà publiée
     // restent intactes). Les médias sont déjà rangés dans le dossier de la rando
     // par l'upload ; moveProjectMedia ne fait que rapatrier d'éventuels restes.
-    const migrated = await moveProjectMedia(payload, target)
+    const migrated = await moveProjectMedia(toStore, target)
     const body = JSON.stringify(migrated.project)
     if (body.length > 10_000_000) {
       return Response.json(
@@ -441,7 +490,6 @@ export async function PUT(request: Request) {
     }
 
     // Registre des randos : insert/maj de cette entrée uniquement.
-    const meta = payload as Record<string, unknown>
     const asNumber = (value: unknown): number | undefined =>
       typeof value === 'number' && Number.isFinite(value) ? value : undefined
     const asString = (value: unknown): string | undefined =>
@@ -449,6 +497,8 @@ export async function PUT(request: Request) {
     await upsertHikeIndex({
       code: target.code,
       folder: target.folder,
+      slug: canonicalSlug,
+      accessCodeHash,
       // Propriété préservée : l'ownerId reste celui du propriétaire d'origine
       // (jamais l'admin), ou l'appelant pour une nouvelle carte.
       ownerId: owner !== STUDIO_OWNER ? owner : asString(meta.ownerId),

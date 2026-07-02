@@ -101,11 +101,23 @@ export async function GET(request: Request) {
       stats = { total, last30, perHike }
     }
 
+    // On ne renvoie JAMAIS l'empreinte du code d'accès au client (même au
+    // propriétaire) : le `slug` suffit au dashboard, le hash reste server-only.
+    const publicHikes = filtered.map((hike) => {
+      const rest = { ...hike }
+      delete (rest as { accessCodeHash?: string }).accessCodeHash
+      return rest
+    })
+
     // Covers réécrites vers le videur media.relieo.fr (le dashboard les charge
     // avec un ticket « scope user »).
     return new Response(
       rewriteMediaUrls(
-        JSON.stringify(wantsStats ? { hikes: filtered, stats } : { hikes: filtered }),
+        JSON.stringify(
+          wantsStats
+            ? { hikes: publicHikes, stats }
+            : { hikes: publicHikes },
+        ),
       ),
       {
         headers: { ...jsonHeaders, 'Content-Type': 'application/json' },

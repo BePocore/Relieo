@@ -162,11 +162,12 @@ const isStudioUrl = (): boolean => {
   return params.get('mode') === 'studio' || window.location.hash === '#studio'
 }
 
-const publicUrl = (code?: string): string => {
+const publicUrl = (slug?: string): string => {
   const url = new URL(window.location.href)
   url.searchParams.delete('mode')
   url.searchParams.delete('new')
-  if (code?.trim()) url.searchParams.set('code', code.trim())
+  url.searchParams.delete('code')
+  if (slug?.trim()) url.searchParams.set('m', slug.trim())
   url.hash = ''
   return `${url.pathname}${url.search}${url.hash}` || '/'
 }
@@ -181,12 +182,12 @@ const studioUrl = (): string => {
 // Après la première sauvegarde d'une nouvelle carte, bascule l'URL `?new=<code>`
 // en `?code=<code>` pour qu'un rechargement recharge le brouillon enregistré
 // (et ne réouvre pas un studio vide).
-const syncStudioUrlToCode = (code: string): void => {
-  if (!code) return
+const syncStudioUrlToCode = (slug: string): void => {
+  if (!slug) return
   const url = new URL(window.location.href)
   if (!url.searchParams.has('new')) return
   url.searchParams.delete('new')
-  url.searchParams.set('code', code)
+  url.searchParams.set('m', slug)
   window.history.replaceState(window.history.state, '', url.toString())
 }
 
@@ -481,17 +482,21 @@ function App() {
   const [newTrailCode] = useState(() =>
     new URLSearchParams(window.location.search).get('new')?.trim() ?? '',
   )
-  // Rando ouverte depuis le dashboard : `?code=<code>` charge CETTE rando.
-  // L'API déduit toujours le propriétaire du jeton Firebase.
-  const [hikeCode] = useState(() =>
-    new URLSearchParams(window.location.search).get('code')?.trim() ?? '',
-  )
-  const [hikeTitle] = useState(() =>
+  // Carte ouverte par son identifiant d'URL opaque : `?m=<slug>` (ou `?code=`
+  // legacy). Le propriétaire est toujours déduit du jeton Firebase côté API.
+  const [hikeCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return (params.get('m') ?? params.get('code'))?.trim() ?? ''
+  })
+  const [hikeTitle, setHikeTitle] = useState(() =>
     new URLSearchParams(window.location.search).get('title')?.trim() ?? '',
   )
-  // Nouvelle carte vierge : `?new=<code>` démarre un studio VIDE (en dev comme
+  // Nouvelle carte vierge : `?new=<slug>` démarre un studio VIDE (en dev comme
   // en prod). La carte reste un brouillon (autosave en draft) jusqu'à publication.
   const isNewBlankStudio = Boolean(newTrailCode)
+  // Identité UNIQUE de la carte côté client : le slug opaque. Sert à l'URL de
+  // partage, au ticket média et au dossier de stockage (folder = trailFolder(slug)).
+  const mapSlug = hikeCode || newTrailCode
   const [isPanelOpen, setIsPanelOpen] = useState(() => isStudioUrl())
   const [traces, setTraces] = useState<Trace[]>([])
   const [points, setPoints] = useState<TrailPoint[]>([])
@@ -539,8 +544,16 @@ function App() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [adminPassword, setAdminPassword] = useState('')
   const [pointsSourceName, setPointsSourceName] = useState('/data/points.json')
+  // `accessCode` = le CODE D'ACCÈS SECRET (write-only). Vide au chargement (on
+  // ne le relit jamais) ; le propriétaire en pose un nouveau dans le Studio.
   const [accessCode, setAccessCode] = useState('')
   const [accessGranted, setAccessGranted] = useState(false)
+  // Carte protégée dont le contenu n'est pas encore livré (le serveur n'a renvoyé
+  // que des métadonnées) → on affiche l'écran de saisie du code.
+  const [protectedGate, setProtectedGate] = useState(false)
+  // Code d'accès validé par le VISITEUR (non propriétaire) : conservé le temps de
+  // la session pour renouveler le ticket média (~toutes les 60 s). Jamais persisté.
+  const visitorCodeRef = useRef('')
   const [copied, setCopied] = useState(false)
   const [savedProjectSignature, setSavedProjectSignature] = useState<string | null>(
     null,
@@ -566,26 +579,27 @@ function App() {
       .map((point, index) => normalizePoint(point, index))
       .filter((point): point is TrailPoint => point !== null)
     const loadedMediaLibrary = project.mediaLibrary ?? []
-    const loadedAccessCode = project.accessCode ?? ''
     setTraces(loadedTraces)
     setPoints(loadedPoints)
     setMediaLibrary(loadedMediaLibrary)
     setPointsSourceName(project.pointsSourceName)
-    setAccessCode(loadedAccessCode)
+    // Le code d'accès est write-only : jamais renvoyé par le serveur, donc vide
+    // au chargement. Le propriétaire en pose un nouveau dans le Studio au besoin.
+    setAccessCode('')
     setSavedProjectSignature(
       projectSignature({
         points: loadedPoints,
         traces: loadedTraces,
         mediaLibrary: loadedMediaLibrary,
-        accessCode: loadedAccessCode,
+        accessCode: '',
         pointsSourceName: project.pointsSourceName,
       }),
     )
-    setAccessGranted(
-      isStudioMode || Boolean(studioReturnHref) || !loadedAccessCode,
-    )
+    // Le contenu complet est là (métadonnées seules n'appellent pas applyProject).
+    setAccessGranted(true)
+    setProtectedGate(false)
     setSelectedPoint(null)
-  }, [isStudioMode, studioReturnHref])
+  }, [])
 
   useEffect(() => {
     const loadTrail = async () => {
@@ -599,17 +613,27 @@ function App() {
           const blankTraces: Trace[] = []
           const blankMediaLibrary: ImportedMedia[] = []
           const blankPointsSourceName = 'Nouveau projet local'
+          // Code d'accès secret choisi à la création, transmis via sessionStorage
+          // (jamais par l'URL). Consommé une fois puis effacé.
+          let newSecret = ''
+          try {
+            const key = `relieo.newMapCode.${newTrailCode}`
+            newSecret = sessionStorage.getItem(key) ?? ''
+            sessionStorage.removeItem(key)
+          } catch {
+            newSecret = ''
+          }
           setTraces(blankTraces)
           setPoints(blankPoints)
           setMediaLibrary(blankMediaLibrary)
           setPointsSourceName(blankPointsSourceName)
-          setAccessCode(newTrailCode)
+          setAccessCode(newSecret)
           setSavedProjectSignature(
             projectSignature({
               points: blankPoints,
               traces: blankTraces,
               mediaLibrary: blankMediaLibrary,
-              accessCode: newTrailCode,
+              accessCode: newSecret,
               pointsSourceName: blankPointsSourceName,
             }),
           )
@@ -619,10 +643,10 @@ function App() {
           return
         }
 
-        // Avec un code → on charge CETTE rando via le backend local (/api).
-        // Sans code → rando active (en dev, lue depuis la prod via le proxy).
+        // Avec un slug → on charge CETTE carte via `?m=`. Sans slug → carte
+        // active (en dev, lue depuis la prod via le proxy).
         const projectEndpoint = hikeCode
-          ? `/api/project?code=${encodeURIComponent(hikeCode)}`
+          ? `/api/project?m=${encodeURIComponent(hikeCode)}`
           : import.meta.env.DEV
             ? '/prototype-api/project'
             : '/api/project'
@@ -634,6 +658,7 @@ function App() {
           hikeCode && isStudioMode ? await getIdToken() : null
         const projectResponse = await fetch(projectEndpoint, {
           cache: 'no-store',
+          credentials: 'include',
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
         }).catch(() => null)
 
@@ -647,6 +672,19 @@ function App() {
         ) {
           const raw = (await projectResponse.json()) as Partial<TrailProject> & {
             hikeStatus?: string
+            protected?: boolean
+            title?: string
+          }
+          // Carte PROTÉGÉE non déverrouillée : le serveur ne renvoie que des
+          // métadonnées (pas de `points`). On affiche l'écran de saisie du code,
+          // sans charger de contenu ni demander de ticket média.
+          if (raw.protected === true && !Array.isArray(raw.points)) {
+            if (typeof raw.title === 'string' && raw.title) setHikeTitle(raw.title)
+            setIsPublished(raw.hikeStatus !== 'draft')
+            setProtectedGate(true)
+            setAccessGranted(false)
+            setIsLoading(false)
+            return
           }
           // Une carte déjà chargée est considérée publiée sauf statut draft
           // explicite (les cartes historiques sans statut restent publiées).
@@ -665,8 +703,7 @@ function App() {
         // Ticket d'acces media (cookie pose) AVANT d'afficher, pour que les images
         // partent deja autorisees : en consultation (public) comme en Studio
         // (ticket proprietaire via le jeton Firebase deja recupere ci-dessus).
-        const ticketCode = hikeCode || onlineProject.accessCode || ''
-        if (ticketCode) await requestMediaTicket({ code: ticketCode }, authToken)
+        if (mapSlug) await requestMediaTicket({ code: mapSlug }, authToken)
         applyProject(onlineProject)
         // Trace en attente depuis l'onglet Traces : ajoutee a CETTE carte (non
         // sauvegardee), le proprietaire relit puis clique Sauvegarder.
@@ -698,16 +735,24 @@ function App() {
     }
 
     void loadTrail()
-  }, [applyProject, isNewBlankStudio, newTrailCode, hikeCode, isStudioMode])
+  }, [applyProject, isNewBlankStudio, newTrailCode, hikeCode, isStudioMode, mapSlug])
 
-  // Renouvellement du ticket d'acces media (~mi-vie) tant que la carte publique
-  // reste ouverte. Le tout premier ticket est obtenu pendant le chargement.
+  // Renouvellement du ticket d'acces media (~mi-vie) tant que la carte reste
+  // ouverte. Le tout premier ticket est obtenu au chargement (ou à la validation
+  // du code). On ne renouvelle pas tant qu'une carte protégée n'est pas ouverte.
   useEffect(() => {
-    const code = hikeCode || accessCode
-    if (!code) return
-    // En Studio, on re-signe avec le jeton Firebase (ticket propriétaire).
-    return startMediaTicketRefresh({ code }, isStudioMode ? getIdToken : undefined)
-  }, [isStudioMode, hikeCode, accessCode])
+    if (!mapSlug) return
+    if (protectedGate && !accessGranted) return
+    // Carte protégée déverrouillée par un visiteur : on renouvelle en renvoyant
+    // le code validé. En Studio, on re-signe avec le jeton Firebase (propriétaire).
+    const req = visitorCodeRef.current
+      ? { code: mapSlug, accessCode: visitorCodeRef.current }
+      : { code: mapSlug }
+    return startMediaTicketRefresh(
+      req,
+      isStudioMode ? getIdToken : undefined,
+    )
+  }, [isStudioMode, mapSlug, protectedGate, accessGranted])
 
   const combinedPoints = useMemo(
     () => traces.flatMap((trace) => trace.points),
@@ -893,9 +938,11 @@ function App() {
         headers,
         body: JSON.stringify({
           ...project,
+          // Identité de la carte = le slug (jamais le code d'accès secret).
+          slug: mapSlug,
           ...buildIndexMeta({
             title: snapshot.hikeTitle,
-            code: snapshot.accessCode.trim(),
+            code: mapSlug,
             distanceMeters: snapshot.stats.distanceMeters,
             elevationGainMeters: snapshot.stats.elevationGainMeters,
             pointCount: snapshot.points.length,
@@ -914,7 +961,7 @@ function App() {
         throw new Error(result?.message ?? 'Sauvegarde auto impossible.')
       }
       setSavedProjectSignature(snapshot.signature)
-      syncStudioUrlToCode(snapshot.accessCode.trim())
+      syncStudioUrlToCode(mapSlug)
       setSaveStatus('Modifs sauvegardées automatiquement.')
     } catch (saveError) {
       const message =
@@ -927,7 +974,7 @@ function App() {
     } finally {
       setIsAutosaving(false)
     }
-  }, [])
+  }, [mapSlug])
 
   // Publie en arrière-plan ~1,5 s après le dernier import (debounce), pour ne
   // plus perdre des médias déjà envoyés si la page se recharge.
@@ -1036,18 +1083,18 @@ function App() {
   const handleCopyLink = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(
-        window.location.origin + publicUrl(accessCode),
+        window.location.origin + publicUrl(mapSlug),
       )
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     } catch {
       setError('Copie du lien impossible.')
     }
-  }, [accessCode])
+  }, [mapSlug])
 
   const handleOpenConsultation = useCallback(() => {
-    openConsultationFromStudio(accessCode)
-  }, [accessCode])
+    openConsultationFromStudio(mapSlug)
+  }, [mapSlug])
 
   const openDashboard = useCallback(() => {
     window.location.assign('/dashboard')
@@ -1145,15 +1192,48 @@ function App() {
     setAccessCode(code)
   }, [])
 
-  const handleGrantAccess = useCallback(
-    (code: string): boolean => {
-      const granted = code.trim() === accessCode.trim() && accessCode.trim() !== ''
-      if (granted) {
-        setAccessGranted(true)
+  // Charge le contenu complet d'une carte protégée une fois le ticket obtenu
+  // (le cookie de grant est déjà posé). Renvoie true si le contenu est bien venu.
+  const loadProtectedContent = useCallback(async (): Promise<boolean> => {
+    if (!mapSlug) return false
+    try {
+      const res = await fetch(`/api/project?m=${encodeURIComponent(mapSlug)}`, {
+        cache: 'no-store',
+        credentials: 'include',
+      })
+      if (!res.ok) return false
+      const raw = (await res.json()) as Partial<TrailProject> & {
+        hikeStatus?: string
+        protected?: boolean
       }
-      return granted
+      if (raw.protected === true && !Array.isArray(raw.points)) return false
+      const project = normalizeProject(raw)
+      if (!project) return false
+      setIsPublished(raw.hikeStatus !== 'draft')
+      applyProject(project)
+      return true
+    } catch {
+      return false
+    }
+  }, [applyProject, mapSlug])
+
+  // Saisie du code par le VISITEUR : le serveur le valide (via /api/media-ticket)
+  // et ne pose le cookie de grant qu'en cas de succès. On charge alors le contenu.
+  const handleGrantAccess = useCallback(
+    async (code: string): Promise<boolean> => {
+      const trimmed = code.trim()
+      if (!trimmed || !mapSlug) return false
+      const refreshInMs = await requestMediaTicket({
+        code: mapSlug,
+        accessCode: trimmed,
+      })
+      if (refreshInMs === null) return false // code incorrect (401) ou erreur
+      visitorCodeRef.current = trimmed
+      const ok = await loadProtectedContent()
+      if (ok) setAccessGranted(true)
+      return ok
     },
-    [accessCode],
+    [mapSlug, loadProtectedContent],
   )
 
   const handleImportMedia = useCallback(async (files: File[]) => {
@@ -1161,8 +1241,8 @@ function App() {
       setSaveStatus('Saisis le mot de passe Studio avant un import media.')
       return
     }
-    if (!accessCode.trim()) {
-      setSaveStatus('Renseigne le code de la carte avant un import média.')
+    if (!mapSlug) {
+      setSaveStatus('Enregistre la carte avant un import média.')
       return
     }
 
@@ -1268,7 +1348,7 @@ function App() {
             fingerprint,
             adminPassword,
             idToken,
-            trailCode: accessCode,
+            trailCode: mapSlug,
             onProgress: (loaded) => {
               loadedByIndex[index] = loaded
               refreshProgress(file.name)
@@ -1282,7 +1362,7 @@ function App() {
                 fingerprint,
                 adminPassword,
                 idToken,
-                trailCode: accessCode,
+                trailCode: mapSlug,
                 kind: 'preview',
               }).catch(() => null)
             : null
@@ -1403,7 +1483,7 @@ function App() {
         : 'Medias envoyes. Publie la carte pour partager les points.',
     )
     if (importedMedia.length > 0) scheduleAutosave()
-  }, [accessCode, adminPassword, points, combinedPoints, mediaLibrary, scheduleAutosave])
+  }, [mapSlug, adminPassword, points, combinedPoints, mediaLibrary, scheduleAutosave])
 
   const handleImportDriveMedia = useCallback(async () => {
     if (!isGoogleDriveConfigured) {
@@ -1416,7 +1496,7 @@ function App() {
       setSaveStatus('Saisis le mot de passe Studio avant un import média.')
       return
     }
-    if (!accessCode.trim()) {
+    if (!mapSlug) {
       setSaveStatus('Renseigne le code de la carte avant un import média.')
       return
     }
@@ -1439,7 +1519,7 @@ function App() {
     } finally {
       setIsDriveImporting(false)
     }
-  }, [accessCode, adminPassword, handleImportMedia, isGoogleDriveConfigured])
+  }, [mapSlug, adminPassword, handleImportMedia, isGoogleDriveConfigured])
 
   const handleDismissReport = useCallback(() => {
     setImportReport(null)
@@ -1475,7 +1555,7 @@ function App() {
 
   const deleteStoredMedia = useCallback(
     async (media: ImportedMedia): Promise<void> => {
-      if (!accessCode.trim()) {
+      if (!mapSlug) {
         throw new Error('Renseigne le code de la carte avant la suppression.')
       }
       const idToken = (await getIdToken()) ?? undefined
@@ -1487,10 +1567,10 @@ function App() {
         thumbnailUrl: media.thumbnailUrl,
         adminPassword,
         idToken,
-        trailCode: accessCode,
+        trailCode: mapSlug,
       })
     },
-    [accessCode, adminPassword],
+    [mapSlug, adminPassword],
   )
 
   const handleDeleteMedia = useCallback(
@@ -1528,7 +1608,7 @@ function App() {
       setSaveStatus('Saisis le mot de passe Studio avant le nettoyage.')
       return
     }
-    if (!accessCode.trim()) {
+    if (!mapSlug) {
       setSaveStatus('Renseigne le code de la carte avant le nettoyage.')
       return
     }
@@ -1544,7 +1624,7 @@ function App() {
         usedUrls: usedMediaUrls,
         adminPassword,
         idToken,
-        trailCode: accessCode,
+        trailCode: mapSlug,
       })
       removeMediaLocally(unusedMedia, { detachPoints: false })
       const cleanupDetails = [
@@ -1575,7 +1655,7 @@ function App() {
       setIsCleaningUnusedMedia(false)
     }
   }, [
-    accessCode,
+    mapSlug,
     adminPassword,
     mediaLibrary,
     points,
@@ -1800,7 +1880,7 @@ function App() {
           thumbnailUrl: ignoredMedia.thumbnailUrl,
           adminPassword,
           idToken,
-          trailCode: accessCode,
+          trailCode: mapSlug,
         })
         setSaveStatus('Fichier ignore et supprime du stockage.')
       } catch (deleteError) {
@@ -1811,14 +1891,14 @@ function App() {
         setSaveStatus(`Fichier ignore, mais suppression R2 impossible : ${message}`)
       }
     },
-    [accessCode, adminPassword, mediaLibrary, scheduleAutosave],
+    [mapSlug, adminPassword, mediaLibrary, scheduleAutosave],
   )
 
   // Import depuis la fiche d'un point : upload du fichier puis rattachement
   // immédiat comme média du point (photo du haut de la fiche).
   const handleAttachMedia = useCallback(
     async (pointId: string, file: File) => {
-      if (!accessCode.trim()) {
+      if (!mapSlug) {
         setSaveStatus('Renseigne le code de la carte avant un import média.')
         return
       }
@@ -1854,7 +1934,7 @@ function App() {
               fingerprint,
               adminPassword,
               idToken,
-              trailCode: accessCode,
+              trailCode: mapSlug,
             })
         const preview = existing?.thumbnailUrl
           ? null
@@ -1867,7 +1947,7 @@ function App() {
                 fingerprint,
                 adminPassword,
                 idToken,
-                trailCode: accessCode,
+                trailCode: mapSlug,
                 kind: 'preview',
               }).catch(() => null)
             : null
@@ -1936,7 +2016,7 @@ function App() {
         setIsUploading(false)
       }
     },
-    [accessCode, adminPassword, mediaLibrary, scheduleAutosave],
+    [mapSlug, adminPassword, mediaLibrary, scheduleAutosave],
   )
 
   const handleAddPoint = useCallback((point: TrailPoint) => {
@@ -2141,8 +2221,8 @@ function App() {
   }, [])
 
   const handleSaveProject = useCallback(async () => {
-    if (!accessCode.trim()) {
-      setSaveStatus('Le code de la carte est obligatoire pour créer son dossier R2.')
+    if (!mapSlug) {
+      setSaveStatus('Identifiant de carte manquant : rouvre-la depuis le tableau de bord.')
       return
     }
     const headers = await saveAuthHeaders(adminPassword)
@@ -2173,9 +2253,11 @@ function App() {
         headers,
         body: JSON.stringify({
           ...project,
+          // Identité de la carte = le slug (jamais le code d'accès secret).
+          slug: mapSlug,
           ...buildIndexMeta({
             title: hikeTitle,
-            code: accessCode.trim(),
+            code: mapSlug,
             distanceMeters: stats.distanceMeters,
             elevationGainMeters: stats.elevationGainMeters,
             pointCount: points.length,
@@ -2200,9 +2282,9 @@ function App() {
       const folder =
         result && 'folder' in result && typeof result.folder === 'string'
           ? result.folder
-          : accessCode.trim()
+          : mapSlug
       setSavedProjectSignature(submittedSignature)
-      syncStudioUrlToCode(accessCode.trim())
+      syncStudioUrlToCode(mapSlug)
       setSaveStatus(`Carte enregistrée : ${folder}.`)
       setError(null)
     } catch (saveError) {
@@ -2221,6 +2303,7 @@ function App() {
     adminPassword,
     combinedPoints,
     currentProjectSignature,
+    mapSlug,
     mediaLibrary,
     points,
     pointsSourceName,
@@ -2231,7 +2314,8 @@ function App() {
   ])
 
   // Carte protégée : on saisit le code avant de charger le moteur cartographique.
-  const needsAccess = !isStudioMode && Boolean(accessCode) && !accessGranted
+  // `protectedGate` est posé quand le serveur n'a renvoyé que des métadonnées.
+  const needsAccess = !isStudioMode && protectedGate && !accessGranted
   // On lève le voile plein écran dès que la carte est prête, que la porte de
   // code la couvre, ou qu'on bascule sur l'écran « indisponible » (MapLibre
   // n'étant alors jamais monté, `mapReady` ne passerait jamais à true).

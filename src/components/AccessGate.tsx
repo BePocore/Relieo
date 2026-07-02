@@ -3,17 +3,29 @@ import type { FormEvent } from 'react'
 import { Compass, LockKeyhole } from 'lucide-react'
 
 type AccessGateProps = {
-  onSubmit: (code: string) => boolean
+  // Validation CÔTÉ SERVEUR : renvoie true si le code est bon (et le contenu
+  // chargé), false sinon. Asynchrone (aller-retour réseau).
+  onSubmit: (code: string) => Promise<boolean>
 }
 
 export function AccessGate({ onSubmit }: AccessGateProps) {
   const [code, setCode] = useState('')
   const [error, setError] = useState(false)
+  const [checking, setChecking] = useState(false)
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const granted = onSubmit(code)
-    if (!granted) setError(true)
+    if (checking || !code.trim()) return
+    setChecking(true)
+    setError(false)
+    try {
+      const granted = await onSubmit(code)
+      if (!granted) setError(true)
+    } catch {
+      setError(true)
+    } finally {
+      setChecking(false)
+    }
   }
 
   return (
@@ -43,8 +55,12 @@ export function AccessGate({ onSubmit }: AccessGateProps) {
 
         {error ? <p className="access-error">Code incorrect.</p> : null}
 
-        <button className="primary-action" type="submit" disabled={!code.trim()}>
-          Entrer
+        <button
+          className="primary-action"
+          type="submit"
+          disabled={!code.trim() || checking}
+        >
+          {checking ? 'Vérification…' : 'Entrer'}
         </button>
       </form>
     </div>

@@ -125,6 +125,7 @@ type PortalView =
 // Entrée du registre serveur (api/hikes), source de vérité du dashboard.
 type BackendHike = {
   code: string
+  slug?: string
   ownerId: string
   title: string
   status: 'published' | 'draft'
@@ -142,10 +143,11 @@ const backendHikes = (
 ): PortalHike[] => {
   return backend
     .map((entry) => ({
-      id: entry.code,
+      id: entry.slug ?? entry.code,
       ownerId: entry.ownerId || ownerId,
       title: entry.title || entry.code,
       code: entry.code,
+      slug: entry.slug ?? entry.code,
       status: entry.status,
       distanceKm: entry.distanceKm,
       elevationGain: entry.elevationGain,
@@ -428,6 +430,15 @@ function AvatarCropDialog({
   )
 }
 
+// Identifiant d'URL opaque : 12 caractères alphanumériques minuscules (folder-safe,
+// donc trailFolder le conserve intact côté serveur → folder == slug). Non devinable.
+const generateMapSlug = (): string => {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  const bytes = new Uint8Array(12)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
+}
+
 function CreateHikeDialog({
   onClose,
   onCreate,
@@ -450,14 +461,18 @@ function CreateHikeDialog({
         <button aria-label="Fermer" className="icon-button modal-close" type="button" onClick={onClose}><X size={18} /></button>
         <span className="modal-icon"><Mountain size={22} /></span>
         <h2 id="create-hike-title">Nouvelle carte</h2>
-        <p>Un Studio 3D vierge sera préparé avec ce code.</p>
+        <p>
+          Un Studio 3D vierge sera préparé. Le lien de partage sera un
+          identifiant aléatoire ; le code d’accès ci-dessous, secret, sera
+          demandé aux visiteurs et n’apparaîtra jamais dans le lien.
+        </p>
         <label>
           <span>Nom de la carte</span>
           <input autoFocus placeholder="Tour du Mont Blanc" value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
         <label>
-          <span>Code unique</span>
-          <input placeholder="TMB-2026" value={code} onChange={(event) => setCode(event.target.value)} />
+          <span>Code d’accès (secret)</span>
+          <input placeholder="ex : montblanc2026" value={code} onChange={(event) => setCode(event.target.value)} />
         </label>
         <button
           className="portal-primary"
@@ -487,9 +502,9 @@ function HikeCard({
   //   `code` identifie laquelle (ignoré tant que le backend reste mono-rando).
   // Brouillon → ouvre un Studio 3D vierge en local (`new`).
   const title = `&title=${encodeURIComponent(hike.title)}`
-  // Publiée ou brouillon : on ouvre la carte par son code (le Studio recharge le
-  // contenu sauvegardé ; un brouillon n'est servi qu'à son propriétaire/admin).
-  const openHref = `/?mode=studio&code=${encodeURIComponent(hike.code)}${title}`
+  // Publiée ou brouillon : on ouvre la carte par son slug opaque (le Studio
+  // recharge le contenu ; un brouillon n'est servi qu'à son propriétaire/admin).
+  const openHref = `/?mode=studio&m=${encodeURIComponent(hike.slug ?? hike.code)}${title}`
 
   // Menu « 3 points » de gestion de la carte (en haut de la cover).
   const [menuOpen, setMenuOpen] = useState(false)
@@ -1662,10 +1677,18 @@ function DashboardShell({
     [hikes],
   )
 
-  const createHike = (title: string, code: string) => {
+  const createHike = (title: string, accessCode: string) => {
     setCreateOpen(false)
+    // Identifiant d'URL OPAQUE (aléatoire, folder-safe) : ne révèle rien. Le code
+    // d'accès secret est transmis au Studio via sessionStorage (jamais l'URL).
+    const slug = generateMapSlug()
+    try {
+      sessionStorage.setItem(`relieo.newMapCode.${slug}`, accessCode)
+    } catch {
+      // sessionStorage indisponible : le propriétaire saisira le code au Studio.
+    }
     window.location.assign(
-      `/?mode=studio&new=${encodeURIComponent(code)}&title=${encodeURIComponent(title)}`,
+      `/?mode=studio&new=${encodeURIComponent(slug)}&title=${encodeURIComponent(title)}`,
     )
   }
 

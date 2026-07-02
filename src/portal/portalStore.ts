@@ -21,6 +21,9 @@ export type PortalHike = {
   ownerId: string
   title: string
   code: string
+  // Identifiant opaque d'URL (`?m=<slug>`). Absent sur les cartes historiques
+  // non migrées → on retombe sur `code`.
+  slug?: string
   status: 'published' | 'draft'
   distanceKm: number
   elevationGain: number

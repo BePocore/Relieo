@@ -1,11 +1,14 @@
 // Côté client : demande de ticket d'accès aux médias (le serveur pose un cookie
 // httpOnly `.relieo.fr` renvoyé automatiquement aux requêtes media.relieo.fr).
 //
-//  - { code }          : une carte (consultation publique ou Studio)
-//  - { scope: 'user' } : toutes les cartes de l'utilisateur (dashboard)
-//  - { scope: 'all' }  : tout (admin)
+//  - { code }              : une carte (consultation publique ou Studio)
+//  - { code, accessCode }  : carte protégée — le code d'accès est validé serveur
+//  - { scope: 'user' }     : toutes les cartes de l'utilisateur (dashboard)
+//  - { scope: 'all' }      : tout (admin)
 
-export type TicketRequest = { code: string } | { scope: 'user' | 'all' }
+export type TicketRequest =
+  | { code: string; accessCode?: string }
+  | { scope: 'user' | 'all' }
 
 // Renvoie le délai de rafraîchissement conseillé (ms), ou null si échec.
 export const requestMediaTicket = async (

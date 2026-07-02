@@ -724,7 +724,6 @@ export function StudioPanel({
   const driveImportDisabled =
     !googleDriveConfigured ||
     !writeAuthReady ||
-    !accessCode.trim() ||
     isUploading ||
     isDriveImporting
   const driveImportHint = !googleDriveConfigured
@@ -733,9 +732,9 @@ export function StudioPanel({
       ? 'Ouverture de Google Drive...'
       : isUploading
         ? 'Envoi vers le stockage...'
-        : writeAuthReady && accessCode.trim()
+        : writeAuthReady
           ? 'Choisir des photos / vidéos'
-          : 'Connexion et code carte requis'
+          : 'Connexion requise'
   const saveStatusTone = saveStatus ? getSaveStatusTone(saveStatus) : null
   const saveStatusIcon =
     saveStatusTone === 'error' ? (
@@ -941,21 +940,24 @@ export function StudioPanel({
         <label className="studio-password">
           <span>
             <KeyRound aria-hidden="true" size={15} />
-            Code carte / accès visiteurs
+            Code d’accès (secret)
           </span>
           <input
             autoComplete="off"
             type="text"
             value={accessCode}
             onChange={(event) => onAccessCodeChange(event.target.value)}
-            placeholder="Exemple : Halsa"
+            placeholder="Laisse vide pour garder le code actuel"
           />
         </label>
+        <p className="studio-publish-hint">
+          Le code d’accès n’apparaît jamais dans le lien. Les visiteurs devront le
+          saisir pour consulter la carte. Vide = code inchangé.
+        </p>
         <button
           className="primary-action"
           disabled={
             !writeAuthReady ||
-            !accessCode.trim() ||
             isSaving ||
             isUploading ||
             isDriveImporting
@@ -1261,15 +1263,15 @@ export function StudioPanel({
               <small>
                 {isUploading
                   ? 'Envoi vers le stockage...'
-                  : writeAuthReady && accessCode.trim()
+                  : writeAuthReady
                     ? `${mediaLibrary.length} média(s)`
-                    : 'Connexion et code carte requis'}
+                    : 'Connexion requise'}
               </small>
             </span>
             <input
               type="file"
               accept="image/*,video/*,.heic,.heif,.mp4,.mov,.m4v,image/heic,image/heif,video/mp4,video/quicktime"
-              disabled={!writeAuthReady || !accessCode.trim() || isUploading}
+              disabled={!writeAuthReady || isUploading}
               multiple
               onChange={(event) => {
                 void onImportMedia(Array.from(event.target.files ?? []))
@@ -1286,7 +1288,6 @@ export function StudioPanel({
               title="Supprime de R2 seulement les médias importés qui ne sont utilisés par aucun point."
               disabled={
                 !writeAuthReady ||
-                !accessCode.trim() ||
                 isUploading ||
                 isDriveImporting ||
                 isCleaningUnusedMedia
@@ -1338,7 +1339,6 @@ export function StudioPanel({
                   title="Supprimer ce média du stockage sans supprimer le point"
                   disabled={
                     !writeAuthReady ||
-                    !accessCode.trim() ||
                     isUploading ||
                     isDriveImporting ||
                     isCleaningUnusedMedia ||
