@@ -539,7 +539,6 @@ export function AdminApp({
   const [rejectMediaMessage, setRejectMediaMessage] = useState('')
   // Retour du dernier scan déclenché à la main.
   const [scanInfo, setScanInfo] = useState<string | null>(null)
-  const [migrateInfo, setMigrateInfo] = useState<string | null>(null)
   const [mediaHistoryFrom, setMediaHistoryFrom] = useState(() =>
     dateInputValue(addDays(new Date(), -29)),
   )
@@ -892,38 +891,6 @@ export function AdminApp({
       await load()
     } catch {
       setScanInfo('Scan impossible.')
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  // Migration one-shot : donne un slug aux cartes historiques et transforme leur
-  // code d'accès en clair en empreinte (idempotent, aucun déplacement R2).
-  const migrateSlugs = async () => {
-    setBusyAction('migrate-slugs')
-    setMigrateInfo('Migration en cours…')
-    try {
-      const response = await authFetch('/api/admin/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'migrate-slugs' }),
-      })
-      const data = (await response.json().catch(() => null)) as {
-        ok?: boolean
-        migrated?: number
-        hashed?: number
-        message?: string
-      } | null
-      if (!response.ok || !data?.ok) {
-        setMigrateInfo(data?.message ?? 'Migration impossible.')
-      } else {
-        setMigrateInfo(
-          `Migration OK : ${data.migrated ?? 0} carte(s) migrée(s), ${data.hashed ?? 0} code(s) d’accès sécurisé(s).`,
-        )
-        await load()
-      }
-    } catch {
-      setMigrateInfo('Migration impossible.')
     } finally {
       setBusyAction(null)
     }
@@ -2431,30 +2398,6 @@ export function AdminApp({
               {emailPanel}
               {revenuePanel}
               {growthPanel}
-              <section className="admin-panel" aria-label="Maintenance">
-                <h2>Maintenance</h2>
-                <p>
-                  Sécurise les cartes historiques : leur donne un identifiant de
-                  lien opaque et transforme leur code d’accès en empreinte
-                  serveur. À lancer une fois. Sans effet si déjà fait.
-                </p>
-                <div className="admin-mediamod-toolbar">
-                  <button
-                    className="admin-refresh"
-                    type="button"
-                    disabled={busyAction === 'migrate-slugs'}
-                    onClick={() => void migrateSlugs()}
-                  >
-                    <ShieldAlert size={16} />{' '}
-                    {busyAction === 'migrate-slugs'
-                      ? 'Migration…'
-                      : 'Migrer les cartes (slugs + codes)'}
-                  </button>
-                  {migrateInfo ? (
-                    <span className="admin-mediamod-scaninfo">{migrateInfo}</span>
-                  ) : null}
-                </div>
-              </section>
             </>
           ) : section === 'costs' ? (
             costsView

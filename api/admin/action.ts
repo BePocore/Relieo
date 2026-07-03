@@ -16,7 +16,6 @@ import {
   removeOwnerFromIndex,
   upsertHikeIndex,
 } from '../../server/hikeIndex.js'
-import { hashAccessCode } from '../../server/mediaTicket.js'
 import {
   appendModerationHistory,
   approveModerationItem,
@@ -75,7 +74,6 @@ type ActionBody = {
     | 'media-mod'
     | 'scan-media'
     | 'notify-media-review'
-    | 'migrate-slugs'
   // set-plan
   plan?: string
   // map + user-action + reply-appeal
@@ -610,46 +608,6 @@ const autoRejectFlaggedMedia = async (): Promise<number> => {
 
 // Endpoint admin unique pour TOUTES les écritures (anciens `set-plan`, `map`,
 // `user-action`, et le marquage-lu des notifications). Aiguille sur `action`.
-// Migration one-shot (idempotente) : donne un `slug` aux cartes historiques qui
-// n'en ont pas (slug = folder, donc AUCUN déplacement R2), transforme leur code
-// d'accès en clair (`project.json.accessCode`) en empreinte salée dans l'index
-// (`accessCodeHash`), et retire le plaintext du project.json stocké. À lancer une
-// fois après le déploiement, puis on peut retirer ce cas.
-const migrateSlugs = async (): Promise<Response> => {
-  const hikes = await readHikeIndex()
-  let migrated = 0
-  let hashed = 0
-  const results: Array<{ folder: string; slug: string; protected: boolean }> = []
-  for (const hike of hikes) {
-    if (hike.slug) continue // déjà migrée
-    const slug = hike.folder
-    let accessCodeHash: string | undefined
-    const projectKey = trailLocation(hike.ownerId, hike.folder).projectKey
-    const body = await r2GetText(projectKey)
-    if (body) {
-      try {
-        const project = JSON.parse(body) as Record<string, unknown>
-        const plain =
-          typeof project.accessCode === 'string' ? project.accessCode.trim() : ''
-        if (plain) {
-          accessCodeHash = await hashAccessCode(plain, slug)
-          hashed += 1
-        }
-        if ('accessCode' in project) {
-          delete project.accessCode
-          await r2PutText(projectKey, JSON.stringify(project))
-        }
-      } catch {
-        // project.json illisible : on migre au moins le slug.
-      }
-    }
-    await upsertHikeIndex({ folder: hike.folder, slug, accessCodeHash })
-    migrated += 1
-    results.push({ folder: hike.folder, slug, protected: Boolean(accessCodeHash) })
-  }
-  return json({ ok: true, migrated, hashed, results })
-}
-
 export async function POST(request: Request) {
   if (!hasFirebaseAdmin() || !hasR2Config()) {
     return json({ message: 'Firebase Admin et Cloudflare R2 sont requis.' }, 503)
@@ -720,8 +678,6 @@ export async function POST(request: Request) {
         if (ids.length > 0) await markAdminNotificationsRead(ids)
         return json({ ok: true })
       }
-      case 'migrate-slugs':
-        return migrateSlugs()
       default:
         return json({ message: 'action inconnue.' }, 400)
     }
