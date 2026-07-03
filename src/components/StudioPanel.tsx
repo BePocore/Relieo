@@ -929,14 +929,9 @@ export function StudioPanel({
       <ElevationProfile traces={traces} stats={stats} />
 
       <div className="studio-actions">
-        {firebaseEnabled ? (
-          <div className="studio-password">
-            <span>
-              <LockKeyhole aria-hidden="true" size={15} />
-              Compte Firebase connecté
-            </span>
-          </div>
-        ) : (
+        {/* Sans Firebase (mode de repli), on demande le mot de passe Studio.
+            Connecté via Firebase, le jeton suffit : aucun indicateur affiché. */}
+        {firebaseEnabled ? null : (
           <label className="studio-password">
             <span>
               <LockKeyhole aria-hidden="true" size={15} />
