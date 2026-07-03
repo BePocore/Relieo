@@ -54,22 +54,33 @@ const buildTicks = (rawMax: number): number[] => {
   return ticks
 }
 
-// Courbe lissée (Catmull-Rom -> Béziers).
+// Courbe lissée monotone (tangentes Fritsch-Carlson -> Béziers) : contrairement
+// à un Catmull-Rom, elle ne déborde jamais des valeurs (pas de creux sous zéro
+// juste avant un pic qui suit une série plate).
 const smoothPath = (pts: Array<{ x: number; y: number }>): string => {
-  if (pts.length === 0) return ''
-  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`
-  const d = [`M ${pts[0].x} ${pts[0].y}`]
-  for (let i = 0; i < pts.length - 1; i += 1) {
-    const p0 = pts[i - 1] ?? pts[i]
-    const p1 = pts[i]
-    const p2 = pts[i + 1]
-    const p3 = pts[i + 2] ?? p2
-    const t = 0.16
-    const c1x = p1.x + (p2.x - p0.x) * t
-    const c1y = p1.y + (p2.y - p0.y) * t
-    const c2x = p2.x - (p3.x - p1.x) * t
-    const c2y = p2.y - (p3.y - p1.y) * t
-    d.push(`C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`)
+  const n = pts.length
+  if (n === 0) return ''
+  if (n === 1) return `M ${pts[0].x} ${pts[0].y}`
+  const slopes: number[] = []
+  for (let i = 0; i < n - 1; i += 1) {
+    slopes.push((pts[i + 1].y - pts[i].y) / (pts[i + 1].x - pts[i].x))
+  }
+  const tangents: number[] = [slopes[0]]
+  for (let i = 1; i < n - 1; i += 1) {
+    const a = slopes[i - 1]
+    const b = slopes[i]
+    tangents.push(a * b <= 0 ? 0 : (2 * a * b) / (a + b))
+  }
+  tangents.push(slopes[n - 2])
+  const r = (v: number) => Math.round(v * 100) / 100
+  const d = [`M ${r(pts[0].x)} ${r(pts[0].y)}`]
+  for (let i = 0; i < n - 1; i += 1) {
+    const dx = (pts[i + 1].x - pts[i].x) / 3
+    d.push(
+      `C ${r(pts[i].x + dx)} ${r(pts[i].y + tangents[i] * dx)}` +
+        ` ${r(pts[i + 1].x - dx)} ${r(pts[i + 1].y - tangents[i + 1] * dx)}` +
+        ` ${r(pts[i + 1].x)} ${r(pts[i + 1].y)}`,
+    )
   }
   return d.join(' ')
 }
@@ -94,7 +105,10 @@ function ViewsChart({ points }: { points: DayPoint[] }) {
     return { ticks, xOf, yOf, line, area }
   }, [points])
 
+  // Libellés ancrés sur le dernier jour puis un tous les `labelStep` en
+  // remontant : le dernier est toujours affiché sans chevaucher son voisin.
   const labelStep = Math.max(1, Math.ceil(points.length / 8))
+  const showLabel = (i: number) => (points.length - 1 - i) % labelStep === 0
 
   const onMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -160,7 +174,7 @@ function ViewsChart({ points }: { points: DayPoint[] }) {
         ) : null}
 
         {points.map((point, i) =>
-          i % labelStep === 0 || i === points.length - 1 ? (
+          showLabel(i) ? (
             <text
               className="stats-chart-axis"
               key={point.date}
