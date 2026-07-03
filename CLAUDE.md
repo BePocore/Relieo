@@ -68,9 +68,18 @@ Semantic color tokens live in `src/index.css` (light by default, a blue-night pa
 
 **FPS gotcha (`.app-shell` in `App.css`)**: the map (public consultation **and** Studio) stays dark regardless of theme — light translucent panels + `backdrop-filter` over the WebGL canvas tank the framerate. Theme switching on the map must only swap the **global** local variables on `.app-shell` (`--bg`, `--text`, `--glass`, `--glass-strong`...), **never** per-element colors of animated MapLibre markers: those markers are repositioned every frame, and resolving `var()` on every style recalc (dozens of markers × 60 fps) collapses the render — so animated-element colors are kept as literals. The dark background is unified (blue-night `#0f1623`, matching the dashboard) across dashboard and Studio.
 
-### Access control
+### Access control (server-enforced code, opaque URL slug) — refonte 2026-07-02
 
-The `accessCode` gate (`components/AccessGate.tsx`) is **client-side only** — the project JSON is still readable in the `/api/project` response, so this is a light barrier for sharing, not real security. Studio mode bypasses it. Studio is reachable from the public view by a hidden gesture: long-press the compass logo for 1.5s.
+A map's URL now carries an **opaque `slug`** (`?m=<slug>`), decoupled from three things it used to be conflated with: the storage `folder`, and the **access code**. The **access code is a server-side secret**, stored only as a **salted SHA-256 hash** (`accessCodeHash`) in the R2 index (`server/hikeIndex.ts`), **never** in the URL, **never** returned to the client, **never** stored in `project.json` (the PUT handler strips it).
+
+- **Identity**: `HikeIndexEntry.slug` (opaque, folder-safe → `folder === trailFolder(slug)`). `resolveHikeEntry(id)` resolves a slug first, then falls back to `folder` for legacy `?code=` links. New maps get a random opaque slug (`generateMapSlug` in `PortalApp.tsx`); Halsa keeps `slug === folder === "Halsa"` (no R2 move).
+- **Enforcement**: for a protected map (`accessCodeHash` present) and a non-owner, `GET /api/project` returns **metadata only** (`{ protected:true, slug, title, coverUrl, hikeStatus }`, no points/media/traces) until the visitor has a **valid grant** — a valid media-ticket cookie for the map's prefix (`verifyTicket` in `server/mediaTicket.ts`). `POST /api/media-ticket` **requires the correct `accessCode`** for a protected map before issuing a ticket, so **content AND media are both gated** (the videur serves nothing without a ticket). This reuses the existing HMAC ticket as the access grant → **no new Vercel function**.
+- **Client**: `AccessGate.tsx` submits the code to the server (async); on success the ticket cookie is set and `App.tsx` reloads the full content. The visitor's validated code is kept in a ref to renew the ticket (~60 s). The Studio's "Code d'accès (secret)" field is **write-only** (empty on load = unchanged); the map identity is the slug, not this field. `owner`/admin (Firebase token) always get full content, no code needed.
+- **Migration**: one-shot admin action `migrate-slugs` (`api/admin/action.ts`, button in the admin console → Maintenance) gives historical maps a slug (= folder, no R2 move), hashes their plaintext `project.json.accessCode` into `accessCodeHash`, and strips the plaintext. **Idempotent** — run once after deploy, then the case can be removed.
+- Studio is reachable from the public view by a hidden gesture: long-press the compass logo for 1.5s.
+
+> ⚠️ Not exercised locally (server secrets are Preview/Production-only). Verify on a deployment: metadata-only without a valid grant, wrong code → 401, right code → content, direct `media.relieo.fr` URL refused without ticket.
+> **TODO** (noted): move "change access code" out of the Studio into the dashboard 3-dots menu.
 
 ### Media access control (videur Cloudflare)
 
