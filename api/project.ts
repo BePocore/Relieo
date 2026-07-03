@@ -32,6 +32,7 @@ import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { isAdminUser } from '../server/admin.js'
 import { readModeration } from '../server/moderation.js'
 import {
+  collectUnservableMedia,
   filterServableMedia,
   moderationEnforced,
   readBlockedIds,
@@ -319,17 +320,33 @@ export async function GET(request: Request) {
       // On ne renvoie JAMAIS le code d'accès (il n'est plus stocké en clair,
       // mais on nettoie par sécurité les project.json historiques).
       delete project.accessCode
-      // Modération (couche 2) : pour un VISITEUR public, on retire les médias
-      // non validés / flaggés (le videur les refuserait de toute façon).
-      if (moderationEnforced() && !isOwnerOrAdmin) {
+      // Modération : pour un VISITEUR public, on retire les médias non validés /
+      // flaggés (le videur les refuserait de toute façon). Pour le PROPRIÉTAIRE /
+      // admin, on ne masque rien mais on signale les médias en attente pour le
+      // badge « vérification en cours » du studio.
+      let moderationPending: string[] = []
+      if (moderationEnforced()) {
         const [scanned, blocked] = await Promise.all([
           readScannedIds(),
           readBlockedIds(),
         ])
-        project = filterServableMedia(project, scanned, blocked)
+        if (isOwnerOrAdmin) {
+          moderationPending = collectUnservableMedia(project, scanned, blocked)
+        } else {
+          project = filterServableMedia(project, scanned, blocked)
+        }
       }
       return Response.json(
-        { ...project, hikeStatus: entry.status, slug, folder: entry.folder },
+        {
+          ...project,
+          hikeStatus: entry.status,
+          slug,
+          folder: entry.folder,
+          // Visibilité de la carte (pour le toggle du studio) : protégée = un
+          // code d'accès est en place.
+          isProtected: Boolean(entry.accessCodeHash),
+          moderationPending,
+        },
         { headers: jsonHeaders },
       )
     } catch {
@@ -446,14 +463,20 @@ export async function PUT(request: Request) {
     const status: 'draft' | 'published' =
       meta.hikeStatus === 'draft' ? 'draft' : 'published'
 
+    // Visibilité explicite : `accessMode: 'public'` rend la carte publique
+    // (efface tout code d'accès). Absent → comportement historique (carte
+    // privée : on garde ou on remplace le code selon `accessCode`).
+    const makePublic = meta.accessMode === 'public'
     // Code d'accès SECRET (write-only) : s'il est fourni, on (re)calcule son
     // empreinte salée par le slug ; sinon on conserve celle en place. Jamais
-    // stocké en clair.
+    // stocké en clair. `null` = effacer (carte publique).
     const submittedCode =
       typeof meta.accessCode === 'string' ? meta.accessCode.trim() : ''
-    const accessCodeHash = submittedCode
-      ? await hashAccessCode(submittedCode, canonicalSlug)
-      : existing?.accessCodeHash
+    const accessCodeHash: string | null | undefined = makePublic
+      ? null
+      : submittedCode
+        ? await hashAccessCode(submittedCode, canonicalSlug)
+        : existing?.accessCodeHash
 
     // On ne persiste JAMAIS le code d'accès ni le slug dans project.json.
     const toStore = { ...payload }

@@ -471,3 +471,32 @@ export const filterServableMedia = (
       : {}),
   }
 }
+
+/**
+ * Inverse de `filterServableMedia` : renvoie les URLs des médias du projet NON servables
+ * publiquement (non scannés ou flaggés). Sert à afficher au PROPRIÉTAIRE, en studio, un
+ * badge « vérification en cours » sur ses médias pas encore validés (le visiteur public,
+ * lui, ne les voit pas). N'inclut que des URLs R2 (une URL externe est ignorée).
+ */
+export const collectUnservableMedia = (
+  project: FilterableProject,
+  scanned: Set<string>,
+  blocked: Set<string>,
+): string[] => {
+  const pending = new Set<string>()
+  const check = (url: string | undefined): void => {
+    if (!url) return
+    const key = r2KeyFromPublicUrl(url)
+    if (!key) return
+    if (!isPubliclyServable(key, scanned, blocked)) pending.add(url)
+  }
+  for (const media of project.mediaLibrary ?? []) {
+    check(media.url)
+    check(media.thumbnailUrl)
+  }
+  for (const point of project.points ?? []) {
+    check(point.image)
+    check(point.video)
+  }
+  return Array.from(pending)
+}

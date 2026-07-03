@@ -35,6 +35,9 @@ export type MapLibreTrailMapProps = {
   editable?: boolean
   createPointOnClick?: boolean
   flat2D?: boolean
+  // URLs des médias non validés par la modération : marqueur badgé « ! » en
+  // studio (le propriétaire les voit ; le public ne les reçoit même pas).
+  pendingMediaUrls?: string[]
   videoPosters?: Record<string, string>
   framedThumbnails?: Record<string, string>
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
@@ -215,6 +218,7 @@ export function MapLibreTrailMap({
   editable = false,
   createPointOnClick = false,
   flat2D = false,
+  pendingMediaUrls,
   videoPosters = {},
   onMovePoint,
   onCreatePoint,
@@ -532,10 +536,12 @@ export function MapLibreTrailMap({
         ),
       )
 
+      const pendingSet = new Set(pendingMediaUrls ?? [])
       const features: Array<Feature<Point>> = []
       const mediaMarkers: Array<{
         point: TrailPoint
         thumbnailSource: string
+        pending: boolean
       }> = []
       for (let index = 0; index < points.length; index += 1) {
         const point = points[index]
@@ -547,7 +553,10 @@ export function MapLibreTrailMap({
             : media?.kind === 'video'
               ? (media.thumbnailSrc ?? videoPosters[media.src])
               : undefined
-        if (thumbnailSource) mediaMarkers.push({ point, thumbnailSource })
+        // Média non validé par la modération : badge « ! » (studio seulement).
+        const mediaUrl = point.image ?? point.video
+        const pending = Boolean(editable && mediaUrl && pendingSet.has(mediaUrl))
+        if (thumbnailSource) mediaMarkers.push({ point, thumbnailSource, pending })
         features.push({
           type: 'Feature',
           properties: {
@@ -580,6 +589,14 @@ export function MapLibreTrailMap({
             }
             image.draggable = false
             element.appendChild(image)
+            if (job.pending) {
+              const badge = document.createElement('span')
+              badge.className = 'marker-mod-badge'
+              badge.setAttribute('aria-hidden', 'true')
+              badge.title = 'Modération en cours, non visible du public'
+              badge.textContent = '!'
+              element.appendChild(badge)
+            }
             element.addEventListener('click', (event) => {
               event.stopPropagation()
               callbacksRef.current.onMarkerClick(job.point)
@@ -651,6 +668,7 @@ export function MapLibreTrailMap({
     styleReady,
     compact,
     editable,
+    pendingMediaUrls,
   ])
 
   useEffect(() => {

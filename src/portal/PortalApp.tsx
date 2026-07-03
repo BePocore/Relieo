@@ -23,6 +23,7 @@ import {
   EyeOff,
   FolderKanban,
   Gauge,
+  Globe,
   HardDrive,
   Image,
   KeyRound,
@@ -448,6 +449,11 @@ function CreateHikeDialog({
 }) {
   const [title, setTitle] = useState('')
   const [code, setCode] = useState('')
+  // Défaut : carte privée (une carte ne devient publique que sur choix explicite).
+  const [isPublic, setIsPublic] = useState(false)
+
+  // Une carte publique n'a pas besoin de code ; une carte privée l'exige.
+  const ready = title.trim() !== '' && (isPublic || code.trim() !== '')
 
   return (
     <div className="portal-modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -463,22 +469,55 @@ function CreateHikeDialog({
         <h2 id="create-hike-title">Nouvelle carte</h2>
         <p>
           Un Studio 3D vierge sera préparé. Le lien de partage sera un
-          identifiant aléatoire ; le code d’accès ci-dessous, secret, sera
-          demandé aux visiteurs et n’apparaîtra jamais dans le lien.
+          identifiant aléatoire.
         </p>
         <label>
           <span>Nom de la carte</span>
           <input autoFocus placeholder="Tour du Mont Blanc" value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
-        <label>
-          <span>Code d’accès (secret)</span>
-          <input placeholder="ex : montblanc2026" value={code} onChange={(event) => setCode(event.target.value)} />
-        </label>
+
+        <div className="visibility-choice" role="radiogroup" aria-label="Visibilité de la carte">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!isPublic}
+            className={isPublic ? 'visibility-option' : 'visibility-option active'}
+            onClick={() => setIsPublic(false)}
+          >
+            <Lock size={17} />
+            <strong>Privée</strong>
+            <small>Accessible seulement avec un code</small>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={isPublic}
+            className={isPublic ? 'visibility-option active' : 'visibility-option'}
+            onClick={() => setIsPublic(true)}
+          >
+            <Globe size={17} />
+            <strong>Publique</strong>
+            <small>Accessible par son lien, sans code</small>
+          </button>
+        </div>
+
+        {isPublic ? (
+          <p className="create-visibility-hint">
+            Toute personne disposant du lien pourra consulter la carte. Aucun code
+            ne sera demandé.
+          </p>
+        ) : (
+          <label>
+            <span>Code d’accès (secret)</span>
+            <input placeholder="ex : montblanc2026" value={code} onChange={(event) => setCode(event.target.value)} />
+          </label>
+        )}
+
         <button
           className="portal-primary"
-          disabled={!title.trim() || !code.trim()}
+          disabled={!ready}
           type="button"
-          onClick={() => onCreate(title.trim(), code.trim())}
+          onClick={() => onCreate(title.trim(), isPublic ? '' : code.trim())}
         >
           <Plus size={17} /> Créer la carte
         </button>

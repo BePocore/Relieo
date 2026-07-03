@@ -2153,6 +2153,50 @@ body.portal-active.tracker-scroll-active #root {
   font-size: 13px;
 }
 
+/* Choix de visibilité (Privée / Publique) à la création d'une carte */
+.visibility-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.visibility-option {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  color: var(--c-text-dim);
+  background: var(--c-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.visibility-option strong {
+  color: var(--c-text);
+  font-size: 14px;
+}
+
+.visibility-option small {
+  color: var(--c-text-dim);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.visibility-option.active {
+  border-color: var(--c-accent);
+  background: rgba(18, 107, 71, 0.08);
+  color: var(--c-text);
+}
+
+.create-visibility-hint {
+  color: var(--c-text-dim);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 .sidebar-scrim {
   display: none;
 }

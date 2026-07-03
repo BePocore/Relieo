@@ -4,12 +4,14 @@ import {
   Camera,
   CheckCircle2,
   FileUp,
+  Globe,
   GripVertical,
   HardDrive,
   Image,
   Info,
   KeyRound,
   List,
+  Lock,
   LockKeyhole,
   LoaderCircle,
   MapPinOff,
@@ -52,6 +54,8 @@ type StudioPanelProps = {
   stats: TrailStats
   mediaLibrary: ImportedMedia[]
   accessCode: string
+  accessMode: 'public' | 'private'
+  moderationPending: string[]
   onSelectPoint: (point: TrailPoint) => void
   onClose: () => void
   onImportGpx: (files: File[]) => Promise<void>
@@ -92,6 +96,7 @@ type StudioPanelProps = {
   importReport: ImportReport | null
   onDismissReport: () => void
   onAccessCodeChange: (code: string) => void
+  onAccessModeChange: (mode: 'public' | 'private') => void
   onAdminPasswordChange: (password: string) => void
   onDraftDirtyChange: (dirty: boolean) => void
   saveStatus: string | null
@@ -650,6 +655,8 @@ export function StudioPanel({
   stats,
   mediaLibrary,
   accessCode,
+  accessMode,
+  moderationPending,
   onSelectPoint,
   onClose,
   onImportGpx,
@@ -676,6 +683,7 @@ export function StudioPanel({
   onSaveProject,
   onShowMedia,
   onAccessCodeChange,
+  onAccessModeChange,
   adminPassword,
   isSaving,
   isUploading,
@@ -693,6 +701,12 @@ export function StudioPanel({
   isPublished,
 }: StudioPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>('points')
+  // Médias non validés par la modération (URLs), pour le badge « vérification
+  // en cours » sur la médiathèque du studio.
+  const pendingMediaSet = useMemo(
+    () => new Set(moderationPending),
+    [moderationPending],
+  )
   const [draft, setDraft] = useState<DraftPoint>(initialDraft)
   const [formError, setFormError] = useState<string | null>(null)
   const [paletteTraceId, setPaletteTraceId] = useState<string | null>(null)
@@ -937,23 +951,60 @@ export function StudioPanel({
             />
           </label>
         )}
-        <label className="studio-password">
-          <span>
-            <KeyRound aria-hidden="true" size={15} />
-            Code d’accès (secret)
-          </span>
-          <input
-            autoComplete="off"
-            type="text"
-            value={accessCode}
-            onChange={(event) => onAccessCodeChange(event.target.value)}
-            placeholder="Laisse vide pour garder le code actuel"
-          />
-        </label>
-        <p className="studio-publish-hint">
-          Le code d’accès n’apparaît jamais dans le lien. Les visiteurs devront le
-          saisir pour consulter la carte. Vide = code inchangé.
-        </p>
+        <div className="studio-visibility" role="radiogroup" aria-label="Visibilité de la carte">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={accessMode === 'private'}
+            className={
+              accessMode === 'private'
+                ? 'studio-visibility-option active'
+                : 'studio-visibility-option'
+            }
+            onClick={() => onAccessModeChange('private')}
+          >
+            <Lock aria-hidden="true" size={15} /> Privée
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={accessMode === 'public'}
+            className={
+              accessMode === 'public'
+                ? 'studio-visibility-option active'
+                : 'studio-visibility-option'
+            }
+            onClick={() => onAccessModeChange('public')}
+          >
+            <Globe aria-hidden="true" size={15} /> Publique
+          </button>
+        </div>
+        {accessMode === 'private' ? (
+          <>
+            <label className="studio-password">
+              <span>
+                <KeyRound aria-hidden="true" size={15} />
+                Code d’accès (secret)
+              </span>
+              <input
+                autoComplete="off"
+                type="text"
+                value={accessCode}
+                onChange={(event) => onAccessCodeChange(event.target.value)}
+                placeholder="Laisse vide pour garder le code actuel"
+              />
+            </label>
+            <p className="studio-publish-hint">
+              Le code d’accès n’apparaît jamais dans le lien. Les visiteurs devront
+              le saisir pour consulter la carte. Vide = code inchangé.
+            </p>
+          </>
+        ) : (
+          <p className="studio-publish-hint">
+            Carte publique : accessible par son lien, sans code. Les médias
+            restent modérés avant d’être visibles par le public.
+          </p>
+        )}
         <button
           className="primary-action"
           disabled={
@@ -1331,6 +1382,12 @@ export function StudioPanel({
                         } ${media.lat.toFixed(5)}, ${media.lng.toFixed(5)}`
                       : ' · pas de GPS'}
                   </small>
+                  {pendingMediaSet.has(media.url) ? (
+                    <small className="media-mod-pending">
+                      <TriangleAlert aria-hidden="true" size={13} />
+                      Modération en cours, non visible du public
+                    </small>
+                  ) : null}
                 </span>
                 <button
                   className="danger-action media-delete-action"

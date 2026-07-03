@@ -29,7 +29,13 @@ export type HikeIndexEntry = {
 
 // Patch partiel : seuls les champs définis écrasent l'entrée existante (fusion).
 // `folder` est obligatoire car c'est la clé d'identité de la rando.
-export type HikeIndexPatch = Partial<HikeIndexEntry> & { folder: string }
+// `accessCodeHash` a une sémantique à trois états : une chaîne pose/remplace le
+// code ; `null` EFFACE le code (carte rendue publique) ; absent/`undefined`
+// conserve le code existant.
+export type HikeIndexPatch = Partial<Omit<HikeIndexEntry, 'accessCodeHash'>> & {
+  folder: string
+  accessCodeHash?: string | null
+}
 
 export const readHikeIndex = async (): Promise<HikeIndexEntry[]> => {
   const body = await r2GetText(hikeIndexPath)
@@ -89,6 +95,11 @@ export const upsertHikeIndex = async (
   const existing = hikes.find((hike) => hike.folder === patch.folder)
   const others = hikes.filter((hike) => hike.folder !== patch.folder)
 
+  // Le code d'accès est traité à part : `null` doit EFFACER le champ (carte
+  // rendue publique), ce que la simple fusion `...patch` ne permet pas. On
+  // l'extrait avant le merge puis on l'applique explicitement.
+  const { accessCodeHash: patchAccessCodeHash, ...restPatch } = patch
+
   const merged: HikeIndexEntry = {
     code: patch.folder,
     ownerId: '',
@@ -100,9 +111,16 @@ export const upsertHikeIndex = async (
     mediaCount: 0,
     updatedAt: new Date().toISOString(),
     ...existing,
-    ...stripUndefined(patch),
+    ...stripUndefined(restPatch),
     folder: patch.folder,
   }
+
+  if (patchAccessCodeHash === null) {
+    delete merged.accessCodeHash // carte publique : plus aucun code
+  } else if (typeof patchAccessCodeHash === 'string') {
+    merged.accessCodeHash = patchAccessCodeHash
+  }
+  // `undefined` : on conserve le hash d'`existing` (déjà présent dans `merged`).
 
   const next = [merged, ...others]
   await r2PutText(hikeIndexPath, JSON.stringify({ hikes: next }))

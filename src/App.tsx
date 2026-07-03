@@ -547,6 +547,15 @@ function App() {
   // `accessCode` = le CODE D'ACCÈS SECRET (write-only). Vide au chargement (on
   // ne le relit jamais) ; le propriétaire en pose un nouveau dans le Studio.
   const [accessCode, setAccessCode] = useState('')
+  // Visibilité de la carte : 'private' = protégée par un code, 'public' = lien
+  // direct sans code. Défaut privé (le portail crée privé par défaut).
+  const [accessMode, setAccessMode] = useState<'public' | 'private'>('private')
+  // La carte a-t-elle déjà un code posé côté serveur ? (garde de sauvegarde :
+  // interdit de passer « privée » sans code.)
+  const [isProtected, setIsProtected] = useState(false)
+  // URLs des médias non encore validés par la modération : badge « vérification
+  // en cours » dans le studio (le propriétaire les voit, le public non).
+  const [moderationPending, setModerationPending] = useState<string[]>([])
   const [accessGranted, setAccessGranted] = useState(false)
   // Carte protégée dont le contenu n'est pas encore livré (le serveur n'a renvoyé
   // que des métadonnées) → on affiche l'écran de saisie du code.
@@ -628,6 +637,10 @@ function App() {
           setMediaLibrary(blankMediaLibrary)
           setPointsSourceName(blankPointsSourceName)
           setAccessCode(newSecret)
+          // Un code choisi à la création ⇒ carte privée ; code vide ⇒ publique.
+          setAccessMode(newSecret ? 'private' : 'public')
+          setIsProtected(Boolean(newSecret))
+          setModerationPending([])
           setSavedProjectSignature(
             projectSignature({
               points: blankPoints,
@@ -674,6 +687,8 @@ function App() {
             hikeStatus?: string
             protected?: boolean
             title?: string
+            isProtected?: boolean
+            moderationPending?: string[]
           }
           // Carte PROTÉGÉE non déverrouillée : le serveur ne renvoie que des
           // métadonnées (pas de `points`). On affiche l'écran de saisie du code,
@@ -689,6 +704,13 @@ function App() {
           // Une carte déjà chargée est considérée publiée sauf statut draft
           // explicite (les cartes historiques sans statut restent publiées).
           setIsPublished(raw.hikeStatus !== 'draft')
+          // Visibilité + médias en attente de modération (renvoyés au
+          // propriétaire/admin uniquement ; un visiteur ne les reçoit pas).
+          setAccessMode(raw.isProtected ? 'private' : 'public')
+          setIsProtected(Boolean(raw.isProtected))
+          setModerationPending(
+            Array.isArray(raw.moderationPending) ? raw.moderationPending : [],
+          )
           onlineProject = normalizeProject(raw)
         } else if (projectResponse) {
           const result = (await projectResponse.json().catch(() => null)) as {
@@ -880,6 +902,7 @@ function App() {
     traces,
     mediaLibrary,
     accessCode,
+    accessMode,
     pointsSourceName,
     adminPassword,
     stats,
@@ -893,6 +916,7 @@ function App() {
       traces,
       mediaLibrary,
       accessCode,
+      accessMode,
       pointsSourceName,
       adminPassword,
       stats,
@@ -902,6 +926,7 @@ function App() {
     }
   }, [
     accessCode,
+    accessMode,
     adminPassword,
     currentProjectSignature,
     hikeTitle,
@@ -940,6 +965,8 @@ function App() {
           ...project,
           // Identité de la carte = le slug (jamais le code d'accès secret).
           slug: mapSlug,
+          // Visibilité courante (public = pas de code, private = code).
+          accessMode: snapshot.accessMode,
           ...buildIndexMeta({
             title: snapshot.hikeTitle,
             code: mapSlug,
@@ -1190,6 +1217,10 @@ function App() {
 
   const handleAccessCodeChange = useCallback((code: string) => {
     setAccessCode(code)
+  }, [])
+
+  const handleAccessModeChange = useCallback((mode: 'public' | 'private') => {
+    setAccessMode(mode)
   }, [])
 
   // Charge le contenu complet d'une carte protégée une fois le ticket obtenu
@@ -2231,6 +2262,13 @@ function App() {
       return
     }
 
+    // Garde : une carte privée doit avoir un code. Si on passe « privée » alors
+    // qu'aucun code n'existe encore et qu'aucun n'est saisi, on bloque.
+    if (accessMode === 'private' && !accessCode.trim() && !isProtected) {
+      setSaveStatus('Choisis un code d’accès pour une carte privée (ou passe-la en publique).')
+      return
+    }
+
     setIsSaving(true)
     setSaveStatus('Sauvegarde...')
     const submittedSignature = currentProjectSignature
@@ -2255,6 +2293,8 @@ function App() {
           ...project,
           // Identité de la carte = le slug (jamais le code d'accès secret).
           slug: mapSlug,
+          // Visibilité choisie dans le studio (public = pas de code).
+          accessMode,
           ...buildIndexMeta({
             title: hikeTitle,
             code: mapSlug,
@@ -2262,9 +2302,9 @@ function App() {
             elevationGainMeters: stats.elevationGainMeters,
             pointCount: points.length,
             mediaCount: mediaLibrary.length,
-            // « Sauvegarder » ne change jamais la visibilité : on conserve le
-            // statut courant (une nouvelle carte démarre en brouillon). La mise
-            // en ligne se fait depuis le tableau de bord.
+            // « Sauvegarder » ne change jamais le statut publié/brouillon : on
+            // conserve le statut courant (une nouvelle carte démarre en
+            // brouillon). La mise en ligne se fait depuis le tableau de bord.
             status: isPublished ? 'published' : 'draft',
           }),
         }),
@@ -2285,6 +2325,9 @@ function App() {
           : mapSlug
       setSavedProjectSignature(submittedSignature)
       syncStudioUrlToCode(mapSlug)
+      // Après un save réussi, la garde ci-dessus garantit qu'une carte privée a
+      // un code : on peut refléter la visibilité effective côté client.
+      setIsProtected(accessMode === 'private')
       setSaveStatus(`Carte enregistrée : ${folder}.`)
       setError(null)
     } catch (saveError) {
@@ -2300,6 +2343,8 @@ function App() {
     }
   }, [
     accessCode,
+    accessMode,
+    isProtected,
     adminPassword,
     combinedPoints,
     currentProjectSignature,
@@ -2550,6 +2595,7 @@ function App() {
                 cameraCommand={cameraCommand}
                 editable={isStudioMode}
                 createPointOnClick={Boolean(manualPlacementMedia)}
+                pendingMediaUrls={moderationPending}
                 videoPosters={videoPosters}
                 framedThumbnails={framedThumbnails}
                 onMovePoint={handleMovePoint}
@@ -2604,6 +2650,8 @@ function App() {
                   stats={stats}
                   mediaLibrary={mediaLibrary}
                   accessCode={accessCode}
+                  accessMode={accessMode}
+                  moderationPending={moderationPending}
                   onSelectPoint={handleSelectPoint}
                   onClose={handleClosePoint}
                   onImportGpx={handleImportGpx}
@@ -2630,6 +2678,7 @@ function App() {
                   onSaveProject={handleSaveProject}
                   onShowMedia={handleOpenLightbox}
                   onAccessCodeChange={handleAccessCodeChange}
+                  onAccessModeChange={handleAccessModeChange}
                   adminPassword={adminPassword}
                   isSaving={isSaving}
                   isUploading={isUploading}
