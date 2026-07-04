@@ -19,9 +19,11 @@ import {
   Search,
   Settings,
   Share2,
+  Sparkles,
   UserPlus,
   UserRound,
   Users,
+  X,
 } from 'lucide-react'
 import type { PortalUser } from './portalStore'
 import './Feed.css'
@@ -302,6 +304,14 @@ export default function SocialFeed({
   const [view, setView] = useState<FeedView>('feed')
   const [activeCreatorId, setActiveCreatorId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  // Modale d'accroche « devenir créateur » (front-only ; le vrai passage viewer
+  // → créateur viendra avec un endpoint serveur, cf. tranche suivante).
+  const [upsellOpen, setUpsellOpen] = useState(false)
+
+  const openUpsell = () => {
+    setUpsellOpen(true)
+    setMenuOpen(false)
+  }
   const [liked, setLiked] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
   const [followed, setFollowed] = useState<Record<string, boolean>>({
@@ -382,7 +392,12 @@ export default function SocialFeed({
     }
     if (view === 'profile') {
       return (
-        <OwnProfile user={user} isCreator={isCreator} onOpenDashboard={onOpenDashboard} />
+        <OwnProfile
+          user={user}
+          isCreator={isCreator}
+          onOpenDashboard={onOpenDashboard}
+          onBecomeCreator={openUpsell}
+        />
       )
     }
     if (view === 'explore') {
@@ -451,6 +466,16 @@ export default function SocialFeed({
                 <button role="menuitem" type="button" onClick={() => go('profile')}>
                   <UserRound size={16} /> Mon profil
                 </button>
+                {isCreator ? null : (
+                  <button
+                    role="menuitem"
+                    className="feed-menu-upsell"
+                    type="button"
+                    onClick={openUpsell}
+                  >
+                    <Sparkles size={16} /> Devenir créateur
+                  </button>
+                )}
                 {isCreator ? (
                   <>
                     <button
@@ -553,6 +578,53 @@ export default function SocialFeed({
           <UserRound size={20} /><span>Profil</span>
         </button>
       </nav>
+
+      {upsellOpen ? (
+        <div
+          className="feed-upsell-backdrop"
+          role="presentation"
+          onMouseDown={() => setUpsellOpen(false)}
+        >
+          <div
+            className="feed-upsell"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Devenir créateur"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              className="feed-upsell-close"
+              type="button"
+              aria-label="Fermer"
+              onClick={() => setUpsellOpen(false)}
+            >
+              <X size={18} />
+            </button>
+            <span className="feed-upsell-badge"><Sparkles size={22} /></span>
+            <h2>Deviens créateur</h2>
+            <p className="feed-upsell-sub">
+              Passe de spectateur à créateur et partage tes propres aventures.
+            </p>
+            <ul className="feed-upsell-perks">
+              <li>
+                <MapIcon size={18} /> Publie tes cartes en relief 3D
+              </li>
+              <li>
+                <Users size={18} /> Un profil public, des abonnés
+              </li>
+              <li>
+                <LayoutDashboard size={18} /> Ton dashboard créateur
+              </li>
+            </ul>
+            <button className="feed-upsell-cta" type="button" disabled>
+              Bientôt disponible
+            </button>
+            <p className="feed-upsell-note">
+              L’ouverture des comptes créateurs arrive très vite.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -619,10 +691,12 @@ function OwnProfile({
   user,
   isCreator,
   onOpenDashboard,
+  onBecomeCreator,
 }: {
   user: PortalUser
   isCreator: boolean
   onOpenDashboard: () => void
+  onBecomeCreator: () => void
 }) {
   return (
     <div className="feed-profile">
@@ -649,7 +723,9 @@ function OwnProfile({
         <div className="feed-empty feed-become">
           <Mountain size={30} />
           <p>Tu es viewer : tu suis des créateurs et enregistres leurs cartes.</p>
-          <p className="feed-become-hint">Le passage en compte créateur arrivera bientôt.</p>
+          <button className="feed-become-creator" type="button" onClick={onBecomeCreator}>
+            <Sparkles size={16} /> Devenir créateur
+          </button>
         </div>
       )}
     </div>

@@ -677,6 +677,150 @@
   color: var(--c-text-dim);
 }
 
+/* ── Devenir créateur (accroche viewer, front-only) ───────────── */
+.feed-menu button.feed-menu-upsell {
+  margin: 3px 0;
+  color: var(--c-accent-ink);
+  background: linear-gradient(120deg, var(--c-accent), var(--c-accent-strong));
+  font-weight: 600;
+}
+
+.feed-menu button.feed-menu-upsell:hover {
+  filter: brightness(1.06);
+  background: linear-gradient(120deg, var(--c-accent), var(--c-accent-strong));
+}
+
+.feed-become-creator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 11px 20px;
+  border: none;
+  border-radius: 12px;
+  color: var(--c-accent-ink);
+  background: linear-gradient(120deg, var(--c-accent), var(--c-accent-strong));
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.feed-become-creator:hover {
+  filter: brightness(1.06);
+}
+
+.feed-upsell-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.feed-upsell {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  padding: 30px 26px 24px;
+  border-radius: 18px;
+  background: var(--feed-surface, var(--c-surface));
+  border: 1px solid var(--c-border);
+  box-shadow: 0 24px 60px var(--c-shadow);
+  text-align: center;
+}
+
+.feed-upsell-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--c-text-dim);
+  cursor: pointer;
+}
+
+.feed-upsell-close:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.feed-upsell-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 14px;
+  border-radius: 16px;
+  color: var(--c-accent-ink);
+  background: linear-gradient(120deg, var(--c-accent), var(--c-accent-strong));
+}
+
+.feed-upsell h2 {
+  margin: 0 0 6px;
+  font-size: 21px;
+}
+
+.feed-upsell-sub {
+  margin: 0 0 18px;
+  color: var(--c-text-dim);
+  font-size: 14px;
+}
+
+.feed-upsell-perks {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.feed-upsell-perks li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.feed-upsell-perks svg {
+  color: var(--c-accent);
+  flex: 0 0 auto;
+}
+
+.feed-upsell-cta {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  color: var(--c-accent-ink);
+  background: linear-gradient(120deg, var(--c-accent), var(--c-accent-strong));
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.feed-upsell-cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.feed-upsell-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--c-text-faint);
+}
+
 /* ── Barre d'onglets mobile ───────────────────────────────────── */
 .feed-tabbar {
   display: none;
