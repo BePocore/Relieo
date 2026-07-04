@@ -1810,6 +1810,7 @@ function DashboardShell({
       <aside className={mobileMenu ? 'portal-sidebar open' : 'portal-sidebar'}>
         <div className="sidebar-brand"><span className="portal-logo"><Compass size={22} /></span><strong>Relieo</strong></div>
         <nav aria-label="Navigation principale">
+          <button className="back-to-feed" type="button" onClick={() => navigate('/')}><Globe size={18} /> Retour au feed</button>
           <p>ESPACE</p>
           <button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setPortalView('dashboard')}><LayoutDashboard size={18} /> Vue d’ensemble</button>
           <button className={view === 'hikes' ? 'active' : ''} type="button" onClick={() => setPortalView('hikes')}><Map size={18} /> Mes cartes <span>{hikes.length}</span></button>

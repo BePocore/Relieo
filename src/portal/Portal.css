@@ -122,6 +122,19 @@ body.portal-active.tracker-scroll-active #root {
   font-weight: 750;
 }
 
+/* Retour au feed : bouton d'en-tête, teinté accent pour se démarquer de la nav. */
+.portal-sidebar nav .back-to-feed {
+  margin-bottom: 4px;
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+  font-weight: 650;
+}
+
+.portal-sidebar nav .back-to-feed:hover {
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+}
+
 .portal-sidebar nav button > span {
   margin-left: auto;
   min-width: 25px;

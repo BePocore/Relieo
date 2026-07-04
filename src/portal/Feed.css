@@ -3,11 +3,22 @@
    overflow:hidden : la coquille tient en 100vh et scrolle en interne. */
 
 .feed-shell {
+  /* Teintes locales au feed (par défaut = tokens de thème). */
+  --feed-bg: var(--c-bg);
+  --feed-surface: var(--c-surface);
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--c-bg);
+  background: var(--feed-bg);
   color: var(--c-text);
+}
+
+/* Mode nuit : fond du feed en bleu-ardoise demandé (#1c2432), cartes un cran
+   plus claires (#232f42) pour se détacher nettement du fond. Scopé au feed
+   (le dashboard/carte gardent leur #0f1623) et au thème sombre. */
+:root[data-theme='dark'] .feed-shell {
+  --feed-bg: #1c2432;
+  --feed-surface: #232f42;
 }
 
 /* ── Header glass ─────────────────────────────────────────────── */
@@ -231,12 +242,6 @@
   font-weight: 600;
 }
 
-.feed-nav-dashboard {
-  margin-top: 10px;
-  border: 1px solid var(--c-border);
-  color: var(--c-text);
-}
-
 /* ── Colonne centrale (feed) ──────────────────────────────────── */
 .feed-main {
   min-width: 0;
@@ -259,7 +264,7 @@
 }
 
 .feed-post {
-  background: var(--c-surface);
+  background: var(--feed-surface);
   border: 1px solid var(--c-border);
   border-radius: 16px;
   overflow: hidden;
@@ -407,7 +412,7 @@
 }
 
 .feed-card {
-  background: var(--c-surface);
+  background: var(--feed-surface);
   border: 1px solid var(--c-border);
   border-radius: 16px;
   padding: 16px;
@@ -542,7 +547,7 @@
 
 /* ── Profil (créateur / soi) ──────────────────────────────────── */
 .feed-profile {
-  background: var(--c-surface);
+  background: var(--feed-surface);
   border: 1px solid var(--c-border);
   border-radius: 18px;
   overflow: hidden;
@@ -563,7 +568,7 @@
 }
 
 .feed-profile-head .feed-avatar {
-  border: 4px solid var(--c-surface);
+  border: 4px solid var(--feed-surface);
   background: var(--c-accent);
 }
 

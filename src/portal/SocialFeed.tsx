@@ -495,15 +495,6 @@ export default function SocialFeed({
               {item.icon} {item.label}
             </button>
           ))}
-          {isCreator ? (
-            <button
-              className="feed-nav-item feed-nav-dashboard"
-              type="button"
-              onClick={onOpenDashboard}
-            >
-              <LayoutDashboard size={19} /> Dashboard créateur
-            </button>
-          ) : null}
         </nav>
 
         <main className="feed-main">{renderCenter()}</main>
