@@ -10,6 +10,9 @@ export type StoredProfile = {
   location?: string
   bio?: string
   plan?: string
+  // Rôle du compte (réservé : le flag est posé par le futur bouton « devenir
+  // créateur »). En tranche 1, le rôle effectif vient de l'env `CREATOR_UIDS`.
+  accountType?: string
 }
 
 const asString = (value: unknown): string | undefined =>
@@ -28,6 +31,7 @@ export const readAllProfiles = async (): Promise<Map<string, StoredProfile>> => 
       location: asString(data.location),
       bio: asString(data.bio),
       plan: asString(data.plan),
+      accountType: asString(data.accountType),
     })
   }
   return profiles

@@ -98,6 +98,7 @@ import {
   type PlanId,
 } from './plans'
 import { AdminApp } from './admin/AdminView'
+import SocialFeed from './SocialFeed'
 import { requestMediaTicket, startMediaTicketRefresh } from '../lib/mediaTicket'
 import HeroSlideshow from './HeroSlideshow'
 import { TraceRecorderScreen, TracesView } from './TraceViews'
@@ -2626,11 +2627,17 @@ function FirebasePortal() {
     window.sessionStorage.getItem(AUTH_NOTICE_STORAGE_KEY),
   )
   const [adminPhoneDevice, setAdminPhoneDevice] = useState(isAdminPhoneDevice)
-  // Détection admin remontée ici (avant le dashboard) pour pouvoir sauter
-  // l'écran de choix de forfait : l'admin (Dieu) n'a pas de forfait.
-  const [admin, setAdmin] = useState<{ checked: boolean; isAdmin: boolean }>({
+  // Détection admin + rôle de compte remontés ici (avant le dashboard) pour
+  // router l'accueil : l'admin (Dieu) va à la console, le créateur peut ouvrir le
+  // dashboard, le viewer (par défaut) reste sur le feed et saute le forfait.
+  const [admin, setAdmin] = useState<{
+    checked: boolean
+    isAdmin: boolean
+    accountType: 'viewer' | 'creator'
+  }>({
     checked: false,
     isAdmin: false,
+    accountType: 'viewer',
   })
   // État de modération du compte (actif / bloqué / supprimé).
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
@@ -2672,16 +2679,20 @@ function FirebasePortal() {
       })
       .then(async (response) => {
         let isAdmin = false
+        let accountType: 'viewer' | 'creator' = 'viewer'
         if (response && response.ok) {
           const data = (await response.json().catch(() => null)) as
-            | { admin?: boolean }
+            | { admin?: boolean; accountType?: 'viewer' | 'creator' }
             | null
           isAdmin = Boolean(data?.admin)
+          if (data?.accountType === 'creator') accountType = 'creator'
         }
-        if (!cancelled) setAdmin({ checked: true, isAdmin })
+        if (!cancelled) setAdmin({ checked: true, isAdmin, accountType })
       })
       .catch(() => {
-        if (!cancelled) setAdmin({ checked: true, isAdmin: false })
+        // Repli gracieux (ex. en `npm run dev`, l'endpoint n'existe pas) : viewer.
+        if (!cancelled)
+          setAdmin({ checked: true, isAdmin: false, accountType: 'viewer' })
       })
     return () => {
       cancelled = true
@@ -2725,7 +2736,7 @@ function FirebasePortal() {
         setEmailVerified(false)
         setProfileError(null)
         setLoginNotice(window.sessionStorage.getItem(AUTH_NOTICE_STORAGE_KEY))
-        setAdmin({ checked: false, isAdmin: false })
+        setAdmin({ checked: false, isAdmin: false, accountType: 'viewer' })
         setAccountStatus(null)
         setReady(true)
         return
@@ -2860,9 +2871,12 @@ function FirebasePortal() {
     )
   }
 
-  // Étape post-inscription : tant qu'aucun forfait n'est choisi, on affiche
-  // l'écran de sélection avant de donner accès au dashboard.
-  if (!session.portalUser.plan) {
+  const isCreator = admin.accountType === 'creator'
+
+  // Étape post-inscription : le choix de forfait ne concerne que les créateurs
+  // (le viewer ne publie pas → pas de stockage à dimensionner). Il apparaîtra
+  // quand un viewer deviendra créateur.
+  if (isCreator && !session.portalUser.plan) {
     return (
       <>
         {profileError ? <p className="auth-error">{profileError}</p> : null}
@@ -2900,10 +2914,39 @@ function FirebasePortal() {
                 termsAcceptedAt: acceptedAt,
               },
             })
-            navigate('/dashboard')
+            // Nouvel accueil = le feed social (pour tous). Le créateur ouvre
+            // ensuite son dashboard depuis la nav.
+            navigate('/')
           }}
         />
       </>
+    )
+  }
+
+  const onDashboardRoute = [
+    '/dashboard',
+    '/hikes',
+    '/profile',
+    '/plans',
+    '/traces',
+    '/settings',
+    '/notifications',
+    '/tracker',
+  ].some((route) => pathname.endsWith(route))
+
+  // Accueil = feed social pour tous. Seul un créateur sur une route de dashboard
+  // ouvre l'interface historique `DashboardShell` (un viewer : jamais).
+  if (!(isCreator && onDashboardRoute)) {
+    return (
+      <SocialFeed
+        user={session.portalUser}
+        isCreator={isCreator}
+        onOpenDashboard={() => navigate('/dashboard')}
+        onLogout={() => {
+          void signOut(auth)
+          navigate('/login')
+        }}
+      />
     )
   }
 

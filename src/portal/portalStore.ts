@@ -14,6 +14,10 @@ export type PortalUser = {
   // false/undefined, un écran de consentement bloque l'accès au dashboard.
   termsAccepted?: boolean
   termsAcceptedAt?: string
+  // Rôle du compte : « viewer » (par défaut) parcourt le réseau social ;
+  // « creator » publie des cartes et accède au dashboard. Source de vérité =
+  // serveur (`/api/admin/me`), jamais un champ inscriptible par le client.
+  accountType?: 'viewer' | 'creator'
 }
 
 export type PortalHike = {
@@ -41,6 +45,7 @@ export type ProfileExtras = {
   photoURL?: string
   termsAccepted?: boolean
   termsAcceptedAt?: string
+  accountType?: 'viewer' | 'creator'
 }
 
 // État de modération du compte, lu depuis Firestore `moderation/<uid>` (écrit

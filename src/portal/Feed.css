@@ -1,0 +1,734 @@
+/* Réseau social — coquille visuelle (tranche 1). Réutilise les tokens de thème
+   `--c-*` de src/index.css (clair + [data-theme='dark']). Le #root est
+   overflow:hidden : la coquille tient en 100vh et scrolle en interne. */
+
+.feed-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+  color: var(--c-text);
+}
+
+/* ── Header glass ─────────────────────────────────────────────── */
+.feed-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 22px;
+  background: var(--c-glass);
+  border-bottom: 1px solid var(--c-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.feed-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.feed-search {
+  flex: 1 1 auto;
+  max-width: 460px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-dim);
+}
+
+.feed-search input {
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--c-text);
+  width: 100%;
+}
+
+.feed-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.feed-icon-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+  cursor: pointer;
+}
+
+.feed-icon-btn:hover {
+  background: var(--c-surface-2);
+}
+
+.feed-dot {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-danger);
+  border: 2px solid var(--c-surface);
+}
+
+.feed-avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-block;
+}
+
+.feed-avatar-initials {
+  display: inline-grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.feed-menu-wrap {
+  position: relative;
+}
+
+.feed-avatar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 3px;
+  border-radius: 24px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text-dim);
+  cursor: pointer;
+}
+
+.feed-avatar-btn:hover {
+  background: var(--c-surface-2);
+}
+
+.feed-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 220px;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  box-shadow: 0 18px 40px var(--c-shadow);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feed-menu-head {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px 10px;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 4px;
+}
+
+.feed-menu-head strong {
+  font-size: 14px;
+}
+
+.feed-menu-head span {
+  font-size: 12px;
+  color: var(--c-accent);
+  font-weight: 600;
+}
+
+.feed-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--c-text);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.feed-menu button:hover {
+  background: var(--c-surface-2);
+}
+
+.feed-menu-danger {
+  color: var(--c-danger) !important;
+}
+
+/* ── Corps 3 colonnes ─────────────────────────────────────────── */
+.feed-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 300px;
+  gap: 22px;
+  padding: 22px;
+  max-width: 1320px;
+  width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.feed-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+
+.feed-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--c-text-dim);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.feed-nav-item:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.feed-nav-item.active {
+  background: var(--c-accent-soft);
+  color: var(--c-accent-strong);
+  font-weight: 600;
+}
+
+.feed-nav-dashboard {
+  margin-top: 10px;
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+}
+
+/* ── Colonne centrale (feed) ──────────────────────────────────── */
+.feed-main {
+  min-width: 0;
+  overflow-y: auto;
+  padding-bottom: 40px;
+}
+
+.feed-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  margin: 4px 2px 16px;
+}
+
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feed-post {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px var(--c-shadow);
+}
+
+.feed-post-cover {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background-size: cover;
+  background-position: center;
+}
+
+.feed-post-place {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(4px);
+}
+
+.feed-post-open {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: 11px;
+  border: none;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--c-accent-ink);
+  background: var(--c-accent);
+  cursor: pointer;
+}
+
+.feed-post-open:hover {
+  background: var(--c-accent-strong);
+}
+
+.feed-post-body {
+  padding: 16px 18px 18px;
+}
+
+.feed-post-title {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.feed-post-author {
+  margin-bottom: 14px;
+}
+
+.feed-author-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  color: var(--c-text);
+  cursor: pointer;
+  padding: 0;
+}
+
+.feed-author-btn span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.feed-author-btn em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--c-text-dim);
+}
+
+.feed-post-stats {
+  list-style: none;
+  display: flex;
+  gap: 18px;
+  padding: 0 0 14px;
+  margin: 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.feed-post-stats li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--c-text-dim);
+}
+
+.feed-post-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 12px;
+}
+
+.feed-action {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--c-text-dim);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.feed-action:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.feed-action.active {
+  color: var(--c-accent);
+}
+
+/* ── Colonne droite ───────────────────────────────────────────── */
+.feed-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  overflow-y: auto;
+}
+
+.feed-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.feed-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin: 0 0 14px;
+}
+
+.feed-suggest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feed-suggest li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feed-suggest-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  color: var(--c-text);
+  cursor: pointer;
+  padding: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.feed-suggest-user span {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.feed-suggest-user strong {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.feed-suggest-user em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--c-text-dim);
+}
+
+.feed-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--c-accent);
+  background: var(--c-accent);
+  color: var(--c-accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.feed-follow:hover {
+  background: var(--c-accent-strong);
+}
+
+.feed-follow.following {
+  background: transparent;
+  color: var(--c-text-dim);
+  border-color: var(--c-border);
+}
+
+.feed-follow.big {
+  padding: 10px 18px;
+  font-size: 14px;
+}
+
+.feed-nearby {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feed-nearby li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--c-text-dim);
+}
+
+/* ── États vides ──────────────────────────────────────────────── */
+.feed-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 20px;
+  color: var(--c-text-dim);
+  text-align: center;
+}
+
+.feed-become {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  margin-top: 18px;
+}
+
+.feed-become-hint {
+  font-size: 13px;
+  color: var(--c-text-faint);
+}
+
+/* ── Profil (créateur / soi) ──────────────────────────────────── */
+.feed-profile {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.feed-profile-banner {
+  height: 150px;
+  background-size: cover;
+  background-position: center;
+}
+
+.feed-profile-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  padding: 0 24px;
+  margin-top: -46px;
+}
+
+.feed-profile-head .feed-avatar {
+  border: 4px solid var(--c-surface);
+  background: var(--c-accent);
+}
+
+.feed-profile-id {
+  flex: 1 1 auto;
+  padding-bottom: 4px;
+}
+
+.feed-profile-id h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+.feed-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.feed-profile-bio {
+  margin: 0 0 4px;
+  color: var(--c-text-dim);
+  font-size: 14px;
+}
+
+.feed-profile-loc {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--c-text-faint);
+}
+
+.feed-profile-counters {
+  list-style: none;
+  display: flex;
+  gap: 26px;
+  padding: 18px 24px;
+  margin: 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.feed-profile-counters li {
+  font-size: 13px;
+  color: var(--c-text-dim);
+}
+
+.feed-profile-counters strong {
+  display: block;
+  font-size: 18px;
+  color: var(--c-text);
+}
+
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  padding: 18px 24px 24px;
+}
+
+.feed-grid-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--c-surface-2);
+  cursor: pointer;
+  text-align: left;
+  padding: 0 0 10px;
+}
+
+.feed-grid-card:hover {
+  border-color: var(--c-accent);
+}
+
+.feed-grid-cover {
+  display: block;
+  aspect-ratio: 16 / 10;
+  background-size: cover;
+  background-position: center;
+}
+
+.feed-grid-title {
+  padding: 8px 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.feed-grid-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--c-text-dim);
+}
+
+/* ── Barre d'onglets mobile ───────────────────────────────────── */
+.feed-tabbar {
+  display: none;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .feed-body {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .feed-aside {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .feed-search {
+    display: none;
+  }
+  .feed-body {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+    gap: 0;
+  }
+  .feed-nav {
+    display: none;
+  }
+  .feed-main {
+    padding-bottom: 84px;
+  }
+  .feed-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0));
+    background: var(--c-glass-strong);
+    border-top: 1px solid var(--c-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .feed-tabbar button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 0;
+    border: none;
+    background: transparent;
+    color: var(--c-text-dim);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .feed-tabbar button.active {
+    color: var(--c-accent);
+  }
+}
