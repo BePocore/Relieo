@@ -1,6 +1,7 @@
 import { hasFirebaseAdmin, verifyRequestUser } from '../../server/firebaseAdmin.js'
 import { isAdminUser } from '../../server/admin.js'
 import { resolveAccountType } from '../../server/roles.js'
+import { readProfileAccountType } from '../../server/firestoreAdmin.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -21,8 +22,19 @@ export async function GET(request: Request) {
       { headers: jsonHeaders },
     )
   }
+  // Rôle = allowlist d'env (CREATOR_UIDS) OU flag persisté dans le profil (posé
+  // au passage viewer -> créateur). Best-effort sur la lecture Firestore.
+  let storedAccountType: string | undefined
+  try {
+    storedAccountType = await readProfileAccountType(user.uid)
+  } catch {
+    storedAccountType = undefined
+  }
   return Response.json(
-    { admin: isAdminUser(user), accountType: resolveAccountType(user.uid) },
+    {
+      admin: isAdminUser(user),
+      accountType: resolveAccountType(user.uid, storedAccountType),
+    },
     { headers: jsonHeaders },
   )
 }

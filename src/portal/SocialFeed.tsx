@@ -294,11 +294,14 @@ export default function SocialFeed({
   user,
   isCreator,
   onOpenDashboard,
+  onBecomeCreator,
   onLogout,
 }: {
   user: PortalUser
   isCreator: boolean
   onOpenDashboard: () => void
+  // Passage viewer -> créateur : mène au choix du forfait (géré par PortalApp).
+  onBecomeCreator: () => void
   onLogout: () => void
 }) {
   const [view, setView] = useState<FeedView>('feed')
@@ -396,7 +399,7 @@ export default function SocialFeed({
           user={user}
           isCreator={isCreator}
           onOpenDashboard={onOpenDashboard}
-          onBecomeCreator={openUpsell}
+          onOpenUpsell={openUpsell}
         />
       )
     }
@@ -616,11 +619,18 @@ export default function SocialFeed({
                 <LayoutDashboard size={18} /> Ton dashboard créateur
               </li>
             </ul>
-            <button className="feed-upsell-cta" type="button" disabled>
-              Bientôt disponible
+            <button
+              className="feed-upsell-cta"
+              type="button"
+              onClick={() => {
+                setUpsellOpen(false)
+                onBecomeCreator()
+              }}
+            >
+              Choisir mon forfait
             </button>
             <p className="feed-upsell-note">
-              L’ouverture des comptes créateurs arrive très vite.
+              Forfait Standard gratuit. Les offres payantes arrivent bientôt.
             </p>
           </div>
         </div>
@@ -691,12 +701,12 @@ function OwnProfile({
   user,
   isCreator,
   onOpenDashboard,
-  onBecomeCreator,
+  onOpenUpsell,
 }: {
   user: PortalUser
   isCreator: boolean
   onOpenDashboard: () => void
-  onBecomeCreator: () => void
+  onOpenUpsell: () => void
 }) {
   return (
     <div className="feed-profile">
@@ -723,7 +733,7 @@ function OwnProfile({
         <div className="feed-empty feed-become">
           <Mountain size={30} />
           <p>Tu es viewer : tu suis des créateurs et enregistres leurs cartes.</p>
-          <button className="feed-become-creator" type="button" onClick={onBecomeCreator}>
+          <button className="feed-become-creator" type="button" onClick={onOpenUpsell}>
             <Sparkles size={16} /> Devenir créateur
           </button>
         </div>

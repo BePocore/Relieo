@@ -84,6 +84,7 @@ import {
   readUserNotifications,
   readUserProfile,
   requestAccountDeletion,
+  saveBecomeCreator,
   saveTermsAcceptance,
   saveUserPhoto,
   saveUserPlan,
@@ -2924,6 +2925,33 @@ function FirebasePortal() {
     )
   }
 
+  // Passage viewer -> créateur : un viewer ayant cliqué « Devenir créateur »
+  // choisit un forfait ; le valider pose le rôle créateur + le forfait (persistés
+  // dans le profil, relus par /api/admin/me) puis ouvre le dashboard.
+  if (!isCreator && pathname.endsWith('/devenir-createur')) {
+    return (
+      <>
+        {profileError ? <p className="auth-error">{profileError}</p> : null}
+        <PlanOnboarding
+          user={session.portalUser}
+          onChoose={async (planId) => {
+            await saveBecomeCreator(session.firebaseUser.uid, planId)
+            setAdmin((prev) => ({ ...prev, accountType: 'creator' }))
+            setSession({
+              firebaseUser: session.firebaseUser,
+              portalUser: {
+                ...session.portalUser,
+                plan: planId,
+                accountType: 'creator',
+              },
+            })
+            navigate('/dashboard')
+          }}
+        />
+      </>
+    )
+  }
+
   const onDashboardRoute = [
     '/dashboard',
     '/hikes',
@@ -2943,6 +2971,7 @@ function FirebasePortal() {
         user={session.portalUser}
         isCreator={isCreator}
         onOpenDashboard={() => navigate('/dashboard')}
+        onBecomeCreator={() => navigate('/devenir-createur')}
         onLogout={() => {
           void signOut(auth)
           navigate('/login')

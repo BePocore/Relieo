@@ -49,6 +49,17 @@ export const setUserPlan = async (
     .set({ plan, updatedAt: new Date().toISOString() }, { merge: true })
 }
 
+// Lit le rôle stocké dans le profil (`accountType`), pour que `/api/admin/me`
+// renvoie le bon rôle après un passage viewer -> créateur. Une seule lecture de
+// document. Renvoie undefined si absent (compte viewer par défaut).
+export const readProfileAccountType = async (
+  uid: string,
+): Promise<string | undefined> => {
+  const db = getFirestore(adminApp())
+  const snapshot = await db.collection('profiles').doc(uid).get()
+  return asString(snapshot.data()?.accountType)
+}
+
 // Notification admin déposée dans le profil de l'utilisateur (champ tableau
 // `notifications`), affichée à sa prochaine connexion. arrayUnion ajoute sans
 // écraser les autres champs ni les notifications déjà présentes.
