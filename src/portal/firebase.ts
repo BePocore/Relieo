@@ -201,23 +201,6 @@ export const saveUserPlan = async (
   )
 }
 
-// Passage viewer -> createur : pose le role ET le forfait choisi. Devenir
-// createur est libre et gratuit ici (self-service), donc l'ecriture est cote
-// client comme pour le forfait. Le jour ou un palier createur devient
-// payant/controle, deplacer ceci vers un endpoint serveur + regle Firestore.
-export const saveBecomeCreator = async (
-  uid: string,
-  plan: string,
-): Promise<void> => {
-  const reference = profileDocument(uid)
-  if (!reference) throw new Error('Firestore n’est pas configure.')
-  await setDoc(
-    reference,
-    { accountType: 'creator', plan, updatedAt: serverTimestamp() },
-    { merge: true },
-  )
-}
-
 // Notifications déposées par l'admin dans le profil (ex : carte dépubliée).
 // L'utilisateur lit son propre document (autorisé par les règles Firestore).
 export const readUserNotifications = async (
@@ -370,4 +353,20 @@ export const finalizeAccountDeletion = async (): Promise<void> => {
   await accountFetch('/api/account', { action: 'finalize-deletion' }).catch(
     () => undefined,
   )
+}
+
+// Passage viewer -> créateur : pose le rôle créateur + le forfait via l'endpoint
+// serveur (Admin SDK). Le rôle n'est JAMAIS écrit par le client (la règle
+// Firestore l'interdit), pour empêcher l'auto-promotion.
+export const saveBecomeCreator = async (plan: string): Promise<void> => {
+  const response = await accountFetch('/api/account', {
+    action: 'become-creator',
+    plan,
+  })
+  if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null
+    throw new Error(data?.message ?? 'Passage en créateur impossible.')
+  }
 }

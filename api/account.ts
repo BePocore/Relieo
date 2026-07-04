@@ -7,6 +7,7 @@ import {
 } from '../server/firebaseAdmin.js'
 import { hasR2Config } from '../server/r2.js'
 import { appendAppeal, readModeration, setModeration } from '../server/moderation.js'
+import { setAccountCreator } from '../server/firestoreAdmin.js'
 import { appendAdminNotification } from '../server/adminNotifications.js'
 import { emailConfigured, sendEmail } from '../server/email.js'
 import { verificationEmailHtml } from '../server/emailTemplates.js'
@@ -17,9 +18,19 @@ const json = (data: unknown, status = 200) =>
   Response.json(data, { status, headers: jsonHeaders })
 
 type AccountBody = {
-  action?: 'appeal' | 'finalize-deletion' | 'request-deletion' | 'send-verification'
+  action?:
+    | 'appeal'
+    | 'finalize-deletion'
+    | 'request-deletion'
+    | 'send-verification'
+    | 'become-creator'
   message?: string
+  plan?: string
 }
+
+// Forfaits connus (doit rester aligné sur src/portal/plans.ts). Seul Standard est
+// réellement disponible ; un id inconnu retombe sur Standard.
+const KNOWN_PLANS = ['standard', 'explorateur', 'cartographe']
 
 // Endpoint compte de l'utilisateur connecté. Aiguille sur `action` :
 // - appeal : message d'appel d'un banni (1 par bannissement).
@@ -132,6 +143,19 @@ export async function POST(request: Request) {
         reply: null,
       })
       return json({ ok: true })
+    }
+
+    if (body.action === 'become-creator') {
+      // Passage viewer -> créateur : le rôle est posé UNIQUEMENT ici (Admin SDK),
+      // jamais par le client. Refusé pour un compte non actif (sanctionné).
+      if (!hasR2Config()) return json({ message: 'Service indisponible.' }, 503)
+      const moderation = await readModeration(user.uid)
+      if (moderation.status !== 'active') {
+        return json({ message: 'Action indisponible pour ce compte.' }, 403)
+      }
+      const plan = KNOWN_PLANS.includes(body.plan ?? '') ? body.plan! : 'standard'
+      await setAccountCreator(user.uid, plan)
+      return json({ ok: true, plan })
     }
 
     return json({ message: 'action inconnue.' }, 400)

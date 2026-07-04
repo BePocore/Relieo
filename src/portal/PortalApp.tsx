@@ -2935,7 +2935,7 @@ function FirebasePortal() {
         <PlanOnboarding
           user={session.portalUser}
           onChoose={async (planId) => {
-            await saveBecomeCreator(session.firebaseUser.uid, planId)
+            await saveBecomeCreator(planId)
             setAdmin((prev) => ({ ...prev, accountType: 'creator' }))
             setSession({
               firebaseUser: session.firebaseUser,

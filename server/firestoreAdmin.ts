@@ -49,6 +49,23 @@ export const setUserPlan = async (
     .set({ plan, updatedAt: new Date().toISOString() }, { merge: true })
 }
 
+// Passage viewer -> créateur : pose le rôle ET le forfait via l'Admin SDK
+// (contourne les règles Firestore). Le client ne peut PAS écrire `accountType`
+// lui-même (règle Firestore), donc la promotion passe obligatoirement par ici.
+export const setAccountCreator = async (
+  uid: string,
+  plan: string,
+): Promise<void> => {
+  const db = getFirestore(adminApp())
+  await db
+    .collection('profiles')
+    .doc(uid)
+    .set(
+      { accountType: 'creator', plan, updatedAt: new Date().toISOString() },
+      { merge: true },
+    )
+}
+
 // Lit le rôle stocké dans le profil (`accountType`), pour que `/api/admin/me`
 // renvoie le bon rôle après un passage viewer -> créateur. Une seule lecture de
 // document. Renvoie undefined si absent (compte viewer par défaut).

@@ -3,8 +3,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /profiles/{userId} {
-      allow read, create, update: if request.auth != null
-        && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // Le propriétaire écrit son profil (nom, bio, forfait, CGU...), mais ne peut
+      // JAMAIS poser ni changer `accountType` : le rôle créateur est écrit
+      // uniquement par l'Admin SDK (endpoint /api/account become-creator, qui
+      // contourne ces règles). Empêche l'auto-promotion en créateur.
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.get('accountType', null) == null;
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.get('accountType', null)
+           == resource.data.get('accountType', null);
       allow delete: if false;
     }
 
