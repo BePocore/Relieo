@@ -1,5 +1,10 @@
-import { useEffect, useState, type TouchEvent as ReactTouchEvent } from 'react'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type TouchEvent as ReactTouchEvent,
+} from 'react'
+import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react'
 import { Panorama360 } from './Panorama360'
 import type { LightboxMedia } from '../App'
 
@@ -9,19 +14,50 @@ type MediaLightboxProps = {
   onClose: () => void
 }
 
+// Durées d'affichage en lecture auto (les vidéos, elles, jouent jusqu'à leur
+// fin avant d'avancer, pour laisser parler les mini-vlogs).
+const PHOTO_MS = 4200
+const BREAK_MS = 2600
+
 export function MediaLightbox({
   items,
   startIndex = 0,
   onClose,
 }: MediaLightboxProps) {
   const [index, setIndex] = useState(startIndex)
+  const [playing, setPlaying] = useState(false)
   const count = items.length
-  const media = items[Math.min(index, count - 1)]
+  const safeIndex = Math.min(index, count - 1)
+  const media = items[safeIndex]
 
   const go = (delta: number) =>
     setIndex((current) => (current + delta + count) % count)
 
-  // Swipe horizontal (tactile) pour passer à la photo suivante / précédente.
+  const hasBreaks = useMemo(
+    () => items.some((item) => item.kind === 'day-break'),
+    [items],
+  )
+
+  // Segments de progression : un par jour (de sa carte de transition jusqu'à
+  // la suivante), largeur proportionnelle au nombre de slides, teinté du jour.
+  const segments = useMemo(() => {
+    if (!hasBreaks) return []
+    const segs: Array<{ color: string; start: number; length: number }> = []
+    items.forEach((item, i) => {
+      if (item.kind === 'day-break') {
+        segs.push({
+          color: item.dayBreak?.color ?? '#4fd1a1',
+          start: i,
+          length: 1,
+        })
+      } else if (segs.length > 0) {
+        segs[segs.length - 1].length += 1
+      }
+    })
+    return segs
+  }, [items, hasBreaks])
+
+  // Swipe horizontal (tactile) pour passer à la slide suivante / précédente.
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const handleTouchStart = (event: ReactTouchEvent) => {
     setTouchStartX(event.changedTouches[0]?.clientX ?? null)
@@ -44,11 +80,24 @@ export function MediaLightbox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose, count])
 
+  // Lecture auto : les vidéos avancent sur leur fin (onEnded), le reste sur
+  // une minuterie. Boucle en fin de diaporama.
+  useEffect(() => {
+    if (!playing || count <= 1) return
+    const current = items[safeIndex]
+    if (current?.kind === 'video') return
+    const delay = current?.kind === 'day-break' ? BREAK_MS : PHOTO_MS
+    const timer = window.setTimeout(() => {
+      setIndex((c) => (c + 1) % count)
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [playing, safeIndex, count, items])
+
   if (!media) return null
 
   return (
     <div
-      className="lightbox"
+      className={count > 1 ? 'lightbox has-controls' : 'lightbox'}
       role="dialog"
       aria-modal="true"
       aria-label={media.title ?? 'Média en grand'}
@@ -81,7 +130,35 @@ export function MediaLightbox({
       ) : null}
 
       <div className="lightbox-stage" onClick={(event) => event.stopPropagation()}>
-        {media.kind === '360' ? (
+        {media.kind === 'day-break' ? (
+          <div
+            className="lightbox-daybreak"
+            style={{ ['--day' as string]: media.dayBreak?.color ?? '#4fd1a1' }}
+          >
+            <span className="db-intro">{media.dayBreak?.intro}</span>
+            <span className="db-day">{media.dayBreak?.label}</span>
+            <span className="db-date">{media.dayBreak?.dateLabel}</span>
+            <span className="db-line" />
+            <div className="db-stats">
+              {media.dayBreak?.distanceLabel ? (
+                <div>
+                  <b>{media.dayBreak.distanceLabel}</b>
+                  <span>distance</span>
+                </div>
+              ) : null}
+              {media.dayBreak?.gainLabel ? (
+                <div>
+                  <b>+{media.dayBreak.gainLabel}</b>
+                  <span>dénivelé</span>
+                </div>
+              ) : null}
+              <div>
+                <b>{media.dayBreak?.mediaCount ?? 0}</b>
+                <span>médias</span>
+              </div>
+            </div>
+          </div>
+        ) : media.kind === '360' ? (
           <Panorama360
             key={media.src}
             src={media.src}
@@ -95,6 +172,9 @@ export function MediaLightbox({
             controls
             autoPlay
             playsInline
+            onEnded={() => {
+              if (playing && count > 1) go(1)
+            }}
           />
         ) : (
           <img
@@ -104,14 +184,16 @@ export function MediaLightbox({
             decoding="async"
           />
         )}
-        <p className="lightbox-caption">
-          {media.title ? <span>{media.title}</span> : null}
-          {count > 1 ? (
-            <small>
-              {(index % count) + 1} / {count}
-            </small>
-          ) : null}
-        </p>
+        {media.kind !== 'day-break' ? (
+          <p className="lightbox-caption">
+            {media.title ? <span>{media.title}</span> : null}
+            {count > 1 ? (
+              <small>
+                {safeIndex + 1} / {count}
+              </small>
+            ) : null}
+          </p>
+        ) : null}
       </div>
 
       {count > 1 ? (
@@ -126,6 +208,55 @@ export function MediaLightbox({
         >
           <ChevronRight aria-hidden="true" size={26} />
         </button>
+      ) : null}
+
+      {count > 1 ? (
+        <div
+          className="lightbox-controls"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="lightbox-play"
+            aria-label={playing ? 'Pause' : 'Lecture automatique'}
+            title={playing ? 'Pause' : 'Lecture automatique'}
+            onClick={() => setPlaying((current) => !current)}
+          >
+            {playing ? (
+              <Pause aria-hidden="true" size={18} />
+            ) : (
+              <Play aria-hidden="true" size={18} />
+            )}
+          </button>
+          {hasBreaks ? (
+            <div className="lightbox-progress" aria-hidden="true">
+              {segments.map((seg) => {
+                const done = Math.max(
+                  0,
+                  Math.min(seg.length, safeIndex - seg.start + 1),
+                )
+                return (
+                  <span
+                    key={seg.start}
+                    className="lb-seg"
+                    style={{ flexGrow: seg.length }}
+                  >
+                    <b
+                      style={{
+                        width: `${(done / seg.length) * 100}%`,
+                        background: seg.color,
+                      }}
+                    />
+                  </span>
+                )
+              })}
+            </div>
+          ) : (
+            <span className="lightbox-progress-count">
+              {safeIndex + 1} / {count}
+            </span>
+          )}
+        </div>
       ) : null}
     </div>
   )

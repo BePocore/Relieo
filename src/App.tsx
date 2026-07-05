@@ -59,7 +59,8 @@ import {
   resolvePointMedia,
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
-import { buildDayPlan } from './lib/days'
+import { buildDayPlan, computeDayStats } from './lib/days'
+import { formatDistance, formatGain } from './lib/format'
 import { DayTimeline } from './components/DayTimeline'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import {
@@ -90,10 +91,22 @@ const MapLibreTrailMap = lazy(() =>
   })),
 )
 
+// Carte de transition entre deux jours dans le diaporama narratif.
+export type DayBreakInfo = {
+  label: string
+  dateLabel: string
+  color: string
+  intro: string
+  distanceLabel?: string
+  gainLabel?: string
+  mediaCount: number
+}
+
 export type LightboxMedia = {
   src: string
-  kind: MediaKind | '360'
+  kind: MediaKind | '360' | 'day-break'
   title?: string
+  dayBreak?: DayBreakInfo
 }
 
 // Construit la liste plein écran (photos / vidéos / 360) à partir de points.
@@ -1154,12 +1167,68 @@ function App() {
     [mediaLibrary],
   )
 
-  // Diaporama : tous les médias de la page (ordre le long du parcours), en plein
-  // écran, défilables à la flèche / au swipe comme une galerie unique.
-  const slideshowItems = useMemo(
-    () => pointsToLightboxItems(mediaPoints, mediaLibrary),
-    [mediaPoints, mediaLibrary],
-  )
+  // Diaporama. Carte d'un seul jour : tous les médias dans l'ordre du parcours
+  // (comportement historique). Voyage multi-jours : diaporama NARRATIF, dans
+  // l'ordre chronologique par jour, avec une carte de transition avant chaque
+  // journée (« Jour N », date, distance, D+, médias) pour raconter l'avancée.
+  const slideshowItems = useMemo<LightboxMedia[]>(() => {
+    if (!dayPlan.multiDay) {
+      return pointsToLightboxItems(mediaPoints, mediaLibrary)
+    }
+    const dayKeyByPoint = new Map<TrailPoint, string | null>()
+    points.forEach((point, index) => {
+      dayKeyByPoint.set(point, dayPlan.pointDayKeys[index] ?? null)
+    })
+    const items: LightboxMedia[] = []
+    dayPlan.days.forEach((day, dayIndex) => {
+      const dayStats = computeDayStats(day, traces)
+      items.push({
+        src: `day-break-${day.key}`,
+        kind: 'day-break',
+        title: day.label,
+        dayBreak: {
+          label: day.label,
+          dateLabel: day.dateLabel,
+          color: day.color,
+          intro: dayIndex === 0 ? 'Le voyage commence' : 'La suite du voyage',
+          distanceLabel:
+            dayStats.distanceMeters > 0
+              ? formatDistance(dayStats.distanceMeters)
+              : undefined,
+          gainLabel:
+            dayStats.elevationGainMeters > 0
+              ? formatGain(dayStats.elevationGainMeters)
+              : undefined,
+          mediaCount: day.mediaCount,
+        },
+      })
+      // Médias du jour dans l'ordre le long du tracé (déjà porté par mediaPoints).
+      const dayMedia = mediaPoints.filter(
+        (point) => dayKeyByPoint.get(point) === day.key,
+      )
+      items.push(...pointsToLightboxItems(dayMedia, mediaLibrary))
+    })
+    // Médias non datés en fin de récit, sous leur propre carte.
+    const undatedMedia = mediaPoints.filter(
+      (point) => (dayKeyByPoint.get(point) ?? null) === null,
+    )
+    if (undatedMedia.length > 0) {
+      items.push({
+        src: 'day-break-undated',
+        kind: 'day-break',
+        title: 'Médias non datés',
+        dayBreak: {
+          label: 'Non datés',
+          dateLabel: 'Sans date',
+          color: '#93a1b5',
+          intro: 'Pour finir',
+          mediaCount: undatedMedia.length,
+        },
+      })
+      items.push(...pointsToLightboxItems(undatedMedia, mediaLibrary))
+    }
+    return items
+  }, [dayPlan, mediaPoints, points, mediaLibrary, traces])
   const handleOpenSlideshow = useCallback(() => {
     if (slideshowItems.length > 0) setLightbox({ items: slideshowItems, index: 0 })
   }, [slideshowItems])

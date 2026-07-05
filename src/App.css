@@ -1246,6 +1246,160 @@
   right: max(12px, env(safe-area-inset-right));
 }
 
+/* Diaporama (plusieurs slides) : on réserve le bas pour la barre de contrôle. */
+.lightbox.has-controls .lightbox-media {
+  max-height: 76vh;
+}
+
+.lightbox.has-controls .lightbox-360 {
+  height: min(72vh, 820px);
+}
+
+/* ── Diaporama narratif : carte de transition entre jours ───── */
+
+.lightbox-daybreak {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 40px 32px;
+  text-align: center;
+  color: #fff;
+  animation: fadeIn 260ms ease both;
+}
+
+.db-intro {
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.db-day {
+  margin-top: 6px;
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 850;
+  letter-spacing: -0.02em;
+}
+
+.db-date {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.db-line {
+  width: 54px;
+  height: 3px;
+  margin: 16px 0;
+  border-radius: 3px;
+  background: var(--day, #4fd1a1);
+}
+
+.db-stats {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.db-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-stats b {
+  font-size: 1.15rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.db-stats span {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Diaporama : barre de contrôle (lecture auto + progression) ── */
+
+.lightbox-controls {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, calc(100% - 120px));
+  padding: 8px 12px;
+  transform: translateX(-50%);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 999px;
+  background: rgba(8, 14, 11, 0.62);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.lightbox-play {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  color: #0b2e22;
+  background: #4fd1a1;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.lightbox-play:hover {
+  transform: scale(1.06);
+  background: #6fe0b7;
+}
+
+.lightbox-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.lb-seg {
+  position: relative;
+  height: 5px;
+  min-width: 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.lb-seg b {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 0;
+  border-radius: 4px;
+  transition: width 300ms ease;
+}
+
+.lightbox-progress-count {
+  flex: 1;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.82rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .lightbox-controls {
+    width: calc(100% - 24px);
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
 /* ── Pop-up de confirmation ─────────────────────────────────── */
 
 .confirm-overlay {
