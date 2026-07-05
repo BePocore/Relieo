@@ -13,15 +13,13 @@ export const PLAN_STORAGE_LIMITS: Record<PlanId, number> = {
 
 export const DEFAULT_PLAN_ID: PlanId = 'standard'
 
-// Limite relevée pour les comptes « maison » : admin, créateurs (CREATOR_UIDS)
-// et comptes internes. Alignée sur le garde-fou global du bucket
-// (`R2_STORAGE_LIMIT_BYTES` dans server/r2.ts) : 9,99 Go, soit ~10 Go calés
-// JUSTE sous le palier gratuit R2 de 10 Go (marge de 10 Mo pour les petits
-// fichiers système du bucket → jamais facturé). Tant qu'il n'y a que Quentin
-// comme créateur, il dispose ainsi de tout le stockage gratuit du bucket, sans
-// être bridé par le plafond du forfait Standard (5 Go).
-// ⚠️ Garder synchronisé avec R2_STORAGE_LIMIT_BYTES (server/r2.ts).
-export const INTERNAL_STORAGE_LIMIT_BYTES = 9_990_000_000
+// Limite des comptes « maison » : admin, créateurs (CREATOR_UIDS) et comptes
+// internes. Calée sur le palier gratuit R2 (10 Go) : tant que Quentin est le
+// seul créateur, son compte dispose de tout le stockage gratuit du bucket,
+// sans être bridé par le plafond du forfait Standard (5 Go). Les autres
+// comptes gardent la limite de leur forfait (cf. PLAN_STORAGE_LIMITS) et leur
+// stockage au-delà du gratuit est facturé sur R2 (cf. server/costs.ts).
+export const INTERNAL_STORAGE_LIMIT_BYTES = 10_000_000_000
 
 // Limite du forfait gratuit (Standard) : référence utilisée tant que tous les
 // utilisateurs sont en gratuit. Le jour où les forfaits payants existent, on

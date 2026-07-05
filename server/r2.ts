@@ -18,10 +18,13 @@ const requiredKeys = [
   'R2_PUBLIC_BASE_URL',
 ] as const
 
-// Plafond global du bucket (filet de sécurité Cloudflare). Les quotas réels
-// sont appliqués par utilisateur via un `StorageScope` (voir plus bas) ; ce
-// plafond reste le garde-fou ultime du bucket entier.
-export const R2_STORAGE_LIMIT_BYTES = 9_990_000_000
+// Filet de sécurité anti-emballement du bucket entier (bug / abus) : ce n'est
+// PAS un plafond d'usage. Les quotas réels sont appliqués par compte via un
+// `StorageScope` (forfait, ou 10 Go pour les comptes maison), et le stockage
+// au-delà du palier gratuit R2 (10 Go) est assumé/facturé (cf. server/costs.ts).
+// Fixé haut pour ne jamais brider l'usage légitime ; à relever si un compte au
+// forfait Cartographe (200 Go) arrive. ~0,015 €/Go/mois si jamais saturé.
+export const R2_STORAGE_LIMIT_BYTES = 100_000_000_000
 
 // Portée d'un contrôle de quota :
 // - `limitBytes` : la limite à ne pas dépasser.
