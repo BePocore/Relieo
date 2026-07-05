@@ -59,6 +59,8 @@ import {
   resolvePointMedia,
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
+import { buildDayPlan } from './lib/days'
+import { DayTimeline } from './components/DayTimeline'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import {
   googleDriveImportConfigured,
@@ -509,6 +511,10 @@ function App() {
   const [mediaLibrary, setMediaLibrary] = useState<ImportedMedia[]>([])
   const [basemap, setBasemap] = useState<BasemapId>(defaultBasemap)
   const [selectedPoint, setSelectedPoint] = useState<TrailPoint | null>(null)
+  // Jour sélectionné dans la timeline des jours (consultation). null = séjour
+  // complet. Filtré à l'usage : si le plan change et ne contient plus ce jour,
+  // il est ignoré (retombe sur null).
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
   const [recenterRequest, setRecenterRequest] = useState(0)
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -832,6 +838,25 @@ function App() {
     return () => window.removeEventListener('keydown', handleEscape)
   }, [manualPlacementMediaId])
   const stats = useMemo(() => combineStats(traces), [traces])
+  // Plan de journées (voyages multi-jours) : entièrement dérivé des données
+  // chargées (EXIF, horodatages GPX...), rien n'est persisté.
+  const dayPlan = useMemo(
+    () => buildDayPlan(traces, points, mediaLibrary),
+    [traces, points, mediaLibrary],
+  )
+  // Jour actif réellement appliqué : ignoré si le plan ne le contient plus
+  // (changement de carte, trace supprimée...).
+  const activeDayKey = useMemo(
+    () =>
+      selectedDayKey !== null &&
+      dayPlan.days.some((day) => day.key === selectedDayKey)
+        ? selectedDayKey
+        : null,
+    [selectedDayKey, dayPlan],
+  )
+  const handleSelectDay = useCallback((key: string | null) => {
+    setSelectedDayKey(key)
+  }, [])
   const currentProjectSignature = useMemo(
     () =>
       projectSignature({
@@ -2749,6 +2774,9 @@ function App() {
                 pendingMediaUrls={moderationPending}
                 videoPosters={videoPosters}
                 framedThumbnails={framedThumbnails}
+                pointDayKeys={dayPlan.pointDayKeys}
+                traceDayKeys={dayPlan.traceDayKeys}
+                activeDayKey={isStudioMode ? null : activeDayKey}
                 onMovePoint={handleMovePoint}
                 onCreatePoint={handleCreatePoint}
                 onMarkerClick={handleMarkerClick}
@@ -2766,6 +2794,19 @@ function App() {
             selectedPoint={selectedPoint}
             onSelectPoint={handleSelectPoint}
           />
+
+          {!isStudioMode &&
+          dayPlan.multiDay &&
+          !isLoading &&
+          !loadFailed &&
+          !needsAccess ? (
+            <DayTimeline
+              plan={dayPlan}
+              traces={traces}
+              activeDayKey={activeDayKey}
+              onSelectDay={handleSelectDay}
+            />
+          ) : null}
         </section>
 
         {isPanelOpen ? (
@@ -2853,6 +2894,9 @@ function App() {
                   traces={traces}
                   stats={stats}
                   mediaLibrary={mediaLibrary}
+                  dayPlan={dayPlan}
+                  activeDayKey={activeDayKey}
+                  onSelectDay={handleSelectDay}
                   onSelectPoint={handleSelectPoint}
                   onShowMedia={handleOpenLightbox}
                   onClose={handleClosePoint}

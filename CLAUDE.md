@@ -48,7 +48,13 @@ Transactional emails go through **Resend** via a direct HTTP call (not the SDK, 
 
 ### `src/lib/` — pure, framework-free logic
 
-`geo.ts` (haversine `distanceBetween`, Douglas–Peucker `simplifyTrack`, `computeTrailStats`), `gpx.ts` (GPX → `TrackPoint[]`), `media.ts` (EXIF/GPS extraction via `exifr`, `resolvePointMedia` that maps a point to its displayable media), `markers.ts` (SVG marker pins as data URIs), `basemaps.ts`, `format.ts`, `pointMeta.ts`. These are imported widely; treat them as the stable core.
+`geo.ts` (haversine `distanceBetween`, Douglas–Peucker `simplifyTrack`, `computeTrailStats`), `gpx.ts` (GPX → `TrackPoint[]`), `media.ts` (EXIF/GPS extraction via `exifr`, `resolvePointMedia` that maps a point to its displayable media, `findPointMediaItem` that returns the raw library entry), `markers.ts` (SVG marker pins as data URIs), `basemaps.ts`, `format.ts`, `pointMeta.ts`, `days.ts` (day plan, below). These are imported widely; treat them as the stable core.
+
+### Day plan / timeline des jours (`src/lib/days.ts`, `components/DayTimeline.tsx`) — 2026-07-05
+
+Multi-day trips get a **per-day grouping, fully derived at load time** — nothing is persisted, old maps benefit without migration. `buildDayPlan(traces, points, mediaLibrary)` assigns each **trace** a day (majority of its GPX timestamps; else reverse-inference by EXIF-dated media lying within 250 m; else undated) and each **point** a day via a cascade: media EXIF `takenAt` → nearest timed GPX point (≤ 250 m) → date parsed from the filename (`IMG_20260812…`) → nearest dated trace (≤ 2 km) → undated. Day keys are **local dates**: timezone approximated from the median longitude (solar offset), and the day boundary is **04:00** so late-night photos stay on the previous day. Traces are sampled (~400 pts) so the plan builds instantly on dense GPX.
+
+In public consultation, when the plan is multi-day, **`DayTimeline`** (bottom chips « Séjour / J1…JN » + a summary pill with the day's date, distance, D+ and media count) drives an `activeDayKey` filter: `MapLibreTrailMap` receives `pointDayKeys` / `traceDayKeys` / `activeDayKey`, **dims** other days' routes and GPU symbols (GeoJSON `dim` property + `line-opacity`/`icon-opacity` expressions — geometry is NOT rebuilt on day change, only properties) and HTML markers (`.day-dim` class via `dataset.dayKey`), and **flies the camera** to the day's bounds (then restores the relief view). **Undated elements are never dimmed** (product decision: never lost). `PublicPanel` renders per-day collapsible sections (per-day `ElevationProfile` + point rows + a « Non datés » section), synced with the same selection (opening a day filters the map too). The Studio is unaffected (`activeDayKey` forced to null) and single-day maps see zero UI change.
 
 ### MapLibre layer — `components/MapLibreTrailMap.tsx`
 

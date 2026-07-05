@@ -40,6 +40,13 @@ export type MapLibreTrailMapProps = {
   pendingMediaUrls?: string[]
   videoPosters?: Record<string, string>
   framedThumbnails?: Record<string, string>
+  // Plan de journées (lib/days.ts) : jour de chaque point (aligné sur points)
+  // et de chaque trace. activeDayKey = jour sélectionné dans la timeline ;
+  // les éléments des AUTRES jours sont atténués (les non datés restent pleins)
+  // et la caméra vole vers l'emprise du jour.
+  pointDayKeys?: Array<string | null>
+  traceDayKeys?: Record<string, string | null>
+  activeDayKey?: string | null
   onMovePoint?: (pointId: string, lat: number, lng: number) => void
   onCreatePoint?: (lat: number, lng: number) => void
   onMarkerClick: (point: TrailPoint) => void
@@ -154,6 +161,27 @@ const boundsFor = (
   return bounds
 }
 
+// Emprise d'un seul jour : traces et points rattachés à cette journée.
+const boundsForDay = (
+  traces: Trace[],
+  points: TrailPoint[],
+  traceDayKeys: Record<string, string | null> | undefined,
+  pointDayKeys: Array<string | null> | undefined,
+  dayKey: string,
+) => {
+  const bounds = new LngLatBounds()
+  for (const trace of traces) {
+    if ((traceDayKeys?.[trace.id] ?? null) !== dayKey) continue
+    for (const point of trace.points) bounds.extend([point.lng, point.lat])
+  }
+  points.forEach((point, index) => {
+    if ((pointDayKeys?.[index] ?? null) === dayKey) {
+      bounds.extend([point.lng, point.lat])
+    }
+  })
+  return bounds
+}
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), Math.max(min, max))
 
@@ -220,6 +248,9 @@ export function MapLibreTrailMap({
   flat2D = false,
   pendingMediaUrls,
   videoPosters = {},
+  pointDayKeys,
+  traceDayKeys,
+  activeDayKey = null,
   onMovePoint,
   onCreatePoint,
   onMarkerClick,
@@ -233,6 +264,10 @@ export function MapLibreTrailMap({
   const basemapRef = useRef(basemap)
   const flat2DRef = useRef(flat2D)
   const createPointOnClickRef = useRef(createPointOnClick)
+  const activeDayKeyRef = useRef<string | null>(activeDayKey)
+  const prevActiveDayRef = useRef<string | null>(null)
+  const pointFeaturesRef = useRef<Array<Feature<Point>>>([])
+  const routeFeaturesRef = useRef<Array<Feature<LineString>>>([])
   const callbacksRef = useRef({
     onMovePoint,
     onCreatePoint,
@@ -264,6 +299,7 @@ export function MapLibreTrailMap({
     basemapRef.current = basemap
     flat2DRef.current = flat2D
     createPointOnClickRef.current = createPointOnClick
+    activeDayKeyRef.current = activeDayKey ?? null
     callbacksRef.current = {
       onMovePoint,
       onCreatePoint,
@@ -276,6 +312,7 @@ export function MapLibreTrailMap({
     basemap,
     flat2D,
     createPointOnClick,
+    activeDayKey,
     onMovePoint,
     onCreatePoint,
     onMarkerClick,
@@ -364,7 +401,13 @@ export function MapLibreTrailMap({
         paint: {
           'line-color': '#ffffff',
           'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 13, 7, 17, 10],
-          'line-opacity': 0.92,
+          // dim = trace d'un autre jour que celui sélectionné dans la timeline.
+          'line-opacity': [
+            'case',
+            ['boolean', ['get', 'dim'], false],
+            0.14,
+            0.92,
+          ],
         },
         layout: { 'line-cap': 'round', 'line-join': 'round' },
       })
@@ -375,6 +418,7 @@ export function MapLibreTrailMap({
         paint: {
           'line-color': ['coalesce', ['get', 'color'], '#145c4f'],
           'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.8, 13, 4.5, 17, 7],
+          'line-opacity': ['case', ['boolean', ['get', 'dim'], false], 0.16, 1],
         },
         layout: { 'line-cap': 'round', 'line-join': 'round' },
       })
@@ -433,6 +477,9 @@ export function MapLibreTrailMap({
           'icon-anchor': 'center',
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-opacity': ['case', ['boolean', ['get', 'dim'], false], 0.18, 1],
         },
       })
 
@@ -508,8 +555,69 @@ export function MapLibreTrailMap({
     const map = mapRef.current
     const source = map?.getSource(routeSourceId) as GeoJSONSource | undefined
     if (!styleReady || !map || !source) return
-    source.setData(routeGeoJson(traces, compact))
+    // La géométrie (simplification comprise) n'est recalculée qu'ici ; le
+    // filtre par jour ne touche ensuite que la propriété `dim` (effet dédié).
+    routeFeaturesRef.current = routeGeoJson(traces, compact).features
+    source.setData({
+      type: 'FeatureCollection',
+      features: routeFeaturesRef.current,
+    })
   }, [traces, compact, styleReady])
+
+  // Filtre « jour actif » : atténue traces, symboles GPU et marqueurs HTML des
+  // autres jours (les éléments non datés restent pleins, décision produit).
+  // Ne recrée rien : propriétés GeoJSON + classes CSS seulement.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!styleReady || !map) return
+    const active = activeDayKey ?? null
+
+    for (const marker of domMarkersRef.current) {
+      const element = marker.getElement()
+      const dayKey = element.dataset.dayKey ?? ''
+      element.classList.toggle(
+        'day-dim',
+        active !== null && dayKey !== '' && dayKey !== active,
+      )
+    }
+
+    const pointSource = map.getSource(pointSourceId) as
+      | GeoJSONSource
+      | undefined
+    if (pointSource && pointFeaturesRef.current.length > 0) {
+      const features = pointFeaturesRef.current.map((feature) => {
+        const dayKey = (feature.properties?.dayKey as string | null) ?? null
+        return {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            dim: active !== null && dayKey !== null && dayKey !== active,
+          },
+        }
+      })
+      pointFeaturesRef.current = features
+      pointSource.setData({ type: 'FeatureCollection', features })
+    }
+
+    const routeSource = map.getSource(routeSourceId) as
+      | GeoJSONSource
+      | undefined
+    if (routeSource && routeFeaturesRef.current.length > 0) {
+      const features = routeFeaturesRef.current.map((feature) => {
+        const traceId = feature.properties?.id as string | undefined
+        const dayKey = traceId ? (traceDayKeys?.[traceId] ?? null) : null
+        return {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            dim: active !== null && dayKey !== null && dayKey !== active,
+          },
+        }
+      })
+      routeFeaturesRef.current = features
+      routeSource.setData({ type: 'FeatureCollection', features })
+    }
+  }, [activeDayKey, traceDayKeys, traces, compact, styleReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -537,15 +645,18 @@ export function MapLibreTrailMap({
       )
 
       const pendingSet = new Set(pendingMediaUrls ?? [])
+      const activeDay = activeDayKeyRef.current
       const features: Array<Feature<Point>> = []
       const mediaMarkers: Array<{
         point: TrailPoint
         thumbnailSource: string
         pending: boolean
+        dayKey: string | null
       }> = []
       for (let index = 0; index < points.length; index += 1) {
         const point = points[index]
         const id = pointKey(point, index)
+        const dayKey = pointDayKeys?.[index] ?? null
         const media = resolvePointMedia(point, mediaLibrary)
         const thumbnailSource =
           media?.kind === 'image'
@@ -556,7 +667,9 @@ export function MapLibreTrailMap({
         // Média non validé par la modération : badge « ! » (studio seulement).
         const mediaUrl = point.image ?? point.video
         const pending = Boolean(editable && mediaUrl && pendingSet.has(mediaUrl))
-        if (thumbnailSource) mediaMarkers.push({ point, thumbnailSource, pending })
+        if (thumbnailSource) {
+          mediaMarkers.push({ point, thumbnailSource, pending, dayKey })
+        }
         features.push({
           type: 'Feature',
           properties: {
@@ -564,6 +677,8 @@ export function MapLibreTrailMap({
             icon: `marker-${point.type}`,
             thumbnail: Boolean(thumbnailSource),
             hasMedia: Boolean(media),
+            dayKey,
+            dim: activeDay !== null && dayKey !== null && dayKey !== activeDay,
             selected: selectedPoint?.id
               ? selectedPoint.id === point.id
               : selectedPoint === point,
@@ -584,6 +699,14 @@ export function MapLibreTrailMap({
             element.type = 'button'
             element.className = `maplibre-photo-marker type-${job.point.type}`
             element.setAttribute('aria-label', `Voir ${job.point.title}`)
+            element.dataset.dayKey = job.dayKey ?? ''
+            if (
+              activeDayKeyRef.current !== null &&
+              job.dayKey !== null &&
+              job.dayKey !== activeDayKeyRef.current
+            ) {
+              element.classList.add('day-dim')
+            }
             if (selectedPoint?.id && selectedPoint.id === job.point.id) {
               element.classList.add('selected')
             }
@@ -649,6 +772,7 @@ export function MapLibreTrailMap({
             callbacksRef.current.onReady?.()
           }
         })
+        pointFeaturesRef.current = features
         source.setData({ type: 'FeatureCollection', features })
         map.triggerRepaint()
       }
@@ -669,6 +793,7 @@ export function MapLibreTrailMap({
     compact,
     editable,
     pendingMediaUrls,
+    pointDayKeys,
   ])
 
   useEffect(() => {
@@ -716,6 +841,54 @@ export function MapLibreTrailMap({
     if (duration === 0) queueMicrotask(restoreReliefView)
     else map.once('moveend', restoreReliefView)
   }, [recenterRequest, traces, points, compact, flat2D, styleReady])
+
+  // Vol de caméra vers l'emprise du jour sélectionné dans la timeline (et
+  // retour au séjour complet à la désélection). Ne se déclenche que sur un
+  // vrai changement de jour, pas quand traces/points bougent.
+  useEffect(() => {
+    const map = mapRef.current
+    const previous = prevActiveDayRef.current
+    const active = activeDayKey ?? null
+    prevActiveDayRef.current = active
+    if (!styleReady || !map || active === previous) return
+    const bounds = active
+      ? boundsForDay(traces, points, traceDayKeys, pointDayKeys, active)
+      : boundsFor(traces, points)
+    if (bounds.isEmpty()) return
+    const phoneLayout = window.innerWidth < 600
+    map.fitBounds(bounds, {
+      // Marge basse plus grande que le recentrage : la timeline des jours
+      // occupe le bas de l'écran au-dessus du rail de médias.
+      padding: phoneLayout
+        ? { top: 86, right: 18, bottom: 158, left: 18 }
+        : compact
+          ? { top: 130, right: 52, bottom: 192, left: 52 }
+          : { top: 150, right: 130, bottom: 204, left: 130 },
+      pitch: 0,
+      bearing: 0,
+      duration: 700,
+      maxZoom: 15,
+    })
+    if (!flat2D) {
+      map.once('moveend', () => {
+        map.easeTo({
+          pitch: phoneLayout ? 42 : compact ? 46 : 52,
+          bearing: 22,
+          zoom: phoneLayout ? map.getZoom() - 0.2 : map.getZoom(),
+          duration: 380,
+        })
+      })
+    }
+  }, [
+    activeDayKey,
+    traces,
+    points,
+    traceDayKeys,
+    pointDayKeys,
+    compact,
+    flat2D,
+    styleReady,
+  ])
 
   useEffect(() => {
     const map = mapRef.current

@@ -18,6 +18,35 @@ export const fileNameFromPath = (path: string): string => {
   return decodeURIComponent(cleanPath.split(/[\\/]/).pop() ?? cleanPath)
 }
 
+// Retrouve l'entrée de bibliothèque d'un point (URL exacte, puis nom de média,
+// puis nom de fichier de l'URL). Donne accès aux métadonnées du média
+// (takenAt, dimensions...), notamment pour le plan de journées (lib/days.ts).
+export const findPointMediaItem = (
+  point: TrailPoint,
+  mediaLibrary: ImportedMedia[],
+): ImportedMedia | null => {
+  const source = point.video ?? point.image
+
+  if (source) {
+    const mediaByUrl = mediaLibrary.find((item) => item.url === source)
+    if (mediaByUrl) return mediaByUrl
+  }
+
+  if (point.mediaName) {
+    const media = mediaLibrary.find(
+      (item) => item.name.toLowerCase() === point.mediaName?.toLowerCase(),
+    )
+    if (media) return media
+  }
+
+  if (!source) return null
+
+  const sourceName = fileNameFromPath(source).toLowerCase()
+  return (
+    mediaLibrary.find((item) => item.name.toLowerCase() === sourceName) ?? null
+  )
+}
+
 export const resolvePointMedia = (
   point: TrailPoint,
   mediaLibrary: ImportedMedia[],
@@ -34,44 +63,7 @@ export const resolvePointMedia = (
   const kind: MediaKind =
     point.mediaKind ?? (point.video || point.type === 'video' ? 'video' : 'image')
 
-  if (source) {
-    const mediaByUrl = mediaLibrary.find((item) => item.url === source)
-    if (mediaByUrl) {
-      return {
-        src: mediaByUrl.url,
-        kind: mediaByUrl.kind,
-        name: mediaByUrl.name,
-        thumbnailSrc: mediaByUrl.thumbnailUrl,
-        width: mediaByUrl.width,
-        height: mediaByUrl.height,
-        durationSeconds: mediaByUrl.durationSeconds,
-      }
-    }
-  }
-
-  if (point.mediaName) {
-    const media = mediaLibrary.find(
-      (item) => item.name.toLowerCase() === point.mediaName?.toLowerCase(),
-    )
-    if (media) {
-      return {
-        src: media.url,
-        kind: media.kind,
-        name: media.name,
-        thumbnailSrc: media.thumbnailUrl,
-        width: media.width,
-        height: media.height,
-        durationSeconds: media.durationSeconds,
-      }
-    }
-  }
-
-  if (!source) return null
-
-  const sourceName = fileNameFromPath(source).toLowerCase()
-  const media = mediaLibrary.find(
-    (item) => item.name.toLowerCase() === sourceName,
-  )
+  const media = findPointMediaItem(point, mediaLibrary)
   if (media) {
     return {
       src: media.url,
@@ -83,6 +75,8 @@ export const resolvePointMedia = (
       durationSeconds: media.durationSeconds,
     }
   }
+
+  if (!source) return null
 
   if (directUrlPattern.test(source) || source.includes('/')) {
     return { src: source, kind, name: fileNameFromPath(source) }
