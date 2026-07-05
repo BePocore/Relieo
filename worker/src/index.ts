@@ -190,8 +190,12 @@ export default {
     // Moderation IA : un media non valide est refuse ici (fail-closed cote public). Le visiteur
     // ne voit que le scanne & non flagge ; le proprietaire/admin voit tout sauf le rejete.
     // Tant que MODERATION_ENFORCE !== "1", on sert tout (deploiement progressif sans casser la prod).
+    // Exception : les fichiers de traces GPS (JSON de points sous /traces/, pas des medias) ne
+    // passent jamais au scan -> ils sont exemptes du controle de moderation. Le ticket, lui,
+    // reste obligatoire (verifie ci-dessus).
+    const isTraceFile = key.includes('/traces/') && key.endsWith('.json')
     const enforce = env.MODERATION_ENFORCE === '1'
-    if (!(await canServe(env.MEDIA_BUCKET, key, ticket.role, enforce))) {
+    if (!isTraceFile && !(await canServe(env.MEDIA_BUCKET, key, ticket.role, enforce))) {
       return forbidden(request, env, 'media indisponible (moderation)')
     }
 

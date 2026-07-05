@@ -38,6 +38,12 @@ import type { CameraCommand } from './components/MapLibreTrailMap'
 import { computeTrailStats, distanceBetween } from './lib/geo'
 import { parseGpx } from './lib/gpx'
 import {
+  hydrateProjectTraces,
+  serializeTracePoints,
+  traceBlobFingerprint,
+  tracesForStorage,
+} from './lib/traceFiles'
+import {
   cleanupUnusedUploadedMedia,
   deleteUploadedMedia,
   fileFingerprints,
@@ -571,6 +577,10 @@ function App() {
   const [showDashboardConfirm, setShowDashboardConfirm] = useState(false)
   const isGoogleDriveConfigured = googleDriveImportConfigured()
 
+  // Fichiers R2 des traces telles que chargées : sert à supprimer, à la
+  // sauvegarde, les fichiers des traces retirées entre-temps dans le Studio.
+  const loadedTraceUrlsRef = useRef<string[]>([])
+
   const applyProject = useCallback((project: TrailProject) => {
     const loadedTraces =
       project.traces && project.traces.length > 0
@@ -584,6 +594,9 @@ function App() {
               points: project.track,
             },
           ]
+    loadedTraceUrlsRef.current = loadedTraces
+      .map((trace) => trace.fileUrl)
+      .filter((url): url is string => Boolean(url))
     const loadedPoints = project.points
       .map((point, index) => normalizePoint(point, index))
       .filter((point): point is TrailPoint => point !== null)
@@ -726,7 +739,16 @@ function App() {
         // partent deja autorisees : en consultation (public) comme en Studio
         // (ticket proprietaire via le jeton Firebase deja recupere ci-dessus).
         if (mapSlug) await requestMediaTicket({ code: mapSlug }, authToken)
-        applyProject(onlineProject)
+        // Traces au nouveau format (fichiers R2) : rechargées via le videur (le
+        // cookie ticket vient d'être posé) avant d'afficher la carte. Les
+        // anciennes cartes (points inline) passent telles quelles.
+        const hydrated = await hydrateProjectTraces(onlineProject)
+        applyProject(hydrated.project)
+        if (hydrated.missingCount > 0) {
+          setError(
+            `${hydrated.missingCount} trace(s) n'ont pas pu être rechargées.`,
+          )
+        }
         // Trace en attente depuis l'onglet Traces : ajoutee a CETTE carte (non
         // sauvegardee), le proprietaire relit puis clique Sauvegarder.
         const pending = takePendingTraceImport()
@@ -942,22 +964,48 @@ function App() {
     const snapshot = latestProjectRef.current
 
     try {
-      const project: TrailProject = {
-        track: snapshot.traces.flatMap((trace) => trace.points),
-        traces: snapshot.traces,
-        accessCode: snapshot.accessCode.trim() || undefined,
-        points: exportablePoints(snapshot.points),
-        mediaLibrary: snapshot.mediaLibrary,
-        trackSourceName:
-          snapshot.traces.map((trace) => trace.name).join(' · ') || 'Traces',
-        pointsSourceName: snapshot.pointsSourceName,
-        savedAt: new Date().toISOString(),
-      }
-
       const headers = await saveAuthHeaders(snapshot.adminPassword)
       if (!headers) return
       setIsAutosaving(true)
       setSaveStatus('Sauvegarde automatique…')
+
+      // Même régime que la sauvegarde manuelle : les points des traces vivent
+      // dans des fichiers R2 (project.json léger, limite Vercel ~4,5 Mo). Les
+      // traces encore inline sont envoyées ici (dédupliquées par empreinte).
+      const idToken = (await getIdToken()) ?? undefined
+      let persistedTraces = snapshot.traces
+      if (snapshot.traces.some((trace) => !trace.fileUrl)) {
+        persistedTraces = await Promise.all(
+          snapshot.traces.map(async (trace) => {
+            if (trace.fileUrl) return trace
+            const blob = serializeTracePoints(trace.points)
+            const fingerprint = await traceBlobFingerprint(blob)
+            const uploaded = await uploadMedia({
+              file: blob,
+              fingerprint,
+              adminPassword: snapshot.adminPassword,
+              idToken,
+              trailCode: mapSlug,
+              kind: 'trace',
+            })
+            return { ...trace, fileUrl: uploaded.url }
+          }),
+        )
+        setTraces(persistedTraces)
+      }
+
+      const project: TrailProject = {
+        // `track` présent pour la validation API, mais vide (points en R2).
+        track: [],
+        traces: tracesForStorage(persistedTraces),
+        accessCode: snapshot.accessCode.trim() || undefined,
+        points: exportablePoints(snapshot.points),
+        mediaLibrary: snapshot.mediaLibrary,
+        trackSourceName:
+          persistedTraces.map((trace) => trace.name).join(' · ') || 'Traces',
+        pointsSourceName: snapshot.pointsSourceName,
+        savedAt: new Date().toISOString(),
+      }
       const response = await fetch('/api/project', {
         method: 'PUT',
         headers,
@@ -987,7 +1035,17 @@ function App() {
         } | null
         throw new Error(result?.message ?? 'Sauvegarde auto impossible.')
       }
-      setSavedProjectSignature(snapshot.signature)
+      // Signature recalculée sur les traces PERSISTÉES (avec fileUrl), sinon
+      // « modifications non sauvegardées » resterait à vrai après l'autosave.
+      setSavedProjectSignature(
+        projectSignature({
+          points: snapshot.points,
+          traces: persistedTraces,
+          mediaLibrary: snapshot.mediaLibrary,
+          accessCode: snapshot.accessCode,
+          pointsSourceName: snapshot.pointsSourceName,
+        }),
+      )
       syncStudioUrlToCode(mapSlug)
       setSaveStatus('Modifs sauvegardées automatiquement.')
     } catch (saveError) {
@@ -1139,39 +1197,68 @@ function App() {
     setCameraCommand({ id: Date.now(), type })
   }, [])
 
-  // Import additif : chaque GPX devient une trace distincte.
-  const handleImportGpx = useCallback(async (files: File[]) => {
-    const newTraces: Trace[] = []
-    let failures = 0
-
-    for (const file of files) {
-      try {
-        const parsedTrack = parseGpx(await file.text())
-        if (parsedTrack.length < 2) {
-          failures += 1
-          continue
-        }
-        newTraces.push({
-          id: createTraceId(),
-          name: file.name.replace(/\.gpx$/i, ''),
-          points: parsedTrack,
-        })
-      } catch {
-        failures += 1
+  // Import additif : chaque GPX devient une trace distincte. Les points partent
+  // dans un fichier R2 dédié (comme un média) : project.json reste léger quel
+  // que soit le volume, et la trace garde sa fidélité brute (zéro simplification).
+  const handleImportGpx = useCallback(
+    async (files: File[]) => {
+      if (!firebaseEnabled && !adminPassword) {
+        setError('Saisis le mot de passe Studio avant un import GPX.')
+        return
       }
-    }
+      if (!mapSlug) {
+        setError('Identifiant de carte manquant : rouvre-la depuis le tableau de bord.')
+        return
+      }
 
-    if (newTraces.length === 0) {
-      setError('Aucune trace GPX valide dans la sélection.')
-      return
-    }
+      const idToken = (await getIdToken()) ?? undefined
+      const newTraces: Trace[] = []
+      let failures = 0
+      let index = 0
 
-    setTraces((current) => [...current, ...newTraces])
-    setSelectedPoint(null)
-    setError(
-      failures > 0 ? `${failures} fichier(s) GPX ignoré(s).` : null,
-    )
-  }, [])
+      for (const file of files) {
+        index += 1
+        try {
+          const parsedTrack = parseGpx(await file.text())
+          if (parsedTrack.length < 2) {
+            failures += 1
+            continue
+          }
+          setSaveStatus(`Envoi des traces... (${index}/${files.length})`)
+          const blob = serializeTracePoints(parsedTrack)
+          const fingerprint = await traceBlobFingerprint(blob)
+          const uploaded = await uploadMedia({
+            file: blob,
+            fingerprint,
+            adminPassword,
+            idToken,
+            trailCode: mapSlug,
+            kind: 'trace',
+          })
+          newTraces.push({
+            id: createTraceId(),
+            name: file.name.replace(/\.gpx$/i, ''),
+            points: parsedTrack,
+            fileUrl: uploaded.url,
+          })
+        } catch {
+          failures += 1
+        }
+      }
+
+      if (newTraces.length === 0) {
+        setSaveStatus('Import GPX impossible.')
+        setError('Aucune trace GPX valide dans la sélection (ou envoi refusé).')
+        return
+      }
+
+      setTraces((current) => [...current, ...newTraces])
+      setSelectedPoint(null)
+      setSaveStatus(`${newTraces.length} trace(s) GPX importée(s).`)
+      setError(failures > 0 ? `${failures} fichier(s) GPX ignoré(s).` : null)
+    },
+    [adminPassword, mapSlug],
+  )
 
   const handleDeleteTrace = useCallback((traceId: string) => {
     setTraces((current) => current.filter((trace) => trace.id !== traceId))
@@ -1241,7 +1328,9 @@ function App() {
       const project = normalizeProject(raw)
       if (!project) return false
       setIsPublished(raw.hikeStatus !== 'draft')
-      applyProject(project)
+      // Le cookie ticket est posé (code validé) : on peut hydrater les traces R2.
+      const hydrated = await hydrateProjectTraces(project)
+      applyProject(hydrated.project)
       return true
     } catch {
       return false
@@ -1652,7 +1741,14 @@ function App() {
       )
       const idToken = (await getIdToken()) ?? undefined
       const cleanup = await cleanupUnusedUploadedMedia({
-        usedUrls: usedMediaUrls,
+        // Les fichiers de traces de la carte sont des fichiers UTILISÉS : sans
+        // leurs URLs ici, le nettoyage les prendrait pour des orphelins.
+        usedUrls: [
+          ...usedMediaUrls,
+          ...traces
+            .map((trace) => trace.fileUrl)
+            .filter((url): url is string => Boolean(url)),
+        ],
         adminPassword,
         idToken,
         trailCode: mapSlug,
@@ -1688,6 +1784,7 @@ function App() {
   }, [
     mapSlug,
     adminPassword,
+    traces,
     mediaLibrary,
     points,
     removeMediaLocally,
@@ -2271,17 +2368,56 @@ function App() {
 
     setIsSaving(true)
     setSaveStatus('Sauvegarde...')
-    const submittedSignature = currentProjectSignature
 
     try {
+      // Traces au nouveau format : les points de chaque trace vivent dans un
+      // fichier R2 dédié (fidélité brute, project.json léger : limite Vercel
+      // ~4,5 Mo par requête). On envoie ici celles encore inline (anciennes
+      // cartes chargées, import depuis l'enregistreur) avant de sauvegarder.
+      const idToken = (await getIdToken()) ?? undefined
+      let persistedTraces = traces
+      if (traces.some((trace) => !trace.fileUrl)) {
+        setSaveStatus('Envoi des traces...')
+        persistedTraces = await Promise.all(
+          traces.map(async (trace) => {
+            if (trace.fileUrl) return trace
+            const blob = serializeTracePoints(trace.points)
+            const fingerprint = await traceBlobFingerprint(blob)
+            const uploaded = await uploadMedia({
+              file: blob,
+              fingerprint,
+              adminPassword,
+              idToken,
+              trailCode: mapSlug,
+              kind: 'trace',
+            })
+            return { ...trace, fileUrl: uploaded.url }
+          }),
+        )
+        setTraces(persistedTraces)
+        setSaveStatus('Sauvegarde...')
+      }
+
+      // Signature calculée sur les traces PERSISTÉES (avec fileUrl), pour que
+      // « modifications non sauvegardées » retombe bien à faux après le save.
+      const submittedSignature = projectSignature({
+        points,
+        traces: persistedTraces,
+        mediaLibrary,
+        accessCode,
+        pointsSourceName,
+      })
+
       const project: TrailProject = {
-        // `track` reste alimenté pour la validation côté API (rétrocompat).
-        track: combinedPoints,
-        traces,
+        // `track` reste présent pour la validation côté API, mais VIDE : les
+        // points sont dans les fichiers R2 référencés par chaque trace.
+        track: [],
+        traces: tracesForStorage(persistedTraces),
         accessCode: accessCode.trim() || undefined,
         points: exportablePoints(points),
         mediaLibrary,
-        trackSourceName: traces.map((trace) => trace.name).join(' · ') || 'Traces',
+        trackSourceName:
+          persistedTraces.map((trace) => trace.name).join(' · ') || 'Traces',
         pointsSourceName,
         savedAt: new Date().toISOString(),
       }
@@ -2330,6 +2466,23 @@ function App() {
       setIsProtected(accessMode === 'private')
       setSaveStatus(`Carte enregistrée : ${folder}.`)
       setError(null)
+      // Fichiers R2 des traces retirées depuis le chargement : supprimés
+      // (best-effort), le project.json sauvegardé ne les référence plus.
+      const keptTraceUrls = new Set(
+        persistedTraces
+          .map((trace) => trace.fileUrl)
+          .filter((url): url is string => Boolean(url)),
+      )
+      for (const mediaUrl of loadedTraceUrlsRef.current) {
+        if (keptTraceUrls.has(mediaUrl)) continue
+        void deleteUploadedMedia({
+          mediaUrl,
+          adminPassword,
+          idToken,
+          trailCode: mapSlug,
+        }).catch(() => undefined)
+      }
+      loadedTraceUrlsRef.current = Array.from(keptTraceUrls)
     } catch (saveError) {
       const message =
         saveError instanceof Error
@@ -2346,8 +2499,6 @@ function App() {
     accessMode,
     isProtected,
     adminPassword,
-    combinedPoints,
-    currentProjectSignature,
     mapSlug,
     mediaLibrary,
     points,

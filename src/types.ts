@@ -14,6 +14,16 @@ export type Trace = {
   name: string
   points: TrackPoint[]
   color?: string
+  /**
+   * Fichier R2 contenant les points (format `{ version, points }`), servi par
+   * le videur avec le ticket de la carte. Dans project.json les points ne sont
+   * PLUS inline (limite Vercel ~4,5 Mo par requête) : `points` y est vide et
+   * la trace est rechargée depuis ce fichier (fidélité brute, zéro perte).
+   * Absent sur les anciennes cartes (points inline, rétrocompat au chargement).
+   */
+  fileUrl?: string
+  /** Informatif (affichage/registre) : nombre de points du fichier référencé. */
+  pointCount?: number
 }
 
 export type TrailPoint = {

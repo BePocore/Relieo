@@ -20,6 +20,8 @@ import { formatBytes } from '../server/format.js'
 
 const allowedContentTypes = [
   'application/octet-stream',
+  // Fichiers de traces GPS (JSON de points, rangés sous <carte>/traces/).
+  'application/json',
   'image/heic',
   'image/heif',
   'image/jpeg',
@@ -35,7 +37,7 @@ type PrepareUploadBody = {
   fileName?: string
   contentType?: string
   fingerprint?: string
-  kind?: 'media' | 'preview'
+  kind?: 'media' | 'preview' | 'trace'
   size?: number
   trailCode?: string
 }
@@ -387,7 +389,14 @@ export async function POST(request: Request) {
         ? r2KeyFromPublicUrl(body.thumbnailUrl)
         : null
 
-      if (!mediaKey || !mediaKey.startsWith(`${location.prefix}/media/`)) {
+      // Un fichier de la carte : média OU fichier de trace (sous /traces/).
+      if (
+        !mediaKey ||
+        !(
+          mediaKey.startsWith(`${location.prefix}/media/`) ||
+          mediaKey.startsWith(`${location.prefix}/traces/`)
+        )
+      ) {
         return Response.json(
           { message: 'Media R2 introuvable pour cette carte.' },
           { status: 400 },
@@ -412,6 +421,7 @@ export async function POST(request: Request) {
       const allowedPrefixes = [
         `${location.prefix}/media/`,
         `${location.prefix}/previews/`,
+        `${location.prefix}/traces/`,
       ]
       const usedKeys = new Set(
         (body.usedUrls ?? [])
@@ -457,7 +467,12 @@ export async function POST(request: Request) {
       return Response.json({ message: 'Taille de fichier invalide.' }, { status: 400 })
     }
 
-    const folder = body.kind === 'preview' ? 'previews' : 'media'
+    const folder =
+      body.kind === 'preview'
+        ? 'previews'
+        : body.kind === 'trace'
+          ? 'traces'
+          : 'media'
     const fileName = cleanStorageName(body.fileName ?? 'media')
     const suffix = body.kind === 'preview' ? `${fingerprint}.jpg` : `${fingerprint}-${fileName}`
     // Quota par utilisateur (5 Go) si on connait son uid ; sinon repli global.

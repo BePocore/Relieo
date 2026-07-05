@@ -104,7 +104,7 @@ export const uploadMedia = async ({
   adminPassword: string
   idToken?: string
   trailCode: string
-  kind?: 'media' | 'preview'
+  kind?: 'media' | 'preview' | 'trace'
   onProgress?: UploadProgress
 }): Promise<{ url: string; alreadyExists: boolean }> => {
   if (!trailCode.trim()) {
