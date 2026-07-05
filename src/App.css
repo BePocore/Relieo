@@ -2939,12 +2939,13 @@
   opacity: 0.15;
 }
 
-/* Fiche flottante du jour actif : coin inférieur gauche, teintée par la
-   couleur du tracé du jour (var --day). */
+/* Fiche flottante du jour actif : coin inférieur gauche, empilée JUSTE
+   au-dessus du badge metrics MapLibre (bottom 126px, ~44px de haut) pour
+   ne pas le chevaucher ; teintée par la couleur du tracé du jour (--day). */
 .day-card {
   position: absolute;
   left: 16px;
-  bottom: 126px;
+  bottom: 176px;
   z-index: 11;
   min-width: 210px;
   max-width: 280px;
@@ -3225,15 +3226,16 @@
 }
 
 @media (max-width: 600px) {
-  /* De bas en haut : rail de médias, barre de chips, fiche du jour. */
+  /* De bas en haut : rail de médias, badge metrics (~124px), barre de
+     chips, fiche du jour. */
   .day-timeline-bar {
-    bottom: calc(118px + env(safe-area-inset-bottom));
+    bottom: calc(132px + env(safe-area-inset-bottom));
     max-width: calc(100% - 16px);
   }
 
   .day-card {
     left: 8px;
-    bottom: calc(170px + env(safe-area-inset-bottom));
+    bottom: calc(182px + env(safe-area-inset-bottom));
     min-width: 0;
     max-width: calc(100% - 74px);
   }
