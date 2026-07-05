@@ -2956,6 +2956,7 @@ function FirebasePortal() {
     '/dashboard',
     '/hikes',
     '/profile',
+    '/stats',
     '/plans',
     '/traces',
     '/settings',
