@@ -63,7 +63,7 @@ Each `TripDay` carries a **`color`** (its first trace's on-map color, `trace.col
 The map, terrain, route layers, clusters and HTML media markers live in this component. A MapLibre map is created once in a `useEffect`; subsequent effects update GeoJSON sources and markers. Notable patterns:
 
 - **Native touch controls** handle pan, pinch zoom, rotation and pitch. Media markers are draggable in studio only when `locked === false`; double-clicking the map creates a point. `cameraCommand` drives the on-screen rotate/zoom/tilt buttons.
-- Points use a clustered GeoJSON source at distant zoom levels. At closer zoom levels, HTML markers display the real lightweight previews while preserving direct clicks and full opacity over terrain.
+- Points use a clustered GeoJSON source at distant zoom levels. At closer zoom levels, HTML markers display the real lightweight previews while preserving direct clicks and full opacity over terrain. **Stacked media** (public consultation only): clicking an HTML thumbnail whose on-screen position is within `STACK_RADIUS_PX` of other thumbnails opens a scrollable gallery of the pile (`onOpenGroup([clicked, ...neighbours])`, clicked one first) instead of the single media — the map's appearance is untouched. In studio the click keeps its edit/select behaviour.
 - Routes are rendered as rounded GPU line layers over AWS Terrarium relief. Satellite, Topo and classic map raster sources can be switched without recreating the map.
 
 ### Client-side media thumbnailing (`src/useVideoPosters.ts`, `src/useFramedThumbnails.ts`)

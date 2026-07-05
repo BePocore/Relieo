@@ -139,6 +139,11 @@ const createStyle = (): StyleSpecification => ({
 const pointKey = (point: TrailPoint, index: number) =>
   point.id ?? `point-${index}`
 
+// Rayon (px écran) en deçà duquel deux vignettes médias sont considérées « en
+// tas » : clic → galerie du groupe. ~2/3 de la largeur d'une vignette (82px),
+// pour capter les vignettes superposées et celles juste à côté.
+const STACK_RADIUS_PX = 54
+
 const emptyPoints = (): FeatureCollection<Point> => ({
   type: 'FeatureCollection',
   features: [],
@@ -722,7 +727,32 @@ export function MapLibreTrailMap({
             }
             element.addEventListener('click', (event) => {
               event.stopPropagation()
-              callbacksRef.current.onMarkerClick(job.point)
+              // Médias « en tas » : en consultation, si d'autres vignettes sont
+              // superposées / très proches à l'écran, on ouvre une galerie
+              // défilable du tas (le média cliqué en tête) au lieu du seul
+              // média. On ne touche PAS à l'affichage de la carte. En studio,
+              // le clic garde sa fonction d'édition (sélection du point).
+              const stack: TrailPoint[] = []
+              if (!editable) {
+                const origin = map.project([job.point.lng, job.point.lat])
+                for (const other of mediaMarkers) {
+                  if (other.point === job.point) continue
+                  const projected = map.project([
+                    other.point.lng,
+                    other.point.lat,
+                  ])
+                  const dx = projected.x - origin.x
+                  const dy = projected.y - origin.y
+                  if (Math.hypot(dx, dy) <= STACK_RADIUS_PX) {
+                    stack.push(other.point)
+                  }
+                }
+              }
+              if (stack.length > 0 && callbacksRef.current.onOpenGroup) {
+                callbacksRef.current.onOpenGroup([job.point, ...stack])
+              } else {
+                callbacksRef.current.onMarkerClick(job.point)
+              }
             })
             const draggable = editable && job.point.locked === false
             const marker = new maplibregl.Marker({
