@@ -1,5 +1,5 @@
 import { r2UsageForPrefixes, type StorageScope } from './r2.js'
-import { INTERNAL_STORAGE_LIMIT_BYTES, planStorageLimit } from './plans.js'
+import { HIGHEST_PLAN_ID, planStorageLimit } from './plans.js'
 import { userStorageRoot } from './trailStorage.js'
 import { isAdminUid } from './admin.js'
 import { isCreatorUid } from './roles.js'
@@ -12,16 +12,16 @@ export const userStoragePrefixes = (uid: string): string[] => [
   userStorageRoot(uid),
 ]
 
-// Vrai des comptes « maison » (admin, créateurs déclarés, internes) qui
-// disposent du stockage gratuit du bucket (10 Go) au lieu d'un forfait.
+// Vrai des comptes « maison » (admin, créateurs déclarés, internes) : ils
+// suivent la règle du forfait le plus élevé (Cartographe = illimité).
 const isHouseAccount = (uid: string, email?: string | null): boolean =>
   isAdminUid(uid) || isCreatorUid(uid) || isInternalEmail(email)
 
 // Limite de stockage d'un compte :
-//  - comptes maison → 10 Go (palier gratuit R2 attribué à Quentin) ;
+//  - comptes maison → règle du forfait le plus élevé (Cartographe = illimité) ;
 //  - tout autre compte → la limite de SON forfait (Standard 5 Go, Explorateur
-//    50 Go, Cartographe 200 Go). Un compte ne peut donc pas dépasser son
-//    forfait : pour plus de stockage, il faut passer à un forfait supérieur.
+//    50 Go, Cartographe illimité). Un compte ne peut pas dépasser son forfait :
+//    pour plus de stockage, il faut passer à un forfait supérieur.
 // `planId` vient du profil Firestore (`readProfilePlan`) ; absent => Standard.
 export const userStorageLimit = (
   uid: string,
@@ -29,7 +29,7 @@ export const userStorageLimit = (
   planId?: string,
 ): number =>
   isHouseAccount(uid, email)
-    ? INTERNAL_STORAGE_LIMIT_BYTES
+    ? planStorageLimit(HIGHEST_PLAN_ID)
     : planStorageLimit(planId)
 
 // Portée de quota appliquée à l'utilisateur ENTIER (limite = celle de son

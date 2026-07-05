@@ -71,7 +71,12 @@ type AdminUser = {
 
 type AdminNotification = {
   id: string
-  type: 'appeal' | 'deletion-request' | 'media-review-needed' | 'media-scan-summary'
+  type:
+    | 'appeal'
+    | 'deletion-request'
+    | 'media-review-needed'
+    | 'media-scan-summary'
+    | 'storage-threshold'
   fromUid: string
   fromEmail: string | null
   message: string
@@ -1527,6 +1532,10 @@ export function AdminApp({
                     <Trash2 size={14} /> Demande de suppression de{' '}
                     {n.fromEmail ?? n.fromUid}
                   </>
+                ) : n.type === 'storage-threshold' ? (
+                  <>
+                    <HardDrive size={14} /> Alerte stockage · {n.fromEmail ?? n.fromUid}
+                  </>
                 ) : (
                   <>
                     <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
@@ -1590,7 +1599,7 @@ export function AdminApp({
                     Ignorer la demande
                   </button>
                 </>
-              ) : (
+              ) : n.type === 'storage-threshold' ? null : (
                 <button
                   className="admin-notif-mark primary"
                   type="button"

@@ -1085,7 +1085,12 @@ function SettingsView() {
   )
 }
 
-type StorageUsage = { usedBytes: number; limitBytes: number }
+type StorageUsage = {
+  usedBytes: number
+  // null quand le forfait est illimité (Infinity n'est pas sérialisable JSON).
+  limitBytes: number | null
+  unlimited?: boolean
+}
 
 // Grille des cartes de forfait, partagée par l'onboarding (post-inscription) et
 // l'onglet « Forfait ». `currentPlanId` marque le forfait actif ; `onChoose`
@@ -1570,7 +1575,11 @@ function DashboardShell({
           | StorageUsage
           | null
         if (!cancelled && data && typeof data.usedBytes === 'number') {
-          setUsage({ usedBytes: data.usedBytes, limitBytes: data.limitBytes })
+          setUsage({
+            usedBytes: data.usedBytes,
+            limitBytes: data.limitBytes,
+            unlimited: data.unlimited,
+          })
         }
       })
       .catch(() => {
@@ -2019,13 +2028,21 @@ function DashboardShell({
                     <div className="storage-meter">
                       <span
                         style={{
-                          width: `${usage && usage.limitBytes > 0 ? Math.min(100, Math.round((usage.usedBytes / usage.limitBytes) * 100)) : 0}%`,
+                          width: `${
+                            usage && !usage.unlimited && usage.limitBytes && usage.limitBytes > 0
+                              ? Math.min(100, Math.round((usage.usedBytes / usage.limitBytes) * 100))
+                              : 0
+                          }%`,
                         }}
                       />
                     </div>
                     <div className="storage-legend">
                       <strong>{usage ? `${formatBytes(usage.usedBytes)} utilisés` : 'Calcul en cours...'}</strong>
-                      <span>Limite {formatBytes(usage?.limitBytes ?? 5_000_000_000)}</span>
+                      <span>
+                        {usage?.unlimited
+                          ? 'Stockage illimité'
+                          : `Limite ${formatBytes(usage?.limitBytes ?? 5_000_000_000)}`}
+                      </span>
                     </div>
                   </article>
                 </section>

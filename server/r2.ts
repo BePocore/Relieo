@@ -18,13 +18,16 @@ const requiredKeys = [
   'R2_PUBLIC_BASE_URL',
 ] as const
 
-// Filet de sécurité anti-emballement du bucket entier (bug / abus) : ce n'est
-// PAS un plafond d'usage. Les quotas réels sont appliqués par compte via un
-// `StorageScope` (forfait, ou 10 Go pour les comptes maison), et le stockage
-// au-delà du palier gratuit R2 (10 Go) est assumé/facturé (cf. server/costs.ts).
-// Fixé haut pour ne jamais brider l'usage légitime ; à relever si un compte au
-// forfait Cartographe (200 Go) arrive. ~0,015 €/Go/mois si jamais saturé.
-export const R2_STORAGE_LIMIT_BYTES = 100_000_000_000
+// Garde-fou global du bucket : DÉSACTIVÉ (illimité). Décision produit : le
+// forfait le plus cher (Cartographe) et les comptes maison sont illimités, le
+// stockage au-delà du palier gratuit R2 est facturé à l'usage. On ne veut donc
+// PAS de plafond dur global (il bloquerait un compte illimité et casserait les
+// écritures système du bucket). La protection contre l'emballement passe par :
+//  1) le quota par forfait pour les comptes NON illimités (Standard/Explorateur),
+//  2) une alerte budgétaire R2 côté Cloudflare (frein financier, hors code),
+//  3) une alerte admin in-app quand un compte illimité franchit un palier
+//     (cf. server/storageAlerts.ts).
+export const R2_STORAGE_LIMIT_BYTES = Number.POSITIVE_INFINITY
 
 // Portée d'un contrôle de quota :
 // - `limitBytes` : la limite à ne pas dépasser.

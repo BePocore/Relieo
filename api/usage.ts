@@ -2,7 +2,8 @@ import { hasR2Config } from '../server/r2.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { readProfilePlan } from '../server/firestoreAdmin.js'
 import { userStorageLimit, userStorageUsage } from '../server/userStorage.js'
-import { DEFAULT_PLAN_ID } from '../server/plans.js'
+import { DEFAULT_PLAN_ID, isUnlimitedStorage } from '../server/plans.js'
+import { maybeAlertStorageThreshold } from '../server/storageAlerts.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -33,10 +34,21 @@ export async function GET(request: Request) {
   try {
     const plan = await readProfilePlan(user.uid)
     const usedBytes = await userStorageUsage(user.uid)
+    const limit = userStorageLimit(user.uid, user.email, plan)
+    const unlimited = isUnlimitedStorage(limit)
+
+    // Compte illimité : pas de blocage, mais on prévient l'admin quand l'usage
+    // franchit un palier (surveillance des gros comptes). Best-effort.
+    if (unlimited) {
+      await maybeAlertStorageThreshold(user.uid, user.email, usedBytes)
+    }
+
     return Response.json(
       {
         usedBytes,
-        limitBytes: userStorageLimit(user.uid, user.email, plan),
+        // Infinity n'est pas sérialisable en JSON → null + drapeau `unlimited`.
+        limitBytes: unlimited ? null : limit,
+        unlimited,
         planId: plan ?? DEFAULT_PLAN_ID,
       },
       { headers: jsonHeaders },

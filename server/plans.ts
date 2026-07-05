@@ -4,22 +4,27 @@
 export type PlanId = 'standard' | 'explorateur' | 'cartographe'
 
 // Limite de stockage par forfait, en octets, pour l'utilisateur ENTIER
-// (toutes ses randonnées cumulées).
+// (toutes ses randonnées cumulées). Le forfait le plus cher (Cartographe) est
+// ILLIMITÉ (Infinity) : aucun blocage de taille, le stockage au-delà du palier
+// gratuit R2 est simplement facturé à l'usage (cf. server/costs.ts). Les autres
+// forfaits gardent un plafond dur (il faut monter en gamme pour plus).
 export const PLAN_STORAGE_LIMITS: Record<PlanId, number> = {
   standard: 5_000_000_000,
   explorateur: 50_000_000_000,
-  cartographe: 200_000_000_000,
+  cartographe: Number.POSITIVE_INFINITY,
 }
 
 export const DEFAULT_PLAN_ID: PlanId = 'standard'
 
-// Limite des comptes « maison » : admin, créateurs (CREATOR_UIDS) et comptes
-// internes. Calée sur le palier gratuit R2 (10 Go) : tant que Quentin est le
-// seul créateur, son compte dispose de tout le stockage gratuit du bucket,
-// sans être bridé par le plafond du forfait Standard (5 Go). Les autres
-// comptes gardent la limite de leur forfait (cf. PLAN_STORAGE_LIMITS) et leur
-// stockage au-delà du gratuit est facturé sur R2 (cf. server/costs.ts).
-export const INTERNAL_STORAGE_LIMIT_BYTES = 10_000_000_000
+// Forfait le plus élevé : sa règle (illimité) est celle appliquée aux comptes
+// « maison » (admin, créateurs, internes).
+export const HIGHEST_PLAN_ID: PlanId = 'cartographe'
+
+// Vrai si une limite de stockage est « illimitée » (forfait Cartographe /
+// compte maison). Number.POSITIVE_INFINITY n'est pas sérialisable en JSON
+// (devient null), d'où ce test explicite partout où on expose la limite.
+export const isUnlimitedStorage = (limitBytes: number): boolean =>
+  !Number.isFinite(limitBytes)
 
 // Limite du forfait gratuit (Standard) : référence utilisée tant que tous les
 // utilisateurs sont en gratuit. Le jour où les forfaits payants existent, on
