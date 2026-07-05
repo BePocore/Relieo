@@ -109,23 +109,26 @@ export const simplifyTrack = (
   )
 }
 
+// Seuil d'hystérésis du dénivelé : une variation d'altitude n'est comptée que
+// lorsqu'elle CUMULE plus que ce seuil depuis la dernière altitude confirmée
+// (le bruit GPS de quelques mètres est ignoré), mais elle est alors comptée EN
+// ENTIER. L'ancien calcul point à point (seuil 0,5 m PAR échantillon) perdait
+// presque toute une montée régulière sur une trace dense (1 pt/s ≈ 0,3 m par
+// point, systématiquement sous le seuil) : D+ très sous-estimé.
+const ELEVATION_HYSTERESIS_METERS = 3
+
 export const computeTrailStats = (track: TrackPoint[]): TrailStats => {
   let distanceMeters = 0
   let elevationGainMeters = 0
   let elevationLossMeters = 0
   let maxElevationMeters: number | null = null
   let minElevationMeters: number | null = null
+  // Altitude « ancre » de l'hystérésis : dernier niveau confirmé.
+  let anchorElevation: number | null = null
 
   track.forEach((point, index) => {
     if (index > 0) {
-      const previous = track[index - 1]
-      distanceMeters += distanceBetween(previous, point)
-
-      if (previous.ele !== undefined && point.ele !== undefined) {
-        const gain = point.ele - previous.ele
-        if (gain > 0.5) elevationGainMeters += gain
-        if (gain < -0.5) elevationLossMeters += Math.abs(gain)
-      }
+      distanceMeters += distanceBetween(track[index - 1], point)
     }
 
     if (point.ele !== undefined) {
@@ -137,6 +140,19 @@ export const computeTrailStats = (track: TrackPoint[]): TrailStats => {
         minElevationMeters === null
           ? point.ele
           : Math.min(minElevationMeters, point.ele)
+
+      if (anchorElevation === null) {
+        anchorElevation = point.ele
+      } else {
+        const diff = point.ele - anchorElevation
+        if (diff >= ELEVATION_HYSTERESIS_METERS) {
+          elevationGainMeters += diff
+          anchorElevation = point.ele
+        } else if (diff <= -ELEVATION_HYSTERESIS_METERS) {
+          elevationLossMeters += -diff
+          anchorElevation = point.ele
+        }
+      }
     }
   })
 

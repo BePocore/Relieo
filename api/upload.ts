@@ -151,24 +151,37 @@ const normalizeTracePoint = (value: unknown): StoredTracePoint | null => {
   return point
 }
 
+// Hystérésis du dénivelé : même algorithme que `computeTrailStats` côté client
+// (src/lib/geo.ts). Une variation n'est comptée que si elle cumule plus de 3 m
+// depuis la dernière altitude confirmée, mais elle est alors comptée en entier
+// (l'ancien seuil de 0,5 m PAR POINT perdait les montées régulières denses).
+const ELEVATION_HYSTERESIS_METERS = 3
+
 const computeTraceStats = (points: StoredTracePoint[]): StoredTrailStats => {
   let distanceMeters = 0
   let elevationGainMeters = 0
   let elevationLossMeters = 0
   let maxElevationMeters: number | null = null
   let minElevationMeters: number | null = null
+  let anchorElevation: number | null = null
 
   points.forEach((point, index) => {
     if (index > 0) {
-      const previous = points[index - 1]
-      distanceMeters += distanceBetween(previous, point)
-      if (previous.ele !== undefined && point.ele !== undefined) {
-        const diff = point.ele - previous.ele
-        if (diff > 0.5) elevationGainMeters += diff
-        if (diff < -0.5) elevationLossMeters += Math.abs(diff)
-      }
+      distanceMeters += distanceBetween(points[index - 1], point)
     }
     if (point.ele !== undefined) {
+      if (anchorElevation === null) {
+        anchorElevation = point.ele
+      } else {
+        const diff = point.ele - anchorElevation
+        if (diff >= ELEVATION_HYSTERESIS_METERS) {
+          elevationGainMeters += diff
+          anchorElevation = point.ele
+        } else if (diff <= -ELEVATION_HYSTERESIS_METERS) {
+          elevationLossMeters += -diff
+          anchorElevation = point.ele
+        }
+      }
       maxElevationMeters =
         maxElevationMeters === null
           ? point.ele
