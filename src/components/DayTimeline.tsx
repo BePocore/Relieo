@@ -10,9 +10,11 @@ type DayTimelineProps = {
   onSelectDay: (key: string | null) => void
 }
 
-// Timeline des jours du voyage, posée en bas de la carte de consultation :
-// « Séjour » = vue complète, un chip par jour filtre la carte (les traces et
-// médias des autres jours s'atténuent) et fait voler la caméra vers le jour.
+// Timeline des jours du voyage en consultation :
+//  - une fiche flottante dans le coin inférieur gauche (le jour actif : date,
+//    distance, D+, photos/vidéos), à la couleur du tracé du jour ;
+//  - une barre de chips centrée en bas (« Séjour » + une pastille colorée par
+//    jour), qui filtre la carte et fait voler la caméra.
 export function DayTimeline({
   plan,
   traces,
@@ -21,24 +23,38 @@ export function DayTimeline({
 }: DayTimelineProps) {
   const activeDay = plan.days.find((day) => day.key === activeDayKey) ?? null
   const activeStats = activeDay ? computeDayStats(activeDay, traces) : null
+  const photoCount = activeDay ? activeDay.mediaCount - activeDay.videoCount : 0
 
   return (
-    <div className="day-timeline">
+    <>
       {activeDay ? (
-        <div className="day-timeline-summary">
-          <strong>{activeDay.label}</strong>
-          <span>{activeDay.dateLabel}</span>
-          {activeStats && activeStats.distanceMeters > 0 ? (
+        <div className="day-card" style={{ ['--day' as string]: activeDay.color }}>
+          <div className="day-card-title">
+            <span className="day-card-dot" />
+            <strong>{activeDay.label}</strong>
+          </div>
+          <div className="day-card-date">{activeDay.dateLabel}</div>
+          <div className="day-card-stats">
+            {activeStats && activeStats.distanceMeters > 0 ? (
+              <>
+                <span>
+                  Distance <b>{formatDistance(activeStats.distanceMeters)}</b>
+                </span>
+                <span>
+                  D+ <b>{formatGain(activeStats.elevationGainMeters)}</b>
+                </span>
+              </>
+            ) : null}
             <span>
-              {formatDistance(activeStats.distanceMeters)} · D+{' '}
-              {formatGain(activeStats.elevationGainMeters)}
+              Photos <b>{photoCount}</b>
             </span>
-          ) : null}
-          <span>
-            {activeDay.mediaCount} média{activeDay.mediaCount > 1 ? 's' : ''}
-          </span>
+            <span>
+              Vidéos <b>{activeDay.videoCount}</b>
+            </span>
+          </div>
         </div>
       ) : null}
+
       <div
         className="day-timeline-bar"
         role="toolbar"
@@ -58,17 +74,18 @@ export function DayTimeline({
           <button
             key={day.key}
             type="button"
-            className="day-chip"
+            className="day-chip day-chip-day"
+            style={{ ['--day' as string]: day.color }}
             aria-pressed={activeDayKey === day.key}
             title={`${day.label} · ${day.dateLabel}`}
             onClick={() =>
               onSelectDay(activeDayKey === day.key ? null : day.key)
             }
           >
-            J{day.index}
+            <span className="day-chip-dot" />J{day.index}
           </button>
         ))}
       </div>
-    </div>
+    </>
   )
 }

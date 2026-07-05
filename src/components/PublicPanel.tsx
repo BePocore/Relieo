@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { ChevronRight, Mountain } from 'lucide-react'
+import { ChevronRight, Mountain, Play } from 'lucide-react'
 import { ElevationProfile } from './ElevationProfile'
+import { DayElevationSparkline } from './DayElevationSparkline'
 import { PointDetail } from './PointDetail'
 import { PointTypeIcon } from './PointTypeIcon'
-import { pointTypeLabels } from '../lib/pointMeta'
 import { resolvePointMedia } from '../lib/media'
 import {
   computeDayStats,
   dayTraces,
+  isMediaPoint,
   type DayPlan,
   type TripDay,
 } from '../lib/days'
@@ -56,36 +57,49 @@ export function PublicPanel({
     )
   }
 
-  const renderPointRow = (point: TrailPoint, key: string) => {
-    const media = resolvePointMedia(point, mediaLibrary)
-
+  // Pellicule horizontale des médias : chaque vignette ouvre la fiche du point.
+  const renderThumbnails = (pointIndexes: number[]) => {
+    const mediaIndexes = pointIndexes.filter((index) =>
+      isMediaPoint(points[index]),
+    )
+    if (mediaIndexes.length === 0) {
+      return <p className="day-empty">Aucun média ce jour-là.</p>
+    }
     return (
-      <button
-        className="point-row"
-        key={key}
-        type="button"
-        onClick={() => onSelectPoint(point)}
-      >
-        <span className="point-row-visual">
-          {media?.kind === 'image' ? (
-            <img
-              src={media.src}
-              alt=""
-              decoding="async"
-              loading="lazy"
-              fetchPriority="low"
-            />
-          ) : (
-            <span className={`type-dot type-${point.type}`}>
-              <PointTypeIcon type={point.type} />
-            </span>
-          )}
-        </span>
-        <span className="point-row-copy">
-          <strong>{point.title}</strong>
-          <small>{pointTypeLabels[point.type]}</small>
-        </span>
-      </button>
+      <div className="day-thumbs">
+        {mediaIndexes.map((index) => {
+          const point = points[index]
+          const media = resolvePointMedia(point, mediaLibrary)
+          const isImage = media?.kind === 'image'
+          return (
+            <button
+              key={point.id ?? `thumb-${index}`}
+              type="button"
+              className={`day-thumb type-${point.type}`}
+              title={point.title}
+              onClick={() => onSelectPoint(point)}
+            >
+              {isImage ? (
+                <img
+                  src={media.thumbnailSrc ?? media.src}
+                  alt=""
+                  decoding="async"
+                  loading="lazy"
+                  fetchPriority="low"
+                />
+              ) : (
+                <span className="day-thumb-icon">
+                  {point.type === 'video' ? (
+                    <Play aria-hidden="true" size={16} />
+                  ) : (
+                    <PointTypeIcon type={point.type} />
+                  )}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
     )
   }
 
@@ -95,18 +109,18 @@ export function PublicPanel({
     const tracesOfDay = dayTraces(day, traces)
 
     return (
-      <section className="day-section" key={day.key}>
+      <section
+        className="day-section"
+        key={day.key}
+        style={{ ['--day' as string]: day.color }}
+      >
         <button
           type="button"
           className="day-section-header"
           aria-expanded={open}
           onClick={() => onSelectDay(open ? null : day.key)}
         >
-          <ChevronRight
-            aria-hidden="true"
-            size={16}
-            className="day-section-caret"
-          />
+          <span className="day-section-dot" />
           <span className="day-section-title">
             <strong>{day.label}</strong>
             <small>{day.dateLabel}</small>
@@ -114,30 +128,26 @@ export function PublicPanel({
           <span className="day-section-meta">
             {dayStats.distanceMeters > 0 ? (
               <>
-                {formatDistance(dayStats.distanceMeters)} · D+{' '}
-                {formatGain(dayStats.elevationGainMeters)} ·{' '}
+                <b>{formatDistance(dayStats.distanceMeters)}</b>
+                <b>D+ {formatGain(dayStats.elevationGainMeters)}</b>
               </>
             ) : null}
-            {day.mediaCount} média{day.mediaCount > 1 ? 's' : ''}
+            <b>
+              {day.mediaCount} média{day.mediaCount > 1 ? 's' : ''}
+            </b>
           </span>
+          <ChevronRight
+            aria-hidden="true"
+            size={16}
+            className="day-section-caret"
+          />
         </button>
         {open ? (
           <div className="day-section-body">
             {tracesOfDay.length > 0 ? (
-              <ElevationProfile traces={tracesOfDay} stats={dayStats} />
+              <DayElevationSparkline traces={tracesOfDay} color={day.color} />
             ) : null}
-            <div className="point-list">
-              {day.pointIndexes.length === 0 ? (
-                <div className="empty-state">Aucun point ce jour-là.</div>
-              ) : (
-                day.pointIndexes.map((index) =>
-                  renderPointRow(
-                    points[index],
-                    points[index].id ?? `day-point-${index}`,
-                  ),
-                )
-              )}
-            </div>
+            {renderThumbnails(day.pointIndexes)}
           </div>
         ) : null}
       </section>
@@ -157,55 +167,78 @@ export function PublicPanel({
       <ElevationProfile traces={traces} stats={stats} />
 
       {dayPlan.multiDay ? (
-        <>
+        <div className="day-sections">
           {dayPlan.days.map((day) => renderDaySection(day))}
 
           {dayPlan.undatedPointIndexes.length > 0 ? (
-            <section className="day-section">
+            <section className="day-section day-section-undated">
               <button
                 type="button"
                 className="day-section-header"
                 aria-expanded={undatedOpen}
                 onClick={() => setUndatedOpen((current) => !current)}
               >
-                <ChevronRight
-                  aria-hidden="true"
-                  size={16}
-                  className="day-section-caret"
-                />
+                <span className="day-section-dot" />
                 <span className="day-section-title">
                   <strong>Non datés</strong>
                   <small>toujours visibles sur la carte</small>
                 </span>
                 <span className="day-section-meta">
-                  {dayPlan.undatedPointIndexes.length} point
-                  {dayPlan.undatedPointIndexes.length > 1 ? 's' : ''}
+                  <b>
+                    {dayPlan.undatedPointIndexes.length} point
+                    {dayPlan.undatedPointIndexes.length > 1 ? 's' : ''}
+                  </b>
                 </span>
+                <ChevronRight
+                  aria-hidden="true"
+                  size={16}
+                  className="day-section-caret"
+                />
               </button>
               {undatedOpen ? (
                 <div className="day-section-body">
-                  <div className="point-list">
-                    {dayPlan.undatedPointIndexes.map((index) =>
-                      renderPointRow(
-                        points[index],
-                        points[index].id ?? `undated-point-${index}`,
-                      ),
-                    )}
-                  </div>
+                  {renderThumbnails(dayPlan.undatedPointIndexes)}
                 </div>
               ) : null}
             </section>
           ) : null}
-        </>
+        </div>
       ) : (
         <div className="point-list">
           {points.length === 0 ? (
             <div className="empty-state">Aucun point pour le moment.</div>
           ) : null}
 
-          {points.map((point, index) =>
-            renderPointRow(point, point.id ?? point.title ?? `point-${index}`),
-          )}
+          {points.map((point, index) => {
+            const media = resolvePointMedia(point, mediaLibrary)
+            return (
+              <button
+                className="point-row"
+                key={point.id ?? point.title ?? `point-${index}`}
+                type="button"
+                onClick={() => onSelectPoint(point)}
+              >
+                <span className="point-row-visual">
+                  {media?.kind === 'image' ? (
+                    <img
+                      src={media.src}
+                      alt=""
+                      decoding="async"
+                      loading="lazy"
+                      fetchPriority="low"
+                    />
+                  ) : (
+                    <span className={`type-dot type-${point.type}`}>
+                      <PointTypeIcon type={point.type} />
+                    </span>
+                  )}
+                </span>
+                <span className="point-row-copy">
+                  <strong>{point.title}</strong>
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>

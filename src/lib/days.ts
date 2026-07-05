@@ -6,6 +6,7 @@ import type {
 } from '../types'
 import { computeTrailStats, distanceBetween } from './geo'
 import { findPointMediaItem } from './media'
+import { traceColor } from './mapStyles'
 
 // ---------------------------------------------------------------------------
 // Plan de journées d'une carte : regroupe traces et points médias par jour
@@ -29,10 +30,16 @@ export type TripDay = {
   index: number // 1..N chronologique
   label: string // « Jour 1 »
   dateLabel: string // « lun. 10 août »
+  // Couleur du 1er tracé du jour (comme sur la carte) ; accent par défaut si
+  // le jour n'a que des médias, sans tracé.
+  color: string
   traceIds: string[]
   pointIndexes: number[] // indexes dans le tableau points fourni
-  mediaCount: number
+  mediaCount: number // photos + vidéos + 360
+  videoCount: number
 }
+
+const DEFAULT_DAY_COLOR = '#4fd1a1'
 
 export type DayPlan = {
   days: TripDay[]
@@ -289,17 +296,38 @@ export const buildDayPlan = (
     points.forEach((_, index) => {
       if (pointDayKeys[index] === key) pointIndexes.push(index)
     })
+    const traceIds = traces
+      .filter((trace) => traceDayKeys[trace.id] === key)
+      .map((trace) => trace.id)
+    // Couleur = celle du 1er tracé du jour, telle qu'affichée sur la carte
+    // (trace.color sinon traceColor(indexGlobal)).
+    const firstTraceIndex =
+      traceIds.length > 0
+        ? traces.findIndex((trace) => trace.id === traceIds[0])
+        : -1
+    const color =
+      firstTraceIndex >= 0
+        ? traces[firstTraceIndex].color ?? traceColor(firstTraceIndex)
+        : DEFAULT_DAY_COLOR
+    const mediaIndexes = pointIndexes.filter((index) =>
+      isMediaPoint(points[index]),
+    )
+    const videoCount = mediaIndexes.filter(
+      (index) =>
+        points[index].type === 'video' ||
+        Boolean(points[index].video) ||
+        mediaItems[index]?.kind === 'video',
+    ).length
     return {
       key,
       index: i + 1,
       label: `Jour ${i + 1}`,
       dateLabel: dayDateLabel(key),
-      traceIds: traces
-        .filter((trace) => traceDayKeys[trace.id] === key)
-        .map((trace) => trace.id),
+      color,
+      traceIds,
       pointIndexes,
-      mediaCount: pointIndexes.filter((index) => isMediaPoint(points[index]))
-        .length,
+      mediaCount: mediaIndexes.length,
+      videoCount,
     }
   })
 
