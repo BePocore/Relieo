@@ -849,46 +849,33 @@ export function MapLibreTrailMap({
     const map = mapRef.current
     const previous = prevActiveDayRef.current
     const active = activeDayKey ?? null
+    if (!styleReady || !map) {
+      prevActiveDayRef.current = active
+      return
+    }
+    if (active === previous) return
     prevActiveDayRef.current = active
-    if (!styleReady || !map || active === previous) return
     const bounds = active
       ? boundsForDay(traces, points, traceDayKeys, pointDayKeys, active)
       : boundsFor(traces, points)
     if (bounds.isEmpty()) return
     const phoneLayout = window.innerWidth < 600
+    // Un SEUL mouvement, en conservant le pitch/bearing 3D courants : l'ancien
+    // enchaînement (fitBounds à plat pitch 0, puis ré-inclinaison) faisait
+    // « sauter la carte en haut » au 1er clic. map.stop() coupe un vol encore
+    // en cours (évite qu'un recadrage précédent ne se superpose). La grande
+    // marge basse laisse la place à la timeline des jours + au rail de médias.
+    map.stop()
     map.fitBounds(bounds, {
-      // Marge basse plus grande que le recentrage : la timeline des jours
-      // occupe le bas de l'écran au-dessus du rail de médias.
       padding: phoneLayout
-        ? { top: 86, right: 18, bottom: 158, left: 18 }
+        ? { top: 80, right: 16, bottom: 176, left: 16 }
         : compact
-          ? { top: 130, right: 52, bottom: 192, left: 52 }
-          : { top: 150, right: 130, bottom: 204, left: 130 },
-      pitch: 0,
-      bearing: 0,
+          ? { top: 120, right: 60, bottom: 200, left: 60 }
+          : { top: 150, right: 140, bottom: 190, left: 150 },
       duration: 700,
       maxZoom: 15,
     })
-    if (!flat2D) {
-      map.once('moveend', () => {
-        map.easeTo({
-          pitch: phoneLayout ? 42 : compact ? 46 : 52,
-          bearing: 22,
-          zoom: phoneLayout ? map.getZoom() - 0.2 : map.getZoom(),
-          duration: 380,
-        })
-      })
-    }
-  }, [
-    activeDayKey,
-    traces,
-    points,
-    traceDayKeys,
-    pointDayKeys,
-    compact,
-    flat2D,
-    styleReady,
-  ])
+  }, [activeDayKey, traces, points, traceDayKeys, pointDayKeys, compact, styleReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1010,14 +997,18 @@ export function MapLibreTrailMap({
       }
     >
       <div ref={containerRef} className="trail-map-canvas" />
-      <div className="maplibre-metrics" aria-label="Performances MapLibre">
-        <strong>MapLibre 3D</strong>
-        <span>{metrics.fps ? `${metrics.fps} FPS` : 'prêt'}</span>
-        <span>{metrics.pixelRatio.toFixed(2)}×</span>
-        <span>z{metrics.zoom.toFixed(1)}</span>
-        <span>{Math.round(metrics.pitch)}°</span>
-        <span>{metrics.thumbnails} photos</span>
-      </div>
+      {/* Badge de perfs : outil de diagnostic réservé au Studio, masqué pour
+          les visiteurs (aucune valeur pour eux, encombre le coin bas-gauche). */}
+      {editable ? (
+        <div className="maplibre-metrics" aria-label="Performances MapLibre">
+          <strong>MapLibre 3D</strong>
+          <span>{metrics.fps ? `${metrics.fps} FPS` : 'prêt'}</span>
+          <span>{metrics.pixelRatio.toFixed(2)}×</span>
+          <span>z{metrics.zoom.toFixed(1)}</span>
+          <span>{Math.round(metrics.pitch)}°</span>
+          <span>{metrics.thumbnails} photos</span>
+        </div>
+      ) : null}
     </div>
   )
 }
