@@ -77,6 +77,17 @@ export const readProfileAccountType = async (
   return asString(snapshot.data()?.accountType)
 }
 
+// Lit le forfait stocké dans le profil (`plan`), pour appliquer la limite de
+// stockage correspondante à l'utilisateur (cf. userStorageLimit). Une seule
+// lecture de document ; undefined => forfait par défaut (Standard).
+export const readProfilePlan = async (
+  uid: string,
+): Promise<string | undefined> => {
+  const db = getFirestore(adminApp())
+  const snapshot = await db.collection('profiles').doc(uid).get()
+  return asString(snapshot.data()?.plan)
+}
+
 // Notification admin déposée dans le profil de l'utilisateur (champ tableau
 // `notifications`), affichée à sa prochaine connexion. arrayUnion ajoute sans
 // écraser les autres champs ni les notifications déjà présentes.

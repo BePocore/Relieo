@@ -15,6 +15,7 @@ import {
 import { cleanStorageName, STUDIO_OWNER, trailLocation, userStorageRoot } from '../server/trailStorage.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { readModeration } from '../server/moderation.js'
+import { readProfilePlan } from '../server/firestoreAdmin.js'
 import { userStorageScope } from '../server/userStorage.js'
 import { formatBytes } from '../server/format.js'
 
@@ -343,6 +344,10 @@ export async function POST(request: Request) {
     )
   }
 
+  // Forfait de l'uploadeur : fixe la limite de stockage appliquee ci-dessous
+  // (compte maison = 10 Go, sinon la limite du forfait). Une lecture de profil.
+  const userPlan = uid ? await readProfilePlan(uid) : undefined
+
   try {
     const body = (await request.json()) as UploadBody
     if (
@@ -381,7 +386,7 @@ export async function POST(request: Request) {
     if (body.type === 'relieo.save-user-trace') {
       const trace = normalizeTraceRecord(body.trace)
       const scope: StorageScope | undefined = uid
-        ? userStorageScope(uid, userEmail)
+        ? userStorageScope(uid, userEmail, userPlan)
         : undefined
       await r2PutText(traceKey(owner, trace.id), JSON.stringify(trace), scope)
       return Response.json({ trace })
@@ -490,9 +495,10 @@ export async function POST(request: Request) {
           : 'media'
     const fileName = cleanStorageName(body.fileName ?? 'media')
     const suffix = body.kind === 'preview' ? `${fingerprint}.jpg` : `${fingerprint}-${fileName}`
-    // Quota par utilisateur si on connait son uid ; sinon repli global.
+    // Quota par utilisateur (selon son forfait) si on connait son uid ; sinon
+    // repli global.
     const scope: StorageScope | undefined = uid
-      ? userStorageScope(uid, userEmail)
+      ? userStorageScope(uid, userEmail, userPlan)
       : undefined
     const prepared = await r2PrepareUpload({
       key: `${location.prefix}/${folder}/${suffix}`,

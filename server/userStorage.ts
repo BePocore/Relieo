@@ -1,5 +1,5 @@
 import { r2UsageForPrefixes, type StorageScope } from './r2.js'
-import { FREE_STORAGE_LIMIT_BYTES, INTERNAL_STORAGE_LIMIT_BYTES } from './plans.js'
+import { INTERNAL_STORAGE_LIMIT_BYTES, planStorageLimit } from './plans.js'
 import { userStorageRoot } from './trailStorage.js'
 import { isAdminUid } from './admin.js'
 import { isCreatorUid } from './roles.js'
@@ -12,26 +12,34 @@ export const userStoragePrefixes = (uid: string): string[] => [
   userStorageRoot(uid),
 ]
 
-// Limite de stockage d'un compte. Les comptes « maison » (admin, créateurs,
-// internes) montent à 10 Go ; les autres (viewers, futurs vrais utilisateurs)
-// restent au forfait gratuit (5 Go). L'email est optionnel : quand on ne
-// dispose que de l'uid (ex. quota du propriétaire d'une carte), admin/créateur
-// suffisent déjà à identifier les comptes maison.
+// Vrai des comptes « maison » (admin, créateurs déclarés, internes) qui
+// disposent du stockage gratuit du bucket (10 Go) au lieu d'un forfait.
+const isHouseAccount = (uid: string, email?: string | null): boolean =>
+  isAdminUid(uid) || isCreatorUid(uid) || isInternalEmail(email)
+
+// Limite de stockage d'un compte :
+//  - comptes maison → 10 Go (palier gratuit R2 attribué à Quentin) ;
+//  - tout autre compte → la limite de SON forfait (Standard 5 Go, Explorateur
+//    50 Go, Cartographe 200 Go). Un compte ne peut donc pas dépasser son
+//    forfait : pour plus de stockage, il faut passer à un forfait supérieur.
+// `planId` vient du profil Firestore (`readProfilePlan`) ; absent => Standard.
 export const userStorageLimit = (
   uid: string,
   email?: string | null,
+  planId?: string,
 ): number =>
-  isAdminUid(uid) || isCreatorUid(uid) || isInternalEmail(email)
+  isHouseAccount(uid, email)
     ? INTERNAL_STORAGE_LIMIT_BYTES
-    : FREE_STORAGE_LIMIT_BYTES
+    : planStorageLimit(planId)
 
 // Portée de quota appliquée à l'utilisateur ENTIER (limite = celle de son
-// compte, cf. `userStorageLimit`).
+// compte / forfait, cf. `userStorageLimit`).
 export const userStorageScope = (
   uid: string,
   email?: string | null,
+  planId?: string,
 ): StorageScope => ({
-  limitBytes: userStorageLimit(uid, email),
+  limitBytes: userStorageLimit(uid, email, planId),
   usagePrefixes: userStoragePrefixes(uid),
 })
 

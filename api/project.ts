@@ -39,6 +39,7 @@ import {
   readScannedIds,
 } from '../server/mediaModeration.js'
 import { userStorageScope } from '../server/userStorage.js'
+import { readProfilePlan } from '../server/firestoreAdmin.js'
 import { formatBytes } from '../server/format.js'
 import { pickRandomCoverUrl } from '../server/cover.js'
 import { recordHikeView } from '../server/stats.js'
@@ -497,9 +498,14 @@ export async function PUT(request: Request) {
     }
 
     // La fiche project.json est rangée dans le dossier de la rando : elle compte
-    // dans le quota du PROPRIÉTAIRE (même quand un admin édite à sa place).
+    // dans le quota du PROPRIÉTAIRE (selon SON forfait, même quand un admin
+    // édite à sa place).
+    const ownerPlan =
+      owner === STUDIO_OWNER ? undefined : await readProfilePlan(owner)
     const scope =
-      owner === STUDIO_OWNER ? undefined : userStorageScope(owner)
+      owner === STUDIO_OWNER
+        ? undefined
+        : userStorageScope(owner, undefined, ownerPlan)
     const url = await r2PutText(target.projectKey, body, scope)
 
     // Pointeur public : uniquement pour une carte PUBLIÉE (un brouillon ne doit

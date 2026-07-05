@@ -1,5 +1,6 @@
 import { hasR2Config } from '../server/r2.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
+import { readProfilePlan } from '../server/firestoreAdmin.js'
 import { userStorageLimit, userStorageUsage } from '../server/userStorage.js'
 import { DEFAULT_PLAN_ID } from '../server/plans.js'
 
@@ -30,12 +31,13 @@ export async function GET(request: Request) {
   }
 
   try {
+    const plan = await readProfilePlan(user.uid)
     const usedBytes = await userStorageUsage(user.uid)
     return Response.json(
       {
         usedBytes,
-        limitBytes: userStorageLimit(user.uid, user.email),
-        planId: DEFAULT_PLAN_ID,
+        limitBytes: userStorageLimit(user.uid, user.email, plan),
+        planId: plan ?? DEFAULT_PLAN_ID,
       },
       { headers: jsonHeaders },
     )
