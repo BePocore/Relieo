@@ -312,12 +312,14 @@ export async function POST(request: Request) {
   }
   // Auth : jeton Firebase si configure, sinon mot de passe admin (compat).
   let uid: string | null = null
+  let userEmail: string | null = null
   if (hasFirebaseAdmin()) {
     const user = await verifyRequestUser(request)
     if (!user) {
       return Response.json({ message: 'Connexion requise.' }, { status: 401 })
     }
     uid = user.uid
+    userEmail = user.email
   } else {
     if (!hasAdminPassword()) {
       return Response.json(
@@ -379,7 +381,7 @@ export async function POST(request: Request) {
     if (body.type === 'relieo.save-user-trace') {
       const trace = normalizeTraceRecord(body.trace)
       const scope: StorageScope | undefined = uid
-        ? userStorageScope(uid)
+        ? userStorageScope(uid, userEmail)
         : undefined
       await r2PutText(traceKey(owner, trace.id), JSON.stringify(trace), scope)
       return Response.json({ trace })
@@ -488,9 +490,9 @@ export async function POST(request: Request) {
           : 'media'
     const fileName = cleanStorageName(body.fileName ?? 'media')
     const suffix = body.kind === 'preview' ? `${fingerprint}.jpg` : `${fingerprint}-${fileName}`
-    // Quota par utilisateur (5 Go) si on connait son uid ; sinon repli global.
+    // Quota par utilisateur si on connait son uid ; sinon repli global.
     const scope: StorageScope | undefined = uid
-      ? userStorageScope(uid)
+      ? userStorageScope(uid, userEmail)
       : undefined
     const prepared = await r2PrepareUpload({
       key: `${location.prefix}/${folder}/${suffix}`,

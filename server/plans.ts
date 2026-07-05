@@ -13,6 +13,12 @@ export const PLAN_STORAGE_LIMITS: Record<PlanId, number> = {
 
 export const DEFAULT_PLAN_ID: PlanId = 'standard'
 
+// Limite relevée pour les comptes « maison » : admin, créateurs (CREATOR_UIDS)
+// et comptes internes. Calée sur le palier gratuit R2 (10 Go) : tant qu'il n'y
+// a que Quentin comme créateur, il dispose de tout le stockage gratuit du
+// bucket sans être bloqué par le plafond du forfait Standard (5 Go).
+export const INTERNAL_STORAGE_LIMIT_BYTES = 10_000_000_000
+
 // Limite du forfait gratuit (Standard) : référence utilisée tant que tous les
 // utilisateurs sont en gratuit. Le jour où les forfaits payants existent, on
 // lira le `plan` du profil pour choisir la bonne limite.

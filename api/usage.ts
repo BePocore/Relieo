@@ -1,7 +1,7 @@
 import { hasR2Config } from '../server/r2.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
-import { userStorageUsage } from '../server/userStorage.js'
-import { DEFAULT_PLAN_ID, FREE_STORAGE_LIMIT_BYTES } from '../server/plans.js'
+import { userStorageLimit, userStorageUsage } from '../server/userStorage.js'
+import { DEFAULT_PLAN_ID } from '../server/plans.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     return Response.json(
       {
         usedBytes,
-        limitBytes: FREE_STORAGE_LIMIT_BYTES,
+        limitBytes: userStorageLimit(user.uid, user.email),
         planId: DEFAULT_PLAN_ID,
       },
       { headers: jsonHeaders },
