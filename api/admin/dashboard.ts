@@ -29,6 +29,10 @@ import {
   readEmailUsage,
 } from '../../server/emailUsage.js'
 import { FIXED_COSTS, isInternalEmail } from '../../server/costs.js'
+import {
+  COST_ALERT_THRESHOLD_EUR,
+  maybeAlertCostThreshold,
+} from '../../server/costAlerts.js'
 import { userStorageRoot } from '../../server/trailStorage.js'
 import { DEFAULT_PLAN_ID, monthlyR2Cost } from '../../server/plans.js'
 
@@ -314,7 +318,13 @@ export async function GET(request: Request) {
     const costs = {
       platforms: costPlatforms,
       totalMonthlyEur: costPlatforms.reduce((sum, p) => sum + p.monthlyEur, 0),
+      alertThresholdEur: COST_ALERT_THRESHOLD_EUR,
+      alertExceeded: overview.monthlyCostEur > COST_ALERT_THRESHOLD_EUR,
     }
+
+    // Alerte de coût : notif admin + email si le coût mensuel dépasse le seuil
+    // (une fois par mois). Best-effort, ne bloque pas la réponse.
+    await maybeAlertCostThreshold(overview.monthlyCostEur)
 
     // Covers (et toute URL média) réécrites vers le videur media.relieo.fr ; la
     // console charge avec un ticket « scope all » (admin).

@@ -77,6 +77,7 @@ type AdminNotification = {
     | 'media-review-needed'
     | 'media-scan-summary'
     | 'storage-threshold'
+    | 'cost-alert'
   fromUid: string
   fromEmail: string | null
   message: string
@@ -288,6 +289,8 @@ type CostPlatform = {
 type Costs = {
   platforms: CostPlatform[]
   totalMonthlyEur: number
+  alertThresholdEur?: number
+  alertExceeded?: boolean
 }
 
 const isOriginalMediaKey = (id: string): boolean => id.includes('/media/')
@@ -1536,6 +1539,10 @@ export function AdminApp({
                   <>
                     <HardDrive size={14} /> Alerte stockage · {n.fromEmail ?? n.fromUid}
                   </>
+                ) : n.type === 'cost-alert' ? (
+                  <>
+                    <Wallet size={14} /> Alerte coût
+                  </>
                 ) : (
                   <>
                     <Ban size={14} /> Appel de {n.fromEmail ?? n.fromUid}
@@ -1599,7 +1606,7 @@ export function AdminApp({
                     Ignorer la demande
                   </button>
                 </>
-              ) : n.type === 'storage-threshold' ? null : (
+              ) : n.type === 'storage-threshold' || n.type === 'cost-alert' ? null : (
                 <button
                   className="admin-notif-mark primary"
                   type="button"
@@ -1817,6 +1824,18 @@ export function AdminApp({
             <p>Coûts / mois</p>
             <strong>{formatEur(totalCosts)}</strong>
             <small>toutes plateformes</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><Bell size={18} /></span>
+            <p>Alerte coût</p>
+            <strong style={{ color: costs?.alertExceeded ? '#ffb3ad' : '#9be7c4' }}>
+              {formatEur(costs?.alertThresholdEur ?? 5)}/mois
+            </strong>
+            <small>
+              {costs?.alertExceeded
+                ? 'Seuil dépassé · mail + notif envoyés'
+                : 'Sous le seuil · mail + notif si dépassé'}
+            </small>
           </article>
         </section>
 

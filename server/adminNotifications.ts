@@ -12,6 +12,7 @@ export type AdminNotification = {
     | 'media-review-needed'
     | 'media-scan-summary'
     | 'storage-threshold'
+    | 'cost-alert'
   fromUid: string
   fromEmail: string | null
   message: string
