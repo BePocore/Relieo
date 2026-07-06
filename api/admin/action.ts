@@ -26,7 +26,11 @@ import {
   rejectModerationItems,
   triggerModerationScan,
 } from '../../server/mediaModeration.js'
-import { pushUserNotification, setUserPlan } from '../../server/firestoreAdmin.js'
+import {
+  pushUserNotification,
+  setUserPlan,
+  setUserStorageAlert,
+} from '../../server/firestoreAdmin.js'
 import { readModeration, setModeration } from '../../server/moderation.js'
 import { appendSanction } from '../../server/sanctions.js'
 import {
@@ -67,6 +71,7 @@ type ScanSummaryPayload = {
 type ActionBody = {
   action?:
     | 'set-plan'
+    | 'set-storage-alert'
     | 'map'
     | 'user-action'
     | 'reply-appeal'
@@ -76,6 +81,8 @@ type ActionBody = {
     | 'notify-media-review'
   // set-plan
   plan?: string
+  // set-storage-alert : seuil d'alerte stockage en Go (0 = pas d'alerte)
+  thresholdGb?: number
   // map + user-action + reply-appeal
   uid?: string
   code?: string
@@ -665,6 +672,18 @@ export async function POST(request: Request) {
         }
         await setUserPlan(uid, plan)
         return json({ uid, plan })
+      }
+      case 'set-storage-alert': {
+        const uid = body.uid?.trim()
+        const thresholdGb = Number(body.thresholdGb)
+        if (!uid || !Number.isFinite(thresholdGb) || thresholdGb < 0) {
+          return json(
+            { message: 'uid et thresholdGb (Go, >= 0) sont obligatoires.' },
+            400,
+          )
+        }
+        await setUserStorageAlert(uid, thresholdGb)
+        return json({ uid, storageAlertGb: thresholdGb })
       }
       case 'map':
         return handleMap(admin, body)

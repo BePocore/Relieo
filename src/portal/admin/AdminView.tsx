@@ -63,6 +63,8 @@ type AdminUser = {
   status: 'active' | 'blocked' | 'deleted'
   // Envois gelés (soft) : consultation gardée, uploads/sauvegardes bloqués.
   uploadsFrozen: boolean
+  // Seuil d'alerte stockage (Go) réglé pour ce compte ; 0 = pas d'alerte.
+  storageAlertGb: number
   banCount: number
   // Demande de suppression volontaire en attente.
   deletionRequest: boolean
@@ -756,6 +758,25 @@ export function AdminApp({
     }
   }
 
+  const setStorageAlert = async (uid: string, gb: number) => {
+    setBusyAction(`alert-${uid}`)
+    try {
+      const response = await authFetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-storage-alert', uid, thresholdGb: gb }),
+      })
+      if (!response.ok) throw new Error()
+      setUsers((current) =>
+        current.map((u) => (u.uid === uid ? { ...u, storageAlertGb: gb } : u)),
+      )
+    } catch {
+      setError('Réglage du seuil d’alerte impossible.')
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   const mapAction = async (
     code: string,
     action: 'unpublish' | 'delete',
@@ -1225,7 +1246,30 @@ export function AdminApp({
                 </td>
                 <td>{u.hikeCount} <small>({u.publishedCount} pub.)</small></td>
                 <td>{u.mediaCount}</td>
-                <td>{formatBytes(u.usedBytes)}</td>
+                <td>
+                  {formatBytes(u.usedBytes)}
+                  {u.status !== 'deleted' ? (
+                    <label className="admin-storage-alert" title="Seuil d'alerte stockage (Go) : notif admin au-delà. 0 = aucune alerte.">
+                      <span>Alerte</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={5}
+                        disabled={busyAction === `alert-${u.uid}`}
+                        defaultValue={u.storageAlertGb || ''}
+                        placeholder="—"
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') event.currentTarget.blur()
+                        }}
+                        onBlur={(event) => {
+                          const gb = Math.max(0, Math.round(Number(event.target.value) || 0))
+                          if (gb !== u.storageAlertGb) void setStorageAlert(u.uid, gb)
+                        }}
+                      />
+                      <span>Go</span>
+                    </label>
+                  ) : null}
+                </td>
                 <td>{formatEur(u.monthlyCostEur)}</td>
                 <td>
                   {u.status === 'deleted' ? (

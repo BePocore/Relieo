@@ -33,6 +33,7 @@ import {
   COST_ALERT_THRESHOLD_EUR,
   maybeAlertCostThreshold,
 } from '../../server/costAlerts.js'
+import { maybeAlertUserStorageThreshold } from '../../server/storageAlerts.js'
 import { userStorageRoot } from '../../server/trailStorage.js'
 import { DEFAULT_PLAN_ID, monthlyR2Cost } from '../../server/plans.js'
 
@@ -132,6 +133,7 @@ export async function GET(request: Request) {
           monthlyCostEur: internal ? 0 : monthlyR2Cost(usedBytes),
           status: mod?.status ?? 'active',
           uploadsFrozen: Boolean(mod?.uploadsFrozen),
+          storageAlertGb: profile?.storageAlertGb ?? 0,
           banCount: mod?.banCount ?? 0,
           deletionRequest: Boolean(mod?.deletionRequest),
           deletedAt: mod?.deletedAt ?? null,
@@ -181,6 +183,8 @@ export async function GET(request: Request) {
         usedBytes: 0,
         monthlyCostEur: 0,
         status: 'deleted' as const,
+        uploadsFrozen: false,
+        storageAlertGb: 0,
         banCount: mod.banCount,
         deletionRequest: false,
         deletedAt: mod.deletedAt,
@@ -326,6 +330,21 @@ export async function GET(request: Request) {
     // Alerte de coût : notif admin + email si le coût mensuel dépasse le seuil
     // (une fois par mois). Best-effort, ne bloque pas la réponse.
     await maybeAlertCostThreshold(overview.monthlyCostEur)
+
+    // Alerte de stockage par compte : notif admin quand un compte dépasse le
+    // seuil (en Go) réglé pour lui. Best-effort.
+    await Promise.all(
+      users
+        .filter((u) => u.storageAlertGb > 0)
+        .map((u) =>
+          maybeAlertUserStorageThreshold(
+            u.uid,
+            u.email,
+            u.usedBytes,
+            u.storageAlertGb,
+          ),
+        ),
+    )
 
     // Covers (et toute URL média) réécrites vers le videur media.relieo.fr ; la
     // console charge avec un ticket « scope all » (admin).

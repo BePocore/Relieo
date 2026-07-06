@@ -13,10 +13,19 @@ export type StoredProfile = {
   // Rôle du compte (réservé : le flag est posé par le futur bouton « devenir
   // créateur »). En tranche 1, le rôle effectif vient de l'env `CREATOR_UIDS`.
   accountType?: string
+  // Seuil d'alerte stockage (en Go) réglé par l'admin pour ce compte : au-delà,
+  // une notif admin est déposée (surveillance des gros consommateurs). 0/absent
+  // = pas d'alerte.
+  storageAlertGb?: number
 }
 
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value.trim() : undefined
+
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined
 
 // Tous les profils, indexés par uid. Une seule lecture de collection.
 export const readAllProfiles = async (): Promise<Map<string, StoredProfile>> => {
@@ -32,9 +41,26 @@ export const readAllProfiles = async (): Promise<Map<string, StoredProfile>> => 
       bio: asString(data.bio),
       plan: asString(data.plan),
       accountType: asString(data.accountType),
+      storageAlertGb: asNumber(data.storageAlertGb),
     })
   }
   return profiles
+}
+
+// Règle le seuil d'alerte stockage (Go) d'un compte (override admin). 0 efface
+// l'alerte.
+export const setUserStorageAlert = async (
+  uid: string,
+  storageAlertGb: number,
+): Promise<void> => {
+  const db = getFirestore(adminApp())
+  await db
+    .collection('profiles')
+    .doc(uid)
+    .set(
+      { storageAlertGb, updatedAt: new Date().toISOString() },
+      { merge: true },
+    )
 }
 
 // Écrit le forfait d'un utilisateur (override admin), sans toucher au reste.
