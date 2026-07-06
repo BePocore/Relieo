@@ -131,6 +131,7 @@ export async function GET(request: Request) {
           usedBytes,
           monthlyCostEur: internal ? 0 : monthlyR2Cost(usedBytes),
           status: mod?.status ?? 'active',
+          uploadsFrozen: Boolean(mod?.uploadsFrozen),
           banCount: mod?.banCount ?? 0,
           deletionRequest: Boolean(mod?.deletionRequest),
           deletedAt: mod?.deletedAt ?? null,

@@ -24,6 +24,10 @@ export type DeletionRequest = {
 export type ModerationRecord = {
   status: ModerationStatus
   message: string
+  // Gel des envois (soft) : le compte reste actif (consultation OK) mais ne
+  // peut plus uploader ni sauvegarder de contenu. Moins radical qu'un blocage,
+  // réversible. Écrit admin-only comme le reste.
+  uploadsFrozen: boolean
   // Nombre total de bannissements reçus (jamais décrémenté) : sert de seuil aux
   // 3 bannissements requis avant de pouvoir supprimer le compte.
   banCount: number
@@ -44,6 +48,7 @@ export type ModerationRecord = {
 const DEFAULT: ModerationRecord = {
   status: 'active',
   message: '',
+  uploadsFrozen: false,
   banCount: 0,
   updatedAt: null,
   appeal: null,
@@ -86,6 +91,7 @@ export const readModeration = async (
         ? data.status
         : 'active',
     message: typeof data.message === 'string' ? data.message : '',
+    uploadsFrozen: data.uploadsFrozen === true,
     banCount: typeof data.banCount === 'number' ? data.banCount : 0,
     updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : null,
     appeal: parseAppeal(data.appeal),
@@ -111,6 +117,7 @@ export const readAllModeration = async (): Promise<
           ? data.status
           : 'active',
       message: typeof data.message === 'string' ? data.message : '',
+      uploadsFrozen: data.uploadsFrozen === true,
       banCount: typeof data.banCount === 'number' ? data.banCount : 0,
       updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : null,
       appeal: parseAppeal(data.appeal),

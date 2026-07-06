@@ -324,12 +324,14 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
     (op !== 'block' &&
       op !== 'unblock' &&
       op !== 'delete-account' &&
-      op !== 'dismiss-deletion-request')
+      op !== 'dismiss-deletion-request' &&
+      op !== 'freeze' &&
+      op !== 'unfreeze')
   ) {
     return json(
       {
         message:
-          'uid et op (block|unblock|delete-account|dismiss-deletion-request) sont obligatoires.',
+          'uid et op (block|unblock|delete-account|dismiss-deletion-request|freeze|unfreeze) sont obligatoires.',
       },
       400,
     )
@@ -388,6 +390,32 @@ const handleUserAction = async (admin: AuthedUser, body: ActionBody) => {
     })
     await logSanction('unblock')
     return json({ uid, op, status: 'active' })
+  }
+
+  // Gel / dégel des envois : le compte reste actif (consultation OK) mais ne
+  // peut plus uploader ni sauvegarder (garde serveur dans upload.ts/project.ts).
+  if (op === 'freeze') {
+    await setModeration(uid, { uploadsFrozen: true })
+    await pushUserNotification(uid, {
+      id: `${uid}-freeze-${Date.now()}`,
+      type: 'info',
+      message:
+        message ||
+        'Vos envois de contenu sont temporairement suspendus. Vos cartes restent accessibles.',
+      createdAt: new Date().toISOString(),
+    })
+    return json({ uid, op, uploadsFrozen: true })
+  }
+
+  if (op === 'unfreeze') {
+    await setModeration(uid, { uploadsFrozen: false })
+    await pushUserNotification(uid, {
+      id: `${uid}-unfreeze-${Date.now()}`,
+      type: 'info',
+      message: 'Vos envois de contenu sont de nouveau autorisés.',
+      createdAt: new Date().toISOString(),
+    })
+    return json({ uid, op, uploadsFrozen: false })
   }
 
   if (op === 'dismiss-deletion-request') {

@@ -61,6 +61,8 @@ type AdminUser = {
   usedBytes: number
   monthlyCostEur: number
   status: 'active' | 'blocked' | 'deleted'
+  // Envois gelés (soft) : consultation gardée, uploads/sauvegardes bloqués.
+  uploadsFrozen: boolean
   banCount: number
   // Demande de suppression volontaire en attente.
   deletionRequest: boolean
@@ -783,7 +785,13 @@ export function AdminApp({
 
   const userAction = async (
     uid: string,
-    action: 'block' | 'unblock' | 'delete-account' | 'dismiss-deletion-request',
+    action:
+      | 'block'
+      | 'unblock'
+      | 'delete-account'
+      | 'dismiss-deletion-request'
+      | 'freeze'
+      | 'unfreeze',
     message?: string,
     notifId?: string,
   ) => {
@@ -1260,6 +1268,29 @@ export function AdminApp({
                           <Ban size={15} /> Bloquer
                         </button>
                       )}
+                      {u.status === 'active' ? (
+                        u.uploadsFrozen ? (
+                          <button
+                            className="admin-action success"
+                            disabled={busyAction === `user-${u.uid}`}
+                            type="button"
+                            onClick={() => void userAction(u.uid, 'unfreeze')}
+                            title="Réautoriser les envois de contenu"
+                          >
+                            <HardDrive size={15} /> Dégeler
+                          </button>
+                        ) : (
+                          <button
+                            className="admin-action warn"
+                            disabled={busyAction === `user-${u.uid}`}
+                            type="button"
+                            onClick={() => void userAction(u.uid, 'freeze')}
+                            title="Geler les envois (consultation conservée)"
+                          >
+                            <HardDrive size={15} /> Geler
+                          </button>
+                        )
+                      ) : null}
                       <button
                         className="admin-action danger"
                         disabled={

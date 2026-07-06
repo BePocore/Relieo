@@ -336,12 +336,22 @@ export async function POST(request: Request) {
     }
   }
 
-  // Un compte sanctionne (bloque ou supprime) ne peut plus rien envoyer.
-  if (uid && (await readModeration(uid)).status !== 'active') {
-    return Response.json(
-      { message: 'Votre compte est suspendu.' },
-      { status: 403 },
-    )
+  // Un compte sanctionne (bloque/supprime) OU dont les envois sont geles ne
+  // peut plus rien envoyer.
+  if (uid) {
+    const mod = await readModeration(uid)
+    if (mod.status !== 'active') {
+      return Response.json(
+        { message: 'Votre compte est suspendu.' },
+        { status: 403 },
+      )
+    }
+    if (mod.uploadsFrozen) {
+      return Response.json(
+        { message: 'Vos envois de contenu sont temporairement suspendus.' },
+        { status: 403 },
+      )
+    }
   }
 
   // Forfait de l'uploadeur : fixe la limite de stockage appliquee ci-dessous

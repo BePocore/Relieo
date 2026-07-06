@@ -399,12 +399,22 @@ export async function PUT(request: Request) {
     }
   }
 
-  // Un compte sanctionné (bloqué ou supprimé) ne peut plus sauvegarder.
-  if (authedUser && (await readModeration(authedUser.uid)).status !== 'active') {
-    return Response.json(
-      { message: 'Votre compte est suspendu.' },
-      { status: 403, headers: jsonHeaders },
-    )
+  // Un compte sanctionné (bloqué/supprimé) OU dont les envois sont gelés ne
+  // peut plus sauvegarder.
+  if (authedUser) {
+    const mod = await readModeration(authedUser.uid)
+    if (mod.status !== 'active') {
+      return Response.json(
+        { message: 'Votre compte est suspendu.' },
+        { status: 403, headers: jsonHeaders },
+      )
+    }
+    if (mod.uploadsFrozen) {
+      return Response.json(
+        { message: 'Vos envois de contenu sont temporairement suspendus.' },
+        { status: 403, headers: jsonHeaders },
+      )
+    }
   }
 
   try {
