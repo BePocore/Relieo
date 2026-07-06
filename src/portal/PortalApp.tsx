@@ -1090,6 +1090,8 @@ type StorageUsage = {
   // null quand le forfait est illimité (Infinity n'est pas sérialisable JSON).
   limitBytes: number | null
   unlimited?: boolean
+  // Limite de cartes du forfait (null = illimité).
+  mapLimit?: number | null
 }
 
 // Grille des cartes de forfait, partagée par l'onboarding (post-inscription) et
@@ -1582,6 +1584,7 @@ function DashboardShell({
             usedBytes: data.usedBytes,
             limitBytes: data.limitBytes,
             unlimited: data.unlimited,
+            mapLimit: data.mapLimit,
           })
         }
       })
@@ -1729,6 +1732,20 @@ function DashboardShell({
       ),
     [hikes],
   )
+
+  // Limite de cartes du forfait (null = illimité, ex. compte maison/payant).
+  // atMapLimit = le quota est atteint → on empêche la création côté client
+  // (le serveur reste le vrai rempart, cf. api/project.ts MAP_LIMIT_REACHED).
+  const mapLimit = usage?.mapLimit ?? null
+  const atMapLimit = mapLimit != null && hikes.length >= mapLimit
+
+  const handleCreateClick = () => {
+    if (atMapLimit) {
+      setPortalView('plans')
+      return
+    }
+    setCreateOpen(true)
+  }
 
   const createHike = (title: string, accessCode: string) => {
     setCreateOpen(false)
@@ -1962,7 +1979,18 @@ function DashboardShell({
             <>
               <header className="page-heading">
                 <div><p className="portal-kicker">{view === 'hikes' ? 'Bibliothèque' : 'Tableau de bord'}</p><h1>{view === 'hikes' ? 'Toutes vos cartes' : `Bonjour ${profile.name.split(' ')[0]}`}</h1><p>{view === 'hikes' ? 'Retrouvez les projets publiés et les brouillons.' : 'Votre espace personnel pour créer et raconter vos aventures.'}</p></div>
-                <button className="portal-primary" type="button" onClick={() => setCreateOpen(true)}><Plus size={18} /> Nouvelle carte</button>
+                <button
+                  className="portal-primary"
+                  type="button"
+                  onClick={handleCreateClick}
+                  title={
+                    atMapLimit
+                      ? `Limite de ${mapLimit} cartes atteinte : passez à un forfait supérieur pour en créer plus.`
+                      : undefined
+                  }
+                >
+                  <Plus size={18} /> Nouvelle carte
+                </button>
               </header>
 
               {view === 'dashboard' ? (
@@ -1990,7 +2018,15 @@ function DashboardShell({
                       onDelete={setDeleteTarget}
                     />
                   ))}
-                  <button className="new-hike-card" type="button" onClick={() => setCreateOpen(true)}><span><Plus size={23} /></span><strong>Créer une carte</strong><small>Commencer avec un Studio 3D vierge</small></button>
+                  {atMapLimit ? (
+                    <button className="new-hike-card limit" type="button" onClick={() => setPortalView('plans')}>
+                      <span><Lock size={22} /></span>
+                      <strong>Limite de {mapLimit} cartes atteinte</strong>
+                      <small>Passez à un forfait supérieur pour en créer plus</small>
+                    </button>
+                  ) : (
+                    <button className="new-hike-card" type="button" onClick={() => setCreateOpen(true)}><span><Plus size={23} /></span><strong>Créer une carte</strong><small>Commencer avec un Studio 3D vierge</small></button>
+                  )}
                 </div>
               </section>
 

@@ -1,7 +1,11 @@
 import { hasR2Config } from '../server/r2.js'
 import { hasFirebaseAdmin, verifyRequestUser } from '../server/firebaseAdmin.js'
 import { readProfilePlan } from '../server/firestoreAdmin.js'
-import { userStorageLimit, userStorageUsage } from '../server/userStorage.js'
+import {
+  userMapLimit,
+  userStorageLimit,
+  userStorageUsage,
+} from '../server/userStorage.js'
 import { DEFAULT_PLAN_ID, isUnlimitedStorage } from '../server/plans.js'
 import { maybeAlertStorageThreshold } from '../server/storageAlerts.js'
 
@@ -43,12 +47,17 @@ export async function GET(request: Request) {
       await maybeAlertStorageThreshold(user.uid, user.email, usedBytes)
     }
 
+    // Limite de cartes du forfait (null = illimité) pour désactiver le bouton
+    // « Créer une carte » côté client quand elle est atteinte.
+    const mapLimitValue = userMapLimit(user.uid, user.email, plan)
+
     return Response.json(
       {
         usedBytes,
         // Infinity n'est pas sérialisable en JSON → null + drapeau `unlimited`.
         limitBytes: unlimited ? null : limit,
         unlimited,
+        mapLimit: Number.isFinite(mapLimitValue) ? mapLimitValue : null,
         planId: plan ?? DEFAULT_PLAN_ID,
       },
       { headers: jsonHeaders },

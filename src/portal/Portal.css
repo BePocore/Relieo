@@ -897,6 +897,24 @@ body.portal-active.tracker-scroll-active #root {
   text-align: center;
 }
 
+/* Quota de cartes atteint : la tuile invite à changer de forfait. */
+.new-hike-card.limit {
+  border-style: solid;
+  border-color: var(--c-warn, #d98324);
+  color: var(--c-warn, #d98324);
+}
+
+.new-hike-card.limit:hover {
+  color: var(--c-warn, #d98324);
+  border-color: var(--c-warn, #d98324);
+  background: rgba(217, 131, 36, 0.08);
+}
+
+.new-hike-card.limit > span {
+  color: #fff;
+  background: var(--c-warn, #d98324);
+}
+
 .dashboard-bottom-grid {
   margin-top: 18px;
   display: grid;
