@@ -34,10 +34,11 @@ export const PLANS: PortalPlan[] = [
     priceSuffix: 'pour toujours',
     monthlyPriceEur: 0,
     storageLabel: '1 Go de stockage',
-    // Estimations pour du contenu 4K (photo ~5 Mo, vidéo ~250 Mo / 30 s) : le
-    // pire cas réaliste. Du contenu plus léger (1080p, JPEG compressé) permet
-    // bien plus. La qualité est indiquée pour ne pas induire en erreur.
-    storageEquivalence: '≈ 200 photos ou 4 vidéos de 30 s, en 4K',
+    // Correspondances calculées pour du 4K (photo ~5 Mo ; vidéo ~250 Mo / 30 s
+    // = 8,3 Mo/s). La vidéo est donnée en DURÉE (un « nombre de vidéos » ne veut
+    // rien dire, la durée varie). 1 Go = 1000 Mo (base décimale, comme R2).
+    // → 1000/5 = 200 photos ; 1000/8,3 = 120 s = 2 min de vidéo.
+    storageEquivalence: '≈ 200 photos ou 2 min de vidéo, en 4K',
     features: [
       "Jusqu'à 3 cartes",
       'Relief 3D',
@@ -55,7 +56,8 @@ export const PLANS: PortalPlan[] = [
     priceSuffix: '/ mois',
     monthlyPriceEur: 5,
     storageLabel: '50 Go de stockage',
-    storageEquivalence: '≈ 10 000 photos ou 200 vidéos de 30 s, en 4K',
+    // 50 000 Mo → 10 000 photos ; 50 000/8,3 = 6000 s ≈ 1 h 40 de vidéo 4K.
+    storageEquivalence: '≈ 10 000 photos ou 1 h 40 de vidéo, en 4K',
     features: [
       'Cartes illimitées',
       'Vidéos jusqu’en 4K',
