@@ -14,6 +14,9 @@ export type PortalPlan = {
   // Prix mensuel réel en euros (0 = gratuit). Sert au calcul du revenu admin.
   monthlyPriceEur: number
   storageLabel: string
+  // Équivalence lisible du stockage (ex « ≈ 250 photos ou 20 vidéos »), affichée
+  // sous le stockage. Absente pour un stockage illimité.
+  storageEquivalence?: string
   features: string[]
   // false = forfait factice, pas encore disponible (« Bientôt »).
   available: boolean
@@ -30,11 +33,12 @@ export const PLANS: PortalPlan[] = [
     priceLabel: 'Gratuit',
     priceSuffix: 'pour toujours',
     monthlyPriceEur: 0,
-    storageLabel: '5 Go de stockage',
+    storageLabel: '1 Go de stockage',
+    storageEquivalence: '≈ 250 photos ou 20 vidéos',
     features: [
-      '5 Go de médias (toutes cartes confondues)',
-      'Cartes illimitées',
-      'Relief 3D et médias géolocalisés',
+      "Jusqu'à 3 cartes",
+      'Relief 3D',
+      'Médias géolocalisés',
       'Partage par lien',
     ],
     available: true,
@@ -48,8 +52,9 @@ export const PLANS: PortalPlan[] = [
     priceSuffix: '/ mois',
     monthlyPriceEur: 5,
     storageLabel: '50 Go de stockage',
+    storageEquivalence: '≈ 12 000 photos ou 1 000 vidéos',
     features: [
-      '50 Go de médias',
+      'Cartes illimitées',
       'Vidéos jusqu’en 4K',
       'Pages publiques personnalisées',
       'Support prioritaire',
@@ -63,10 +68,10 @@ export const PLANS: PortalPlan[] = [
     priceLabel: '12 €',
     priceSuffix: '/ mois',
     monthlyPriceEur: 12,
-    storageLabel: '200 Go de stockage',
+    storageLabel: 'Stockage illimité',
     features: [
-      '200 Go de médias',
-      'Pages publiques illimitées',
+      'Stockage illimité',
+      'Cartes illimitées',
       'Statistiques de consultation',
       'Domaine de partage dédié',
     ],

@@ -1,5 +1,5 @@
 import { r2UsageForPrefixes, type StorageScope } from './r2.js'
-import { HIGHEST_PLAN_ID, planStorageLimit } from './plans.js'
+import { HIGHEST_PLAN_ID, planMaxMaps, planStorageLimit } from './plans.js'
 import { userStorageRoot } from './trailStorage.js'
 import { isAdminUid } from './admin.js'
 import { isCreatorUid } from './roles.js'
@@ -31,6 +31,17 @@ export const userStorageLimit = (
   isHouseAccount(uid, email)
     ? planStorageLimit(HIGHEST_PLAN_ID)
     : planStorageLimit(planId)
+
+// Nombre max de cartes d'un compte : comptes maison → règle du forfait le plus
+// élevé (illimité) ; sinon la limite du forfait (gratuit = 3, payants illimités).
+export const userMapLimit = (
+  uid: string,
+  email?: string | null,
+  planId?: string,
+): number =>
+  isHouseAccount(uid, email)
+    ? planMaxMaps(HIGHEST_PLAN_ID)
+    : planMaxMaps(planId)
 
 // Portée de quota appliquée à l'utilisateur ENTIER (limite = celle de son
 // compte / forfait, cf. `userStorageLimit`).

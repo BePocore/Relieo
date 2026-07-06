@@ -1126,6 +1126,9 @@ function PlanCards({
               <span>{plan.priceSuffix}</span>
             </p>
             <p className="plan-storage"><HardDrive size={15} /> {plan.storageLabel}</p>
+            {plan.storageEquivalence ? (
+              <p className="plan-storage-equiv">{plan.storageEquivalence}</p>
+            ) : null}
             <ul className="plan-features">
               {plan.features.map((feature) => (
                 <li key={feature}><Check size={14} /> {feature}</li>

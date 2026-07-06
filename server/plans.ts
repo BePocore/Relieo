@@ -9,8 +9,16 @@ export type PlanId = 'standard' | 'explorateur' | 'cartographe'
 // gratuit R2 est simplement facturé à l'usage (cf. server/costs.ts). Les autres
 // forfaits gardent un plafond dur (il faut monter en gamme pour plus).
 export const PLAN_STORAGE_LIMITS: Record<PlanId, number> = {
-  standard: 5_000_000_000,
+  standard: 1_000_000_000,
   explorateur: 50_000_000_000,
+  cartographe: Number.POSITIVE_INFINITY,
+}
+
+// Nombre maximum de cartes par forfait (brouillons + publiées). Le gratuit est
+// plafonné ; les forfaits payants sont illimités. Infinity = pas de limite.
+export const PLAN_MAX_MAPS: Record<PlanId, number> = {
+  standard: 3,
+  explorateur: Number.POSITIVE_INFINITY,
   cartographe: Number.POSITIVE_INFINITY,
 }
 
@@ -36,6 +44,13 @@ export const planStorageLimit = (planId: string | undefined): number => {
     return PLAN_STORAGE_LIMITS[planId as PlanId]
   }
   return PLAN_STORAGE_LIMITS[DEFAULT_PLAN_ID]
+}
+
+export const planMaxMaps = (planId: string | undefined): number => {
+  if (planId && planId in PLAN_MAX_MAPS) {
+    return PLAN_MAX_MAPS[planId as PlanId]
+  }
+  return PLAN_MAX_MAPS[DEFAULT_PLAN_ID]
 }
 
 // --- Coût d'infrastructure Cloudflare R2 (pour le dashboard admin) ---

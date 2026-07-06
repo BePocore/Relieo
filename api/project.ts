@@ -38,7 +38,7 @@ import {
   readBlockedIds,
   readScannedIds,
 } from '../server/mediaModeration.js'
-import { userStorageScope } from '../server/userStorage.js'
+import { userMapLimit, userStorageScope } from '../server/userStorage.js'
 import { readProfilePlan } from '../server/firestoreAdmin.js'
 import { formatBytes } from '../server/format.js'
 import { pickRandomCoverUrl } from '../server/cover.js'
@@ -468,6 +468,29 @@ export async function PUT(request: Request) {
         { message: 'Cette randonnée appartient à un autre utilisateur.' },
         { status: 403, headers: jsonHeaders },
       )
+    }
+
+    // Limite de cartes du forfait : ne s'applique qu'à la CRÉATION d'une
+    // nouvelle carte par un vrai utilisateur (pas l'admin god-mode). Le gratuit
+    // est plafonné (3), les payants et comptes maison sont illimités. On compte
+    // TOUTES ses cartes (brouillons + publiées) via l'index.
+    if (!existing && authedUser && !isAdmin) {
+      const plan = await readProfilePlan(authedUser.uid)
+      const maxMaps = userMapLimit(authedUser.uid, authedUser.email, plan)
+      if (Number.isFinite(maxMaps)) {
+        const ownedCount = (await readHikeIndex()).filter(
+          (entry) => entry.ownerId === authedUser.uid,
+        ).length
+        if (ownedCount >= maxMaps) {
+          return Response.json(
+            {
+              code: 'MAP_LIMIT_REACHED',
+              message: `Votre forfait est limité à ${maxMaps} cartes. Passez à un forfait supérieur pour en créer davantage.`,
+            },
+            { status: 403, headers: jsonHeaders },
+          )
+        }
+      }
     }
 
     // Statut : brouillon ou publiée (par défaut publiée pour compat ascendante).
