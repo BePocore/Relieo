@@ -1,7 +1,9 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from 'react'
 import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react'
@@ -11,6 +13,8 @@ import type { LightboxMedia } from '../App'
 type MediaLightboxProps = {
   items: LightboxMedia[]
   startIndex?: number
+  // Diaporama : clé localStorage où mémoriser la position pour la reprise.
+  persistKey?: string
   onClose: () => void
 }
 
@@ -22,6 +26,7 @@ const BREAK_MS = 2600
 export function MediaLightbox({
   items,
   startIndex = 0,
+  persistKey,
   onClose,
 }: MediaLightboxProps) {
   const [index, setIndex] = useState(startIndex)
@@ -29,6 +34,64 @@ export function MediaLightbox({
   const count = items.length
   const safeIndex = Math.min(index, count - 1)
   const media = items[safeIndex]
+
+  // ── Reprise du diaporama ────────────────────────────────────────────────
+  // On mémorise la position + l'heure à chaque changement de vue (couvre le
+  // rechargement de page), et une dernière fois au démontage avec une heure
+  // fraîche (couvre la fermeture explicite, pour un vrai « quitté il y a X »).
+  const indexRef = useRef(safeIndex)
+  useEffect(() => {
+    indexRef.current = safeIndex
+    if (!persistKey) return
+    try {
+      window.localStorage.setItem(
+        persistKey,
+        JSON.stringify({ index: safeIndex, ts: Date.now() }),
+      )
+    } catch {
+      /* localStorage indisponible */
+    }
+  }, [persistKey, safeIndex])
+  useEffect(() => {
+    if (!persistKey) return
+    return () => {
+      try {
+        window.localStorage.setItem(
+          persistKey,
+          JSON.stringify({ index: indexRef.current, ts: Date.now() }),
+        )
+      } catch {
+        /* localStorage indisponible */
+      }
+    }
+  }, [persistKey])
+
+  // ── Seek : clic / glissement n'importe où sur la barre de défilement ─────
+  const progressRef = useRef<HTMLDivElement>(null)
+  const seekingRef = useRef(false)
+  const seekToClientX = (clientX: number) => {
+    const el = progressRef.current
+    if (!el || count <= 1) return
+    const rect = el.getBoundingClientRect()
+    if (rect.width <= 0) return
+    const fraction = (clientX - rect.left) / rect.width
+    const target = Math.max(0, Math.min(count - 1, Math.floor(fraction * count)))
+    setIndex(target)
+  }
+  const handleSeekDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (count <= 1) return
+    seekingRef.current = true
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    seekToClientX(event.clientX)
+  }
+  const handleSeekMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!seekingRef.current) return
+    seekToClientX(event.clientX)
+  }
+  const handleSeekUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    seekingRef.current = false
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+  }
 
   const go = (delta: number) =>
     setIndex((current) => (current + delta + count) % count)
@@ -228,9 +291,22 @@ export function MediaLightbox({
               <Play aria-hidden="true" size={18} />
             )}
           </button>
-          {hasBreaks ? (
-            <div className="lightbox-progress" aria-hidden="true">
-              {segments.map((seg) => {
+          <div
+            className="lightbox-progress"
+            ref={progressRef}
+            role="slider"
+            aria-label="Position dans le diaporama"
+            aria-valuemin={1}
+            aria-valuemax={count}
+            aria-valuenow={safeIndex + 1}
+            tabIndex={0}
+            onPointerDown={handleSeekDown}
+            onPointerMove={handleSeekMove}
+            onPointerUp={handleSeekUp}
+            onPointerCancel={handleSeekUp}
+          >
+            {hasBreaks ? (
+              segments.map((seg) => {
                 const done = Math.max(
                   0,
                   Math.min(seg.length, safeIndex - seg.start + 1),
@@ -249,13 +325,18 @@ export function MediaLightbox({
                     />
                   </span>
                 )
-              })}
-            </div>
-          ) : (
-            <span className="lightbox-progress-count">
-              {safeIndex + 1} / {count}
-            </span>
-          )}
+              })
+            ) : (
+              <span className="lb-seg" style={{ flexGrow: 1 }}>
+                <b
+                  style={{
+                    width: `${((safeIndex + 1) / count) * 100}%`,
+                    background: '#4fd1a1',
+                  }}
+                />
+              </span>
+            )}
+          </div>
         </div>
       ) : null}
     </div>

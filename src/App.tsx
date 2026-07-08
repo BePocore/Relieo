@@ -127,6 +127,12 @@ const pointsToLightboxItems = (
     })
     .filter((item): item is LightboxMedia => item !== null)
 
+// Reprise du diaporama : si on le quitte, on a 10 min pour revenir et reprendre
+// à la même position. La position + l'heure sont stockées en localStorage.
+const SLIDESHOW_RESUME_MS = 10 * 60 * 1000
+const slideshowResumeKey = (slug: string): string =>
+  slug ? `relieo.slideshow.${slug}` : ''
+
 const pointTypes: PointType[] = ['photo', 'video', '360', 'poi']
 export const newPointTitle = 'Nouveau point'
 
@@ -561,6 +567,9 @@ function App() {
   const [lightbox, setLightbox] = useState<{
     items: LightboxMedia[]
     index: number
+    // Clé localStorage de reprise (diaporama seulement) : la position et l'heure
+    // y sont mémorisées pour reprendre là où on s'est arrêté (fenêtre 10 min).
+    persistKey?: string
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Échec du chargement initial d'une carte (code inconnu ou brouillon non
@@ -1230,8 +1239,37 @@ function App() {
     return items
   }, [dayPlan, mediaPoints, points, mediaLibrary, traces])
   const handleOpenSlideshow = useCallback(() => {
-    if (slideshowItems.length > 0) setLightbox({ items: slideshowItems, index: 0 })
-  }, [slideshowItems])
+    if (slideshowItems.length === 0) return
+    const key = slideshowResumeKey(mapSlug)
+    let start = 0
+    // Reprise : on relit la dernière position si on a quitté il y a moins de 10 min.
+    if (key) {
+      try {
+        const raw = window.localStorage.getItem(key)
+        if (raw) {
+          const saved = JSON.parse(raw) as { index?: number; ts?: number }
+          if (
+            typeof saved.index === 'number' &&
+            typeof saved.ts === 'number' &&
+            Date.now() - saved.ts <= SLIDESHOW_RESUME_MS &&
+            saved.index > 0 &&
+            saved.index < slideshowItems.length
+          ) {
+            start = saved.index
+          } else {
+            window.localStorage.removeItem(key)
+          }
+        }
+      } catch {
+        /* localStorage indisponible : on démarre au début */
+      }
+    }
+    setLightbox({
+      items: slideshowItems,
+      index: start,
+      persistKey: key || undefined,
+    })
+  }, [slideshowItems, mapSlug])
 
   const handleAdminPasswordChange = useCallback((password: string) => {
     setAdminPassword(password)
@@ -2982,6 +3020,7 @@ function App() {
         <MediaLightbox
           items={lightbox.items}
           startIndex={lightbox.index}
+          persistKey={lightbox.persistKey}
           onClose={handleCloseLightbox}
         />
       ) : null}

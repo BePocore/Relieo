@@ -1364,6 +1364,12 @@
   gap: 4px;
   flex: 1;
   min-width: 0;
+  /* Zone de préhension plus haute que le trait pour cliquer / glisser dessus. */
+  padding: 9px 0;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .lb-seg {
@@ -1373,6 +1379,12 @@
   border-radius: 4px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.16);
+  transition: height 120ms ease;
+}
+
+.lightbox-progress:hover .lb-seg,
+.lightbox-progress:active .lb-seg {
+  height: 7px;
 }
 
 .lb-seg b {
