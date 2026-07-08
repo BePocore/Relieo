@@ -23,6 +23,9 @@ type PointDetailProps = {
   editable?: boolean
   onDelete?: (pointId: string) => void
   onToggleLock?: (pointId: string) => void
+  // Le panneau parent porte déjà une croix de fermeture ; on peut donc masquer
+  // celle-ci pour ne pas afficher deux croix côte à côte.
+  showClose?: boolean
 }
 
 const MediaPreview = ({
@@ -160,6 +163,7 @@ export function PointDetail({
   editable = false,
   onDelete,
   onToggleLock,
+  showClose = true,
 }: PointDetailProps) {
   const media = resolvePointMedia(point, mediaLibrary)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -174,15 +178,17 @@ export function PointDetail({
           <p className="eyebrow">{pointTypeLabels[point.type]}</p>
           <h2>{point.title}</h2>
         </div>
-        <button
-          className="icon-button"
-          type="button"
-          aria-label="Fermer"
-          title="Fermer"
-          onClick={onClose}
-        >
-          <X aria-hidden="true" size={18} />
-        </button>
+        {showClose ? (
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Fermer"
+            title="Fermer"
+            onClick={onClose}
+          >
+            <X aria-hidden="true" size={18} />
+          </button>
+        ) : null}
       </div>
 
       <MediaPreview

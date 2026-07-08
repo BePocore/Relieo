@@ -53,6 +53,7 @@ export function PublicPanel({
         mediaLibrary={mediaLibrary}
         onShowMedia={onShowMedia}
         onClose={onClose}
+        showClose={false}
       />
     )
   }

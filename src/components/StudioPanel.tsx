@@ -508,6 +508,7 @@ function SelectedPointEditor({
         onDelete={onDeletePoint}
         onToggleLock={onToggleLock}
         onClose={onClose}
+        showClose={false}
       />
 
       <form

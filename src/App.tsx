@@ -2895,11 +2895,13 @@ function App() {
               aria-label={isStudioMode ? 'Studio de création' : 'Détails'}
             >
               <button
-                aria-label="Masquer le panneau"
+                aria-label={selectedPoint ? 'Fermer' : 'Masquer le panneau'}
                 className="panel-close"
-                title="Masquer le panneau"
+                title={selectedPoint ? 'Fermer' : 'Masquer le panneau'}
                 type="button"
-                onClick={() => setIsPanelOpen(false)}
+                onClick={() =>
+                  selectedPoint ? handleClosePoint() : setIsPanelOpen(false)
+                }
               >
                 <X aria-hidden="true" size={19} />
               </button>
