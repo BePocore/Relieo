@@ -74,6 +74,8 @@ export const fetchExplore = () => get<{ cards: SocialCard[] }>('explore').then((
 export const fetchSaved = () => get<{ cards: SocialCard[] }>('saved').then((r) => r.cards)
 export const fetchSuggestions = () =>
   get<{ creators: SocialCreator[] }>('suggestions').then((r) => r.creators)
+export const fetchFollowingCreators = () =>
+  get<{ creators: SocialCreator[] }>('following').then((r) => r.creators)
 export const fetchSearch = (q: string) =>
   get<{ maps: SocialCard[]; creators: SocialCreator[] }>('search', { q })
 export const fetchCreator = (uid: string) =>

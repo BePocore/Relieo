@@ -318,6 +318,27 @@
   margin: 0 0 20px;
 }
 
+.feed-following-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feed-following-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  background: var(--feed-surface);
+}
+
+.feed-following-row .feed-suggest-user {
+  flex: 1;
+  min-width: 0;
+}
+
 .feed-search-creators .feed-suggest-user {
   flex: 0 0 auto;
 }

@@ -20,6 +20,7 @@ import {
   Settings,
   Share2,
   Sparkles,
+  UserMinus,
   UserPlus,
   UserRound,
   Users,
@@ -31,6 +32,7 @@ import {
   fetchCreator,
   fetchExplore,
   fetchFeed,
+  fetchFollowingCreators,
   fetchSaved,
   fetchSearch,
   fetchSuggestions,
@@ -256,6 +258,7 @@ export default function SocialFeed({
     { creator: SocialCreator; cards: SocialCard[]; following: boolean } | null
   >(null)
   const [creatorLoading, setCreatorLoading] = useState(false)
+  const [followingCreators, setFollowingCreators] = useState<SocialCreator[] | null>(null)
 
   const [liked, setLiked] = useState<Set<string>>(new Set())
   const [saved, setSaved] = useState<Set<string>>(new Set())
@@ -292,9 +295,9 @@ export default function SocialFeed({
     }
   }, [])
 
-  // Explorer (et « suivis », qui filtre l'explore) : chargé à la demande.
+  // Explorer : chargé à la demande.
   useEffect(() => {
-    if ((view === 'explore' || view === 'following') && explore === null) {
+    if (view === 'explore' && explore === null) {
       let alive = true
       fetchExplore()
         .then((cards) => alive && setExplore(cards))
@@ -305,6 +308,19 @@ export default function SocialFeed({
     }
     return undefined
   }, [view, explore])
+
+  // Onglet « Créateurs suivis » : liste des créateurs suivis, rechargée à
+  // chaque ouverture (montre le créateur même si ses cartes sont à code).
+  useEffect(() => {
+    if (view !== 'following') return undefined
+    let alive = true
+    fetchFollowingCreators()
+      .then((creators) => alive && setFollowingCreators(creators))
+      .catch(() => alive && setFollowingCreators([]))
+    return () => {
+      alive = false
+    }
+  }, [view])
 
   // Onglet « Enregistrées » : cartes réelles, rechargées à chaque ouverture.
   useEffect(() => {
@@ -448,7 +464,6 @@ export default function SocialFeed({
     { id: 'saved', label: 'Enregistrées', icon: <Bookmark size={19} /> },
   ]
 
-  const followingCards = (explore ?? []).filter((card) => following.has(card.author.uid))
   const visibleSuggestions = suggestions.filter((creator) => !following.has(creator.uid))
 
   const renderCards = (cards: SocialCard[], emptyLabel: string) =>
@@ -563,17 +578,54 @@ export default function SocialFeed({
       )
     }
     if (view === 'following') {
+      const creators = (followingCreators ?? []).filter((c) => following.has(c.uid))
       return (
         <>
           <h2 className="feed-section-title">
             <Users size={18} /> Créateurs suivis
           </h2>
-          {explore === null
-            ? renderLoading()
-            : renderCards(
-                followingCards,
-                'Tu ne suis encore personne. Explore pour trouver des créateurs.',
-              )}
+          {followingCreators === null ? (
+            renderLoading()
+          ) : creators.length ? (
+            <div className="feed-following-list">
+              {creators.map((creator) => (
+                <div className="feed-following-row" key={creator.uid}>
+                  <button
+                    className="feed-suggest-user"
+                    type="button"
+                    onClick={() => openCreator(creator.uid)}
+                  >
+                    <Avatar
+                      name={creator.name}
+                      photoURL={creator.photoURL}
+                      color={colorFromId(creator.uid)}
+                      size={44}
+                    />
+                    <span>
+                      <strong>{creator.name}</strong>
+                      <em>
+                        {creator.handle
+                          ? `@${creator.handle}`
+                          : `${creator.mapCount} carte${creator.mapCount > 1 ? 's' : ''}`}
+                      </em>
+                    </span>
+                  </button>
+                  <button
+                    className="feed-follow following"
+                    type="button"
+                    onClick={() => toggleFollow(creator.uid)}
+                  >
+                    <UserMinus size={14} /> Se désabonner
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="feed-empty">
+              <Mountain size={30} />
+              <p>Tu ne suis encore personne. Explore pour trouver des créateurs.</p>
+            </div>
+          )}
         </>
       )
     }

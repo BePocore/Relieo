@@ -4,6 +4,7 @@ import {
   getCreator,
   getExplore,
   getFeed,
+  getFollowingCreators,
   getSavedCards,
   getSuggestions,
   isHandleAvailable,
@@ -38,6 +39,8 @@ export async function GET(request: Request) {
         return json({ cards: await getExplore() })
       case 'saved':
         return json({ cards: await getSavedCards(user.uid) })
+      case 'following':
+        return json({ creators: await getFollowingCreators(user.uid) })
       case 'suggestions':
         return json({ creators: await getSuggestions(user.uid) })
       case 'search':

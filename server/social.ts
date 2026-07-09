@@ -115,10 +115,12 @@ const authorOf = (profile: SocialProfile | undefined, uid: string): SocialAuthor
 
 // ── Cartes publiques ────────────────────────────────────────────────────────
 
-// Une carte apparaît dans le réseau social si elle est PUBLIÉE et PUBLIQUE :
-// une carte protégée par un code d'accès (`accessCodeHash`) ne fuite jamais ici.
-const isPublicMap = (hike: HikeIndexEntry): boolean =>
-  hike.status === 'published' && !hike.accessCodeHash
+// Une carte apparaît dans le réseau social dès qu'elle est PUBLIÉE (les
+// brouillons ne sortent jamais). Les cartes protégées par un code d'accès y
+// figurent aussi, marquées d'un cadenas : elles sont découvrables (titre) mais
+// leur CONTENU reste verrouillé sans le code (contrôle appliqué à l'ouverture).
+const isPublishedMap = (hike: HikeIndexEntry): boolean =>
+  hike.status === 'published'
 
 const mapIdentity = (hike: HikeIndexEntry): string => hike.slug ?? hike.folder
 
@@ -359,9 +361,9 @@ export const getFeed = async (uid: string): Promise<SocialCard[]> => {
     readMapCounts(),
   ])
   const followSet = new Set(following)
-  const publicMaps = hikes.filter(isPublicMap).filter((h) => h.ownerId !== uid)
-  const followed = publicMaps.filter((h) => followSet.has(h.ownerId)).sort(byRecent)
-  const source = followed.length > 0 ? followed : [...publicMaps].sort(byPopular)
+  const publishedMaps = hikes.filter(isPublishedMap).filter((h) => h.ownerId !== uid)
+  const followed = publishedMaps.filter((h) => followSet.has(h.ownerId)).sort(byRecent)
+  const source = followed.length > 0 ? followed : [...publishedMaps].sort(byPopular)
   return source.map((hike) => toCard(hike, profiles, counts))
 }
 
@@ -373,7 +375,7 @@ export const getExplore = async (): Promise<SocialCard[]> => {
     readMapCounts(),
   ])
   return hikes
-    .filter(isPublicMap)
+    .filter(isPublishedMap)
     .sort(byRecent)
     .map((hike) => toCard(hike, profiles, counts))
 }
@@ -389,7 +391,7 @@ export const getSavedCards = async (uid: string): Promise<SocialCard[]> => {
   ])
   const savedSet = new Set(saved)
   return hikes
-    .filter(isPublicMap)
+    .filter(isPublishedMap)
     .filter((hike) => savedSet.has(mapIdentity(hike)))
     .sort(byRecent)
     .map((hike) => toCard(hike, profiles, counts))
@@ -399,7 +401,7 @@ export const getSavedCards = async (uid: string): Promise<SocialCard[]> => {
 // contenu reste verrouillé sans le code) par titre, et créateurs (propriétaires
 // de cartes publiées) par nom / pseudo. Les brouillons n'apparaissent jamais.
 export const searchAll = async (
-  uid: string,
+  _uid: string,
   rawQuery: string,
 ): Promise<{ maps: SocialCard[]; creators: SocialCreator[] }> => {
   const q = normalizeSearch(rawQuery)
@@ -422,7 +424,8 @@ export const searchAll = async (
   }
   const creators: SocialCreator[] = []
   for (const [ownerId, mapCount] of mapCountByOwner) {
-    if (ownerId === uid) continue
+    // On s'inclut soi-même dans la RECHERCHE (pour vérifier son propre profil) ;
+    // seule la suggestion « à suivre » exclut le visiteur.
     const profile = profiles.get(ownerId)
     if (!profile) continue
     const haystack = normalizeSearch(`${profile.name} ${profile.handle ?? ''}`)
@@ -458,7 +461,7 @@ export const getCreator = async (
     readMapCounts(),
   ])
   const cards = hikes
-    .filter(isPublicMap)
+    .filter(isPublishedMap)
     .filter((h) => h.ownerId === creatorUid)
     .sort(byRecent)
     .map((hike) => toCard(hike, profiles, counts))
@@ -486,7 +489,7 @@ export const getSuggestions = async (uid: string): Promise<SocialCreator[]> => {
   ])
   const followSet = new Set(following)
   const mapCountByOwner = new Map<string, number>()
-  for (const hike of hikes.filter(isPublicMap)) {
+  for (const hike of hikes.filter(isPublishedMap)) {
     mapCountByOwner.set(hike.ownerId, (mapCountByOwner.get(hike.ownerId) ?? 0) + 1)
   }
   const suggestions: SocialCreator[] = []
@@ -507,4 +510,37 @@ export const getSuggestions = async (uid: string): Promise<SocialCreator[]> => {
     })
   }
   return suggestions.sort((a, b) => b.mapCount - a.mapCount).slice(0, 8)
+}
+
+// Créateurs que le visiteur suit (onglet « Créateurs suivis »). Un créateur
+// suivi y figure même si toutes ses cartes sont protégées par un code.
+export const getFollowingCreators = async (
+  uid: string,
+): Promise<SocialCreator[]> => {
+  const [hikes, following, profiles] = await Promise.all([
+    readHikeIndex(),
+    getFollowing(uid),
+    readProfiles(),
+  ])
+  const mapCountByOwner = new Map<string, number>()
+  for (const hike of hikes.filter(isPublishedMap)) {
+    mapCountByOwner.set(hike.ownerId, (mapCountByOwner.get(hike.ownerId) ?? 0) + 1)
+  }
+  const creators: SocialCreator[] = []
+  for (const ownerId of following) {
+    const profile = profiles.get(ownerId)
+    if (!profile) continue
+    creators.push({
+      uid: ownerId,
+      name: profile.name,
+      handle: profile.handle,
+      photoURL: profile.photoURL,
+      bio: profile.bio,
+      location: profile.location,
+      followerCount: profile.followerCount,
+      followingCount: profile.followingCount,
+      mapCount: mapCountByOwner.get(ownerId) ?? 0,
+    })
+  }
+  return creators
 }
