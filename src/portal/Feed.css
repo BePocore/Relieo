@@ -294,6 +294,34 @@
   backdrop-filter: blur(4px);
 }
 
+.feed-post-lock {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(10, 14, 20, 0.62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.feed-search-creators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+
+.feed-search-creators .feed-suggest-user {
+  flex: 0 0 auto;
+}
+
 .feed-post-open {
   position: absolute;
   right: 12px;

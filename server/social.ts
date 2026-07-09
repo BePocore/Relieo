@@ -35,6 +35,9 @@ export type SocialCard = {
   mediaCount: number
   likeCount: number
   saveCount: number
+  // Carte publiée mais protégée par un code d'accès : visible en recherche
+  // (titre), mais son contenu reste inaccessible sans le code.
+  protected: boolean
   updatedAt: string
   author: SocialAuthor
 }
@@ -134,6 +137,7 @@ const toCard = (
     mediaCount: hike.mediaCount,
     likeCount: mapCounts?.likeCount ?? 0,
     saveCount: mapCounts?.saveCount ?? 0,
+    protected: Boolean(hike.accessCodeHash),
     updatedAt: hike.updatedAt,
     author: authorOf(profiles.get(hike.ownerId), hike.ownerId),
   }
@@ -157,6 +161,14 @@ const byRecent = (a: HikeIndexEntry, b: HikeIndexEntry): number =>
 // les cartes les plus fournies en médias d'abord, puis les plus récentes.
 const byPopular = (a: HikeIndexEntry, b: HikeIndexEntry): number =>
   b.mediaCount - a.mediaCount || byRecent(a, b)
+
+// Normalisation pour la recherche : minuscule, sans accents, sans espaces bords.
+const normalizeSearch = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim()
 
 // ── Suivis ──────────────────────────────────────────────────────────────────
 
@@ -381,6 +393,54 @@ export const getSavedCards = async (uid: string): Promise<SocialCard[]> => {
     .filter((hike) => savedSet.has(mapIdentity(hike)))
     .sort(byRecent)
     .map((hike) => toCard(hike, profiles, counts))
+}
+
+// Recherche globale : cartes PUBLIÉES (publiques ET protégées par code — le
+// contenu reste verrouillé sans le code) par titre, et créateurs (propriétaires
+// de cartes publiées) par nom / pseudo. Les brouillons n'apparaissent jamais.
+export const searchAll = async (
+  uid: string,
+  rawQuery: string,
+): Promise<{ maps: SocialCard[]; creators: SocialCreator[] }> => {
+  const q = normalizeSearch(rawQuery)
+  if (q.length < 2) return { maps: [], creators: [] }
+  const [hikes, profiles, counts] = await Promise.all([
+    readHikeIndex(),
+    readProfiles(),
+    readMapCounts(),
+  ])
+  const published = hikes.filter((hike) => hike.status === 'published')
+  const maps = published
+    .filter((hike) => normalizeSearch(hike.title).includes(q))
+    .sort(byRecent)
+    .slice(0, 30)
+    .map((hike) => toCard(hike, profiles, counts))
+
+  const mapCountByOwner = new Map<string, number>()
+  for (const hike of published) {
+    mapCountByOwner.set(hike.ownerId, (mapCountByOwner.get(hike.ownerId) ?? 0) + 1)
+  }
+  const creators: SocialCreator[] = []
+  for (const [ownerId, mapCount] of mapCountByOwner) {
+    if (ownerId === uid) continue
+    const profile = profiles.get(ownerId)
+    if (!profile) continue
+    const haystack = normalizeSearch(`${profile.name} ${profile.handle ?? ''}`)
+    if (!haystack.includes(q)) continue
+    creators.push({
+      uid: ownerId,
+      name: profile.name,
+      handle: profile.handle,
+      photoURL: profile.photoURL,
+      bio: profile.bio,
+      location: profile.location,
+      followerCount: profile.followerCount,
+      followingCount: profile.followingCount,
+      mapCount,
+    })
+  }
+  creators.sort((a, b) => b.mapCount - a.mapCount)
+  return { maps, creators: creators.slice(0, 12) }
 }
 
 // Profil public d'un créateur : son identité, ses compteurs, ses cartes

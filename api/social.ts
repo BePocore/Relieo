@@ -7,6 +7,7 @@ import {
   getSavedCards,
   getSuggestions,
   isHandleAvailable,
+  searchAll,
   setFollow,
   setHandle,
   setLike,
@@ -39,6 +40,8 @@ export async function GET(request: Request) {
         return json({ cards: await getSavedCards(user.uid) })
       case 'suggestions':
         return json({ creators: await getSuggestions(user.uid) })
+      case 'search':
+        return json(await searchAll(user.uid, url.searchParams.get('q') ?? ''))
       case 'context':
         return json(await getContext(user.uid, user.email ?? ''))
       case 'creator': {

@@ -11,6 +11,7 @@ import {
   Home,
   Images,
   LayoutDashboard,
+  Lock,
   LogOut,
   Map as MapIcon,
   MapPin,
@@ -31,6 +32,7 @@ import {
   fetchExplore,
   fetchFeed,
   fetchSaved,
+  fetchSearch,
   fetchSuggestions,
   followCreator,
   likeMap,
@@ -163,6 +165,11 @@ function PostCard({
             <Mountain size={13} /> {stats.join(' · ')}
           </span>
         ) : null}
+        {card.protected ? (
+          <span className="feed-post-lock">
+            <Lock size={12} /> Code requis
+          </span>
+        ) : null}
         <button
           className="feed-post-open"
           type="button"
@@ -254,6 +261,14 @@ export default function SocialFeed({
   const [saved, setSaved] = useState<Set<string>>(new Set())
   const [savedCards, setSavedCards] = useState<SocialCard[] | null>(null)
 
+  // Recherche : requête + résultats (cartes publiées, code inclus + créateurs).
+  // Les résultats portent la requête à laquelle ils répondent (`q`) : tant
+  // qu'elle ne correspond pas à la saisie courante, on affiche « Chargement ».
+  const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<
+    { q: string; maps: SocialCard[]; creators: SocialCreator[] } | null
+  >(null)
+
   // Chargement initial : contexte (suivis + likes + enregistrements), feed et
   // suggestions. Toléré en échec (ex. `npm run dev` sans backend) → états vides.
   useEffect(() => {
@@ -302,6 +317,22 @@ export default function SocialFeed({
       alive = false
     }
   }, [view])
+
+  // Recherche (anti-rebond) : cartes publiées (code inclus) + créateurs. Tous
+  // les setState sont dans le callback différé (jamais en direct dans l'effet).
+  useEffect(() => {
+    const q = query.trim()
+    const timer = setTimeout(() => {
+      if (q.length < 2) {
+        setSearchResults(null)
+        return
+      }
+      fetchSearch(q)
+        .then((results) => setSearchResults({ q, ...results }))
+        .catch(() => setSearchResults({ q, maps: [], creators: [] }))
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [query])
 
   const openUpsell = () => {
     setUpsellOpen(true)
@@ -387,6 +418,7 @@ export default function SocialFeed({
   }
 
   const openCreator = (uid: string) => {
+    setQuery('')
     setView('creator')
     setCreatorData(null)
     setCreatorLoading(true)
@@ -404,6 +436,7 @@ export default function SocialFeed({
   }
 
   const go = (next: FeedView) => {
+    setQuery('')
     setView(next)
     setMenuOpen(false)
   }
@@ -448,7 +481,61 @@ export default function SocialFeed({
     </div>
   )
 
+  const renderSearch = () => {
+    const results = searchResults
+    const ready = results !== null && results.q === query.trim()
+    const hasResults =
+      ready && (results.creators.length > 0 || results.maps.length > 0)
+    return (
+      <>
+        <h2 className="feed-section-title">
+          <Search size={18} /> Résultats pour « {query.trim()} »
+        </h2>
+        {!ready ? (
+          renderLoading()
+        ) : hasResults ? (
+          <>
+            {results.creators.length ? (
+              <div className="feed-search-creators">
+                {results.creators.map((creator) => (
+                  <button
+                    key={creator.uid}
+                    className="feed-suggest-user"
+                    type="button"
+                    onClick={() => openCreator(creator.uid)}
+                  >
+                    <Avatar
+                      name={creator.name}
+                      photoURL={creator.photoURL}
+                      color={colorFromId(creator.uid)}
+                      size={40}
+                    />
+                    <span>
+                      <strong>{creator.name}</strong>
+                      <em>
+                        {creator.handle
+                          ? `@${creator.handle}`
+                          : `${creator.mapCount} carte${creator.mapCount > 1 ? 's' : ''}`}
+                      </em>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {renderCards(results.maps, 'Aucune carte pour cette recherche.')}
+          </>
+        ) : (
+          <div className="feed-empty">
+            <Mountain size={30} />
+            <p>Aucun résultat.</p>
+          </div>
+        )}
+      </>
+    )
+  }
+
   const renderCenter = () => {
+    if (query.trim().length >= 2) return renderSearch()
     if (view === 'creator') {
       if (creatorLoading) return renderLoading()
       if (!creatorData) {
@@ -518,7 +605,12 @@ export default function SocialFeed({
         </div>
         <label className="feed-search">
           <Search size={17} />
-          <input type="search" placeholder="Rechercher une carte, un créateur…" />
+          <input
+            type="search"
+            placeholder="Rechercher une carte, un créateur…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </label>
         <div className="feed-header-right">
           <button className="feed-icon-btn" type="button" aria-label="Notifications">
