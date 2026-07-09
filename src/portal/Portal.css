@@ -458,6 +458,55 @@ body.portal-active.tracker-scroll-active #root {
   border-radius: 22px;
 }
 
+/* Écran de compte autonome (viewer + créateur depuis le feed) : même profil. */
+.account-screen {
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--c-border);
+  color: var(--c-text);
+  padding-bottom: 40px;
+}
+
+.account-topbar {
+  width: min(1040px, 100% - 32px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0 8px;
+}
+
+.account-back,
+.account-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-back:hover,
+.account-logout:hover {
+  border-color: var(--c-accent);
+}
+
+.account-content {
+  box-sizing: border-box;
+  width: min(1040px, 100% - 32px);
+  margin: 0 auto;
+  padding: 32px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 22px;
+}
+
 .page-heading {
   margin-bottom: 28px;
   display: flex;

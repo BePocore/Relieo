@@ -16,6 +16,7 @@ import {
   Bell,
   Camera,
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleUserRound,
   Compass,
@@ -100,6 +101,7 @@ import {
 } from './plans'
 import { AdminApp } from './admin/AdminView'
 import SocialFeed from './SocialFeed'
+import { HandleEditor } from './HandleEditor'
 import { requestMediaTicket, startMediaTicketRefresh } from '../lib/mediaTicket'
 import HeroSlideshow from './HeroSlideshow'
 import { TraceRecorderScreen, TracesView } from './TraceViews'
@@ -852,6 +854,8 @@ function ProfileView({
         </form>
       </div>
 
+      <HandleEditor />
+
       {canChangePassword ? (
         <div className="profile-password">
           <div className="profile-password-text">
@@ -1020,6 +1024,52 @@ function ProfileView({
         </div>
       ) : null}
     </section>
+  )
+}
+
+// Écran de compte autonome (hors dashboard créateur) : rend LE MÊME `ProfileView`
+// que le dashboard, pour que les viewers gèrent aussi profil, pseudo, mot de
+// passe, thème, déconnexion et suppression de compte. Atteint depuis le feed.
+function AccountScreen({
+  user,
+  showSettings,
+  canChangePassword,
+  onBack,
+  onLogout,
+  onSaveProfile,
+  onSavePhoto,
+  onChangePassword,
+}: {
+  user: PortalUser
+  showSettings: boolean
+  canChangePassword: boolean
+  onBack: () => void
+  onLogout: () => void
+  onSaveProfile: (user: PortalUser) => Promise<void>
+  onSavePhoto: (photoURL: string) => Promise<void>
+  onChangePassword: (current: string, next: string) => Promise<void>
+}) {
+  return (
+    <div className="account-screen">
+      <header className="account-topbar">
+        <button className="account-back" type="button" onClick={onBack}>
+          <ChevronLeft size={18} /> Retour au feed
+        </button>
+        <button className="account-logout" type="button" onClick={onLogout}>
+          <LogOut size={16} /> Se déconnecter
+        </button>
+      </header>
+      <div className="account-content">
+        <ProfileView
+          user={user}
+          onSave={onSaveProfile}
+          onSavePhoto={onSavePhoto}
+          canChangePassword={canChangePassword}
+          onChangePassword={onChangePassword}
+        />
+        {showSettings ? <SettingsView /> : null}
+      </div>
+    </div>
   )
 }
 
@@ -3020,64 +3070,95 @@ function FirebasePortal() {
     '/tracker',
   ].some((route) => pathname.endsWith(route))
 
-  // Accueil = feed social pour tous. Seul un créateur sur une route de dashboard
-  // ouvre l'interface historique `DashboardShell` (un viewer : jamais).
-  if (!(isCreator && onDashboardRoute)) {
+  const onAccountRoute = ['/profile', '/settings'].some((route) =>
+    pathname.endsWith(route),
+  )
+
+  // Handlers de compte partagés par le dashboard créateur ET l'écran de compte
+  // du viewer : un seul et même profil pour tous.
+  const handleLogout = () => {
+    void signOut(auth)
+    navigate('/login')
+  }
+  const handleSaveProfile = async (next: PortalUser) => {
+    await saveUserProfile(session.firebaseUser.uid, {
+      name: next.name,
+      location: next.location,
+      bio: next.bio,
+      photoURL: next.photoURL,
+    })
+    if (next.name !== session.firebaseUser.displayName) {
+      await updateProfile(session.firebaseUser, { displayName: next.name })
+    }
+    setProfileError(null)
+  }
+  const handleSavePhoto = async (photoURL: string) => {
+    await saveUserPhoto(session.firebaseUser.uid, photoURL)
+    setSession({
+      firebaseUser: session.firebaseUser,
+      portalUser: { ...session.portalUser, photoURL },
+    })
+  }
+  const canChangePassword = session.firebaseUser.providerData.some(
+    (provider) => provider.providerId === 'password',
+  )
+  const handleChangePassword = async (current: string, next: string) => {
+    const fbUser = session.firebaseUser
+    if (!fbUser.email) throw new Error('Email du compte introuvable.')
+    // Réauthentification obligatoire avant une opération sensible, puis MAJ.
+    const credential = EmailAuthProvider.credential(fbUser.email, current)
+    await reauthenticateWithCredential(fbUser, credential)
+    await updatePassword(fbUser, next)
+  }
+
+  // Créateur sur une route de dashboard → interface historique complète.
+  if (isCreator && onDashboardRoute) {
     return (
-      <SocialFeed
-        user={session.portalUser}
-        isCreator={isCreator}
-        onOpenDashboard={() => navigate('/dashboard')}
-        onBecomeCreator={() => navigate('/devenir-createur')}
-        onLogout={() => {
-          void signOut(auth)
-          navigate('/login')
-        }}
-      />
+      <>
+        {profileError ? <p className="auth-error">{profileError}</p> : null}
+        <DashboardShell
+          user={session.portalUser}
+          onLogout={handleLogout}
+          onSaveProfile={handleSaveProfile}
+          onSavePhoto={handleSavePhoto}
+          canChangePassword={canChangePassword}
+          onChangePassword={handleChangePassword}
+        />
+      </>
     )
   }
 
+  // Compte (profil + réglages) : MÊME écran pour tous, viewer inclus, afin que
+  // les non-créateurs puissent aussi changer de mot de passe, se déconnecter et
+  // supprimer leur compte.
+  if (onAccountRoute) {
+    return (
+      <>
+        {profileError ? <p className="auth-error">{profileError}</p> : null}
+        <AccountScreen
+          user={session.portalUser}
+          showSettings={pathname.endsWith('/settings')}
+          canChangePassword={canChangePassword}
+          onBack={() => navigate('/')}
+          onLogout={handleLogout}
+          onSaveProfile={handleSaveProfile}
+          onSavePhoto={handleSavePhoto}
+          onChangePassword={handleChangePassword}
+        />
+      </>
+    )
+  }
+
+  // Accueil = feed social pour tous.
   return (
-    <>
-      {profileError ? <p className="auth-error">{profileError}</p> : null}
-      <DashboardShell
-        user={session.portalUser}
-        onLogout={() => {
-          void signOut(auth)
-          navigate('/login')
-        }}
-        onSaveProfile={async (next) => {
-          await saveUserProfile(session.firebaseUser.uid, {
-            name: next.name,
-            location: next.location,
-            bio: next.bio,
-            photoURL: next.photoURL,
-          })
-          if (next.name !== session.firebaseUser.displayName) {
-            await updateProfile(session.firebaseUser, { displayName: next.name })
-          }
-          setProfileError(null)
-        }}
-        onSavePhoto={async (photoURL) => {
-          await saveUserPhoto(session.firebaseUser.uid, photoURL)
-          setSession({
-            firebaseUser: session.firebaseUser,
-            portalUser: { ...session.portalUser, photoURL },
-          })
-        }}
-        canChangePassword={session.firebaseUser.providerData.some(
-          (provider) => provider.providerId === 'password',
-        )}
-        onChangePassword={async (current, next) => {
-          const fbUser = session.firebaseUser
-          if (!fbUser.email) throw new Error('Email du compte introuvable.')
-          // Réauthentification obligatoire avant une opération sensible, puis MAJ.
-          const credential = EmailAuthProvider.credential(fbUser.email, current)
-          await reauthenticateWithCredential(fbUser, credential)
-          await updatePassword(fbUser, next)
-        }}
-      />
-    </>
+    <SocialFeed
+      user={session.portalUser}
+      isCreator={isCreator}
+      onOpenDashboard={() => navigate('/dashboard')}
+      onOpenProfile={() => navigate('/profile')}
+      onBecomeCreator={() => navigate('/devenir-createur')}
+      onLogout={handleLogout}
+    />
   )
 }
 

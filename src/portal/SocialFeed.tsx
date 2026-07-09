@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  AtSign,
   Bell,
   Bookmark,
   BookmarkCheck,
@@ -27,17 +26,14 @@ import {
 } from 'lucide-react'
 import type { PortalUser } from './portalStore'
 import {
-  checkHandle,
   fetchContext,
   fetchCreator,
   fetchExplore,
   fetchFeed,
   fetchSuggestions,
   followCreator,
-  saveHandle,
   unfollowCreator,
   type SocialCard,
-  type SocialContext,
   type SocialCreator,
 } from './socialApi'
 import './Feed.css'
@@ -50,7 +46,7 @@ import './Feed.css'
 // créateur reste séparé (`DashboardShell`), atteint via `onOpenDashboard`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type FeedView = 'feed' | 'explore' | 'following' | 'saved' | 'profile' | 'creator'
+type FeedView = 'feed' | 'explore' | 'following' | 'saved' | 'creator'
 
 const initials = (name: string): string =>
   name
@@ -213,12 +209,16 @@ export default function SocialFeed({
   user,
   isCreator,
   onOpenDashboard,
+  onOpenProfile,
   onBecomeCreator,
   onLogout,
 }: {
   user: PortalUser
   isCreator: boolean
   onOpenDashboard: () => void
+  // « Mon profil » : navigue vers l'écran de compte partagé (/profile), le même
+  // pour tous (créateur → profil du dashboard, viewer → écran de compte).
+  onOpenProfile: () => void
   onBecomeCreator: () => void
   onLogout: () => void
 }) {
@@ -226,7 +226,6 @@ export default function SocialFeed({
   const [menuOpen, setMenuOpen] = useState(false)
   const [upsellOpen, setUpsellOpen] = useState(false)
 
-  const [context, setContext] = useState<SocialContext | null>(null)
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [feed, setFeed] = useState<SocialCard[] | null>(null)
   const [explore, setExplore] = useState<SocialCard[] | null>(null)
@@ -244,11 +243,7 @@ export default function SocialFeed({
   useEffect(() => {
     let alive = true
     fetchContext()
-      .then((ctx) => {
-        if (!alive) return
-        setContext(ctx)
-        setFollowing(new Set(ctx.following))
-      })
+      .then((ctx) => alive && setFollowing(new Set(ctx.following)))
       .catch(() => {})
     fetchFeed()
       .then((cards) => alive && setFeed(cards))
@@ -411,23 +406,6 @@ export default function SocialFeed({
         />
       )
     }
-    if (view === 'profile') {
-      return (
-        <OwnProfile
-          user={user}
-          isCreator={isCreator}
-          currentHandle={context?.handle ?? null}
-          suggestedHandle={context?.suggestedHandle ?? ''}
-          followerCount={context?.followerCount ?? 0}
-          followingCount={following.size}
-          onHandleSaved={(handle) =>
-            setContext((prev) => (prev ? { ...prev, handle } : prev))
-          }
-          onOpenDashboard={onOpenDashboard}
-          onOpenUpsell={openUpsell}
-        />
-      )
-    }
     if (view === 'explore') {
       return (
         <>
@@ -504,7 +482,14 @@ export default function SocialFeed({
                   <strong>{user.name}</strong>
                   <span>{isCreator ? 'Créateur' : 'Viewer'}</span>
                 </div>
-                <button role="menuitem" type="button" onClick={() => go('profile')}>
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onOpenProfile()
+                  }}
+                >
                   <UserRound size={16} /> Mon profil
                 </button>
                 {isCreator ? null : (
@@ -626,11 +611,7 @@ export default function SocialFeed({
           <Bookmark size={20} />
           <span>Enregistrées</span>
         </button>
-        <button
-          className={view === 'profile' ? 'active' : ''}
-          type="button"
-          onClick={() => go('profile')}
-        >
+        <button type="button" onClick={onOpenProfile}>
           <UserRound size={20} />
           <span>Profil</span>
         </button>
@@ -779,187 +760,5 @@ function CreatorProfile({
         </div>
       )}
     </div>
-  )
-}
-
-function OwnProfile({
-  user,
-  isCreator,
-  currentHandle,
-  suggestedHandle,
-  followerCount,
-  followingCount,
-  onHandleSaved,
-  onOpenDashboard,
-  onOpenUpsell,
-}: {
-  user: PortalUser
-  isCreator: boolean
-  currentHandle: string | null
-  suggestedHandle: string
-  followerCount: number
-  followingCount: number
-  onHandleSaved: (handle: string) => void
-  onOpenDashboard: () => void
-  onOpenUpsell: () => void
-}) {
-  return (
-    <div className="feed-profile">
-      <div
-        className="feed-profile-banner"
-        style={{ backgroundImage: gradientFromSlug(user.id) }}
-      />
-      <div className="feed-profile-head">
-        <Avatar name={user.name} photoURL={user.photoURL} size={92} />
-        <div className="feed-profile-id">
-          <h2>
-            {user.name}
-            <span className="feed-badge">{isCreator ? 'Créateur' : 'Viewer'}</span>
-          </h2>
-          {currentHandle ? <p className="feed-profile-handle">@{currentHandle}</p> : null}
-          <p className="feed-profile-bio">{user.bio || 'Aucune bio pour l’instant.'}</p>
-          {user.location ? (
-            <p className="feed-profile-loc">
-              <MapPin size={14} /> {user.location}
-            </p>
-          ) : null}
-        </div>
-        {isCreator ? (
-          <button className="feed-follow big" type="button" onClick={onOpenDashboard}>
-            <LayoutDashboard size={15} /> Dashboard créateur
-          </button>
-        ) : null}
-      </div>
-      <ul className="feed-profile-counters">
-        <li>
-          <strong>{formatCount(followerCount)}</strong> abonnés
-        </li>
-        <li>
-          <strong>{formatCount(followingCount)}</strong> abonnements
-        </li>
-      </ul>
-
-      <HandleEditor
-        key={currentHandle ?? suggestedHandle}
-        currentHandle={currentHandle}
-        suggestedHandle={suggestedHandle}
-        onSaved={onHandleSaved}
-      />
-
-      {isCreator ? null : (
-        <div className="feed-empty feed-become">
-          <Mountain size={30} />
-          <p>Tu es viewer : tu suis des créateurs et enregistres leurs cartes.</p>
-          <button className="feed-become-creator" type="button" onClick={onOpenUpsell}>
-            <Sparkles size={16} /> Devenir créateur
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Éditeur de pseudo unique : vérification de disponibilité (à la frappe, avec
-// petit anti-rebond) + enregistrement via `/api/social`.
-function HandleEditor({
-  currentHandle,
-  suggestedHandle,
-  onSaved,
-}: {
-  currentHandle: string | null
-  suggestedHandle: string
-  onSaved: (handle: string) => void
-}) {
-  const [value, setValue] = useState(currentHandle ?? suggestedHandle)
-  const [status, setStatus] = useState<
-    | { kind: 'idle' }
-    | { kind: 'checking' }
-    | { kind: 'available' }
-    | { kind: 'taken' }
-    | { kind: 'invalid' }
-    | { kind: 'saved' }
-    | { kind: 'error' }
-  >({ kind: 'idle' })
-  const [saving, setSaving] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const normalized = value.trim().replace(/^@+/, '').toLowerCase()
-  const unchanged = normalized === (currentHandle ?? '')
-
-  const onChange = (next: string) => {
-    setValue(next)
-    if (timer.current) clearTimeout(timer.current)
-    const candidate = next.trim().replace(/^@+/, '').toLowerCase()
-    if (!candidate || candidate === (currentHandle ?? '')) {
-      setStatus({ kind: 'idle' })
-      return
-    }
-    setStatus({ kind: 'checking' })
-    timer.current = setTimeout(() => {
-      checkHandle(candidate)
-        .then((result) => {
-          if (result.reason === 'invalid') setStatus({ kind: 'invalid' })
-          else if (result.available) setStatus({ kind: 'available' })
-          else setStatus({ kind: 'taken' })
-        })
-        .catch(() => setStatus({ kind: 'error' }))
-    }, 400)
-  }
-
-  const onSave = () => {
-    if (saving || unchanged || !normalized) return
-    setSaving(true)
-    saveHandle(normalized)
-      .then((result) => {
-        if (result.ok && result.handle) {
-          setStatus({ kind: 'saved' })
-          onSaved(result.handle)
-        } else if (result.reason === 'taken') setStatus({ kind: 'taken' })
-        else setStatus({ kind: 'invalid' })
-      })
-      .catch(() => setStatus({ kind: 'error' }))
-      .finally(() => setSaving(false))
-  }
-
-  const message: Record<typeof status.kind, string> = {
-    idle: '3 à 20 caractères : lettres, chiffres, « _ ».',
-    checking: 'Vérification…',
-    available: '✓ Disponible.',
-    taken: 'Déjà pris, essaie autre chose.',
-    invalid: 'Format invalide (a-z, 0-9, _).',
-    saved: '✓ Pseudo enregistré.',
-    error: 'Erreur réseau, réessaie.',
-  }
-
-  return (
-    <section className="feed-card feed-handle">
-      <h3>
-        <AtSign size={16} /> Ton pseudo
-      </h3>
-      <div className="feed-handle-row">
-        <span className="feed-handle-at">@</span>
-        <input
-          className="feed-handle-input"
-          type="text"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="pseudo"
-          spellCheck={false}
-          autoCapitalize="none"
-          maxLength={20}
-        />
-        <button
-          className="feed-handle-save"
-          type="button"
-          onClick={onSave}
-          disabled={saving || unchanged || !normalized || status.kind === 'taken'}
-        >
-          {saving ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-      </div>
-      <p className={`feed-handle-hint feed-handle-${status.kind}`}>
-        {message[status.kind]}
-      </p>
-    </section>
   )
 }
