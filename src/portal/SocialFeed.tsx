@@ -89,7 +89,8 @@ const formatKm = (km: number): string | null =>
 const formatGain = (m: number): string | null => (m > 0 ? `+${Math.round(m)} m` : null)
 
 const openMap = (slug: string): void => {
-  window.location.assign(`/?m=${encodeURIComponent(slug)}`)
+  // `from=feed` déclenche un bouton « Retour au feed » dans la vue carte.
+  window.location.assign(`/?m=${encodeURIComponent(slug)}&from=feed`)
 }
 
 // Renvoie une NOUVELLE Set avec `key` ajoutée ou retirée (immuable, pour setState).

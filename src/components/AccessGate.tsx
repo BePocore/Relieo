@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Compass, LockKeyhole } from 'lucide-react'
+import { ArrowLeft, Compass, LockKeyhole } from 'lucide-react'
 
 type AccessGateProps = {
   // Validation CÔTÉ SERVEUR : renvoie true si le code est bon (et le contenu
   // chargé), false sinon. Asynchrone (aller-retour réseau).
   onSubmit: (code: string) => Promise<boolean>
+  // Carte ouverte depuis le feed : propose un retour au feed (l'écran de code
+  // couvre la topbar, donc le bouton doit aussi être ici).
+  showFeedReturn?: boolean
 }
 
-export function AccessGate({ onSubmit }: AccessGateProps) {
+export function AccessGate({ onSubmit, showFeedReturn }: AccessGateProps) {
   const [code, setCode] = useState('')
   const [error, setError] = useState(false)
   const [checking, setChecking] = useState(false)
@@ -30,6 +33,12 @@ export function AccessGate({ onSubmit }: AccessGateProps) {
 
   return (
     <div className="access-gate" role="dialog" aria-modal="true" aria-label="Accès protégé">
+      {showFeedReturn ? (
+        <a className="access-feed-return" href="/">
+          <ArrowLeft aria-hidden="true" size={16} />
+          <span>Retour au feed</span>
+        </a>
+      ) : null}
       <form className="access-card" onSubmit={handleSubmit}>
         <span className="access-icon">
           <Compass aria-hidden="true" size={26} />

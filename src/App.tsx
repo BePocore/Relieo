@@ -9,6 +9,7 @@ import {
 } from 'react'
 import {
   Check,
+  ArrowLeft,
   ChevronDown,
   ChevronUp,
   Compass,
@@ -503,6 +504,11 @@ const pruneMediaFromImportReport = (
 
 function App() {
   const [isStudioMode] = useState(() => isStudioUrl())
+  // Carte ouverte depuis le feed social (`&from=feed`) : on propose un retour au
+  // feed en consultation (comme le retour au dashboard depuis le Studio).
+  const [fromFeed] = useState(
+    () => new URLSearchParams(window.location.search).get('from') === 'feed',
+  )
   const [studioReturnHref] = useState(() =>
     isStudioUrl() ? null : studioReturnUrl(),
   )
@@ -2685,6 +2691,12 @@ function App() {
             </>
           ) : (
             <>
+              {fromFeed ? (
+                <a className="mode-link feed-return-link" href="/">
+                  <ArrowLeft aria-hidden="true" size={16} />
+                  <span>Retour au feed</span>
+                </a>
+              ) : null}
               {studioReturnHref ? (
                 <a className="mode-link studio-return-link" href={studioReturnHref}>
                   <span>Retour au Studio</span>
@@ -3026,7 +3038,7 @@ function App() {
       ) : null}
 
       {!isLoading && needsAccess ? (
-        <AccessGate onSubmit={handleGrantAccess} />
+        <AccessGate onSubmit={handleGrantAccess} showFeedReturn={fromFeed} />
       ) : null}
 
       {showDashboardConfirm ? (
