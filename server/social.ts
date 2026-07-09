@@ -33,6 +33,8 @@ export type SocialCard = {
   distanceKm: number
   elevationGain: number
   mediaCount: number
+  likeCount: number
+  saveCount: number
   updatedAt: string
   author: SocialAuthor
 }
@@ -49,9 +51,15 @@ export type SocialContext = {
   handle: string | null
   suggestedHandle: string
   following: string[]
+  liked: string[]
+  saved: string[]
   followerCount: number
   followingCount: number
 }
+
+// Compteurs par carte (likes / enregistrements), maintenus en O(1) dans
+// Firestore `social_maps/<slug>` via transaction.
+type MapCounts = { likeCount: number; saveCount: number }
 
 // ── Profils (lecture) ───────────────────────────────────────────────────────
 
@@ -111,15 +119,36 @@ const isPublicMap = (hike: HikeIndexEntry): boolean =>
 
 const mapIdentity = (hike: HikeIndexEntry): string => hike.slug ?? hike.folder
 
-const toCard = (hike: HikeIndexEntry, profiles: Map<string, SocialProfile>): SocialCard => ({
-  slug: mapIdentity(hike),
-  title: hike.title,
-  distanceKm: hike.distanceKm,
-  elevationGain: hike.elevationGain,
-  mediaCount: hike.mediaCount,
-  updatedAt: hike.updatedAt,
-  author: authorOf(profiles.get(hike.ownerId), hike.ownerId),
-})
+const toCard = (
+  hike: HikeIndexEntry,
+  profiles: Map<string, SocialProfile>,
+  counts: Map<string, MapCounts>,
+): SocialCard => {
+  const slug = mapIdentity(hike)
+  const mapCounts = counts.get(slug)
+  return {
+    slug,
+    title: hike.title,
+    distanceKm: hike.distanceKm,
+    elevationGain: hike.elevationGain,
+    mediaCount: hike.mediaCount,
+    likeCount: mapCounts?.likeCount ?? 0,
+    saveCount: mapCounts?.saveCount ?? 0,
+    updatedAt: hike.updatedAt,
+    author: authorOf(profiles.get(hike.ownerId), hike.ownerId),
+  }
+}
+
+// Compteurs de toutes les cartes en une seule lecture de collection.
+const readMapCounts = async (): Promise<Map<string, MapCounts>> => {
+  const snapshot = await db().collection('social_maps').get()
+  const map = new Map<string, MapCounts>()
+  for (const doc of snapshot.docs) {
+    const data = doc.data()
+    map.set(doc.id, { likeCount: count(data.likeCount), saveCount: count(data.saveCount) })
+  }
+  return map
+}
 
 const byRecent = (a: HikeIndexEntry, b: HikeIndexEntry): number =>
   b.updatedAt.localeCompare(a.updatedAt)
@@ -168,6 +197,56 @@ export const setFollow = async (
   })
   return { following: follow }
 }
+
+// ── Likes / enregistrements ─────────────────────────────────────────────────
+
+const relationId = (uid: string, slug: string): string => `${uid}__${slug}`
+
+const listSlugsFor = async (
+  collection: 'social_likes' | 'social_saves',
+  uid: string,
+): Promise<string[]> => {
+  const snapshot = await db().collection(collection).where('user', '==', uid).get()
+  return snapshot.docs.map((doc) => String(doc.data().slug)).filter(Boolean)
+}
+
+export const getLiked = (uid: string): Promise<string[]> =>
+  listSlugsFor('social_likes', uid)
+export const getSaved = (uid: string): Promise<string[]> =>
+  listSlugsFor('social_saves', uid)
+
+// Bascule un like ou un enregistrement (idempotent) et maintient le compteur de
+// la carte (`social_maps/<slug>`) dans la même transaction.
+const setRelation = async (
+  collection: 'social_likes' | 'social_saves',
+  counterField: 'likeCount' | 'saveCount',
+  uid: string,
+  slug: string,
+  on: boolean,
+): Promise<{ on: boolean }> => {
+  if (!slug) return { on: false }
+  const database = db()
+  const relRef = database.collection(collection).doc(relationId(uid, slug))
+  const mapRef = database.collection('social_maps').doc(slug)
+  await database.runTransaction(async (tx) => {
+    const existing = await tx.get(relRef)
+    if (on && existing.exists) return
+    if (!on && !existing.exists) return
+    if (on) {
+      tx.set(relRef, { user: uid, slug, createdAt: now() })
+      tx.set(mapRef, { [counterField]: FieldValue.increment(1) }, { merge: true })
+    } else {
+      tx.delete(relRef)
+      tx.set(mapRef, { [counterField]: FieldValue.increment(-1) }, { merge: true })
+    }
+  })
+  return { on }
+}
+
+export const setLike = (uid: string, slug: string, on: boolean) =>
+  setRelation('social_likes', 'likeCount', uid, slug, on)
+export const setSave = (uid: string, slug: string, on: boolean) =>
+  setRelation('social_saves', 'saveCount', uid, slug, on)
 
 // ── Pseudos uniques ─────────────────────────────────────────────────────────
 
@@ -240,11 +319,18 @@ export const getContext = async (
   uid: string,
   email: string,
 ): Promise<SocialContext> => {
-  const [me, following] = await Promise.all([readProfile(uid), getFollowing(uid)])
+  const [me, following, liked, saved] = await Promise.all([
+    readProfile(uid),
+    getFollowing(uid),
+    getLiked(uid),
+    getSaved(uid),
+  ])
   return {
     handle: me.handle,
     suggestedHandle: me.handle ?? suggestHandle(me.name, email),
     following,
+    liked,
+    saved,
     followerCount: me.followerCount,
     followingCount: me.followingCount,
   }
@@ -254,25 +340,47 @@ export const getContext = async (
 // cartes populaires si le visiteur ne suit encore personne (ou aucun suivi n'a
 // publié). L'auteur (soi) n'apparaît pas dans son propre feed.
 export const getFeed = async (uid: string): Promise<SocialCard[]> => {
-  const [hikes, following, profiles] = await Promise.all([
+  const [hikes, following, profiles, counts] = await Promise.all([
     readHikeIndex(),
     getFollowing(uid),
     readProfiles(),
+    readMapCounts(),
   ])
   const followSet = new Set(following)
   const publicMaps = hikes.filter(isPublicMap).filter((h) => h.ownerId !== uid)
   const followed = publicMaps.filter((h) => followSet.has(h.ownerId)).sort(byRecent)
   const source = followed.length > 0 ? followed : [...publicMaps].sort(byPopular)
-  return source.map((hike) => toCard(hike, profiles))
+  return source.map((hike) => toCard(hike, profiles, counts))
 }
 
 // Explorer : toutes les cartes publiques, récent d'abord (découverte).
 export const getExplore = async (): Promise<SocialCard[]> => {
-  const [hikes, profiles] = await Promise.all([readHikeIndex(), readProfiles()])
+  const [hikes, profiles, counts] = await Promise.all([
+    readHikeIndex(),
+    readProfiles(),
+    readMapCounts(),
+  ])
   return hikes
     .filter(isPublicMap)
     .sort(byRecent)
-    .map((hike) => toCard(hike, profiles))
+    .map((hike) => toCard(hike, profiles, counts))
+}
+
+// Cartes enregistrées par le visiteur (onglet « Enregistrées »), limitées aux
+// cartes toujours publiques.
+export const getSavedCards = async (uid: string): Promise<SocialCard[]> => {
+  const [hikes, saved, profiles, counts] = await Promise.all([
+    readHikeIndex(),
+    getSaved(uid),
+    readProfiles(),
+    readMapCounts(),
+  ])
+  const savedSet = new Set(saved)
+  return hikes
+    .filter(isPublicMap)
+    .filter((hike) => savedSet.has(mapIdentity(hike)))
+    .sort(byRecent)
+    .map((hike) => toCard(hike, profiles, counts))
 }
 
 // Profil public d'un créateur : son identité, ses compteurs, ses cartes
@@ -282,17 +390,18 @@ export const getCreator = async (
   creatorUid: string,
 ): Promise<{ creator: SocialCreator; cards: SocialCard[]; following: boolean } | null> => {
   if (!creatorUid) return null
-  const [hikes, profile, following, profiles] = await Promise.all([
+  const [hikes, profile, following, profiles, counts] = await Promise.all([
     readHikeIndex(),
     readProfile(creatorUid),
     getFollowing(viewerUid),
     readProfiles(),
+    readMapCounts(),
   ])
   const cards = hikes
     .filter(isPublicMap)
     .filter((h) => h.ownerId === creatorUid)
     .sort(byRecent)
-    .map((hike) => toCard(hike, profiles))
+    .map((hike) => toCard(hike, profiles, counts))
   const creator: SocialCreator = {
     uid: creatorUid,
     name: profile.name,

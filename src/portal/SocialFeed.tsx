@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Bell,
   Bookmark,
@@ -30,9 +30,14 @@ import {
   fetchCreator,
   fetchExplore,
   fetchFeed,
+  fetchSaved,
   fetchSuggestions,
   followCreator,
+  likeMap,
+  saveMap,
   unfollowCreator,
+  unlikeMap,
+  unsaveMap,
   type SocialCard,
   type SocialCreator,
 } from './socialApi'
@@ -83,6 +88,14 @@ const openMap = (slug: string): void => {
   window.location.assign(`/?m=${encodeURIComponent(slug)}`)
 }
 
+// Renvoie une NOUVELLE Set avec `key` ajoutée ou retirée (immuable, pour setState).
+const toggleInSet = (set: Set<string>, key: string, present: boolean): Set<string> => {
+  const next = new Set(set)
+  if (present) next.add(key)
+  else next.delete(key)
+  return next
+}
+
 function Avatar({
   name,
   photoURL,
@@ -124,6 +137,7 @@ function PostCard({
   card,
   liked,
   saved,
+  likeCount,
   onToggleLike,
   onToggleSave,
   onOpenCreator,
@@ -131,6 +145,7 @@ function PostCard({
   card: SocialCard
   liked: boolean
   saved: boolean
+  likeCount: number
   onToggleLike: () => void
   onToggleSave: () => void
   onOpenCreator: () => void
@@ -174,7 +189,7 @@ function PostCard({
         </div>
         <ul className="feed-post-stats">
           <li>
-            <Heart size={14} /> {liked ? 1 : 0}
+            <Heart size={14} /> {formatCount(likeCount)}
           </li>
           <li>
             <Images size={14} /> {card.mediaCount}
@@ -235,15 +250,21 @@ export default function SocialFeed({
   >(null)
   const [creatorLoading, setCreatorLoading] = useState(false)
 
-  const [liked, setLiked] = useState<Record<string, boolean>>({})
-  const [saved, setSaved] = useState<Record<string, boolean>>({})
+  const [liked, setLiked] = useState<Set<string>>(new Set())
+  const [saved, setSaved] = useState<Set<string>>(new Set())
+  const [savedCards, setSavedCards] = useState<SocialCard[] | null>(null)
 
-  // Chargement initial : contexte (pseudo + suivis), feed et suggestions. Toléré
-  // en échec (ex. `npm run dev` sans backend) → états vides.
+  // Chargement initial : contexte (suivis + likes + enregistrements), feed et
+  // suggestions. Toléré en échec (ex. `npm run dev` sans backend) → états vides.
   useEffect(() => {
     let alive = true
     fetchContext()
-      .then((ctx) => alive && setFollowing(new Set(ctx.following)))
+      .then((ctx) => {
+        if (!alive) return
+        setFollowing(new Set(ctx.following))
+        setLiked(new Set(ctx.liked))
+        setSaved(new Set(ctx.saved))
+      })
       .catch(() => {})
     fetchFeed()
       .then((cards) => alive && setFeed(cards))
@@ -270,15 +291,65 @@ export default function SocialFeed({
     return undefined
   }, [view, explore])
 
+  // Onglet « Enregistrées » : cartes réelles, rechargées à chaque ouverture.
+  useEffect(() => {
+    if (view !== 'saved') return undefined
+    let alive = true
+    fetchSaved()
+      .then((cards) => alive && setSavedCards(cards))
+      .catch(() => alive && setSavedCards([]))
+    return () => {
+      alive = false
+    }
+  }, [view])
+
   const openUpsell = () => {
     setUpsellOpen(true)
     setMenuOpen(false)
   }
 
-  const toggleLike = (slug: string) =>
-    setLiked((prev) => ({ ...prev, [slug]: !prev[slug] }))
-  const toggleSave = (slug: string) =>
-    setSaved((prev) => ({ ...prev, [slug]: !prev[slug] }))
+  // Applique un delta au compteur de likes d'une carte dans TOUTES les listes
+  // chargées (feed, explore, enregistrées, profil), pour un affichage cohérent.
+  const bumpLike = (slug: string, delta: number) => {
+    const patch = (cards: SocialCard[] | null) =>
+      cards
+        ? cards.map((card) =>
+            card.slug === slug
+              ? { ...card, likeCount: Math.max(0, card.likeCount + delta) }
+              : card,
+          )
+        : cards
+    setFeed(patch)
+    setExplore(patch)
+    setSavedCards(patch)
+    setCreatorData((prev) =>
+      prev ? { ...prev, cards: patch(prev.cards) ?? prev.cards } : prev,
+    )
+  }
+
+  // Like / enregistrement persistés : bascule optimiste, revert si l'appel échoue.
+  const toggleLike = async (slug: string) => {
+    const wasLiked = liked.has(slug)
+    setLiked((prev) => toggleInSet(prev, slug, !wasLiked))
+    bumpLike(slug, wasLiked ? -1 : 1)
+    try {
+      if (wasLiked) await unlikeMap(slug)
+      else await likeMap(slug)
+    } catch {
+      setLiked((prev) => toggleInSet(prev, slug, wasLiked))
+      bumpLike(slug, wasLiked ? 1 : -1)
+    }
+  }
+  const toggleSave = async (slug: string) => {
+    const wasSaved = saved.has(slug)
+    setSaved((prev) => toggleInSet(prev, slug, !wasSaved))
+    try {
+      if (wasSaved) await unsaveMap(slug)
+      else await saveMap(slug)
+    } catch {
+      setSaved((prev) => toggleInSet(prev, slug, wasSaved))
+    }
+  }
 
   // Suivi persistant : mise à jour optimiste (ensemble + compteurs du profil
   // ouvert), revert si l'appel échoue.
@@ -344,21 +415,6 @@ export default function SocialFeed({
     { id: 'saved', label: 'Enregistrées', icon: <Bookmark size={19} /> },
   ]
 
-  // Cartes connues (feed + explore + profil ouvert) pour résoudre les
-  // enregistrements locaux par slug.
-  const knownCards = useMemo(() => {
-    const map = new Map<string, SocialCard>()
-    for (const card of [
-      ...(feed ?? []),
-      ...(explore ?? []),
-      ...(creatorData?.cards ?? []),
-    ]) {
-      map.set(card.slug, card)
-    }
-    return map
-  }, [feed, explore, creatorData])
-
-  const savedCards = [...knownCards.values()].filter((card) => saved[card.slug])
   const followingCards = (explore ?? []).filter((card) => following.has(card.author.uid))
   const visibleSuggestions = suggestions.filter((creator) => !following.has(creator.uid))
 
@@ -369,8 +425,9 @@ export default function SocialFeed({
           <PostCard
             key={card.slug}
             card={card}
-            liked={Boolean(liked[card.slug])}
-            saved={Boolean(saved[card.slug])}
+            liked={liked.has(card.slug)}
+            saved={saved.has(card.slug)}
+            likeCount={card.likeCount}
             onToggleLike={() => toggleLike(card.slug)}
             onToggleSave={() => toggleSave(card.slug)}
             onOpenCreator={() => openCreator(card.author.uid)}
@@ -434,12 +491,15 @@ export default function SocialFeed({
       )
     }
     if (view === 'saved') {
+      const cards = (savedCards ?? []).filter((card) => saved.has(card.slug))
       return (
         <>
           <h2 className="feed-section-title">
             <Bookmark size={18} /> Enregistrées
           </h2>
-          {renderCards(savedCards, 'Aucune carte enregistrée pour le moment.')}
+          {savedCards === null
+            ? renderLoading()
+            : renderCards(cards, 'Aucune carte enregistrée pour le moment.')}
         </>
       )
     }

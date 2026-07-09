@@ -4,10 +4,13 @@ import {
   getCreator,
   getExplore,
   getFeed,
+  getSavedCards,
   getSuggestions,
   isHandleAvailable,
   setFollow,
   setHandle,
+  setLike,
+  setSave,
 } from '../server/social.js'
 
 // Route unique du réseau social (feed / explorer / profils / suivis / pseudos).
@@ -32,6 +35,8 @@ export async function GET(request: Request) {
         return json({ cards: await getFeed(user.uid) })
       case 'explore':
         return json({ cards: await getExplore() })
+      case 'saved':
+        return json({ cards: await getSavedCards(user.uid) })
       case 'suggestions':
         return json({ creators: await getSuggestions(user.uid) })
       case 'context':
@@ -56,7 +61,7 @@ export async function POST(request: Request) {
   const user = await verifyRequestUser(request)
   if (!user) return json({ error: 'unauthenticated' }, 401)
 
-  let body: { action?: string; uid?: string; handle?: string }
+  let body: { action?: string; uid?: string; handle?: string; slug?: string }
   try {
     body = (await request.json()) as typeof body
   } catch {
@@ -69,6 +74,14 @@ export async function POST(request: Request) {
         return json(await setFollow(user.uid, body.uid ?? '', true))
       case 'unfollow':
         return json(await setFollow(user.uid, body.uid ?? '', false))
+      case 'like':
+        return json(await setLike(user.uid, body.slug ?? '', true))
+      case 'unlike':
+        return json(await setLike(user.uid, body.slug ?? '', false))
+      case 'save':
+        return json(await setSave(user.uid, body.slug ?? '', true))
+      case 'unsave':
+        return json(await setSave(user.uid, body.slug ?? '', false))
       case 'check-handle':
         return json(await isHandleAvailable(user.uid, body.handle ?? ''))
       case 'set-handle':

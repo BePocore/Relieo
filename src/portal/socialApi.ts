@@ -16,6 +16,8 @@ export type SocialCard = {
   distanceKm: number
   elevationGain: number
   mediaCount: number
+  likeCount: number
+  saveCount: number
   updatedAt: string
   author: SocialAuthor
 }
@@ -32,6 +34,8 @@ export type SocialContext = {
   handle: string | null
   suggestedHandle: string
   following: string[]
+  liked: string[]
+  saved: string[]
   followerCount: number
   followingCount: number
 }
@@ -66,6 +70,7 @@ const post = async <T>(body: Record<string, unknown>): Promise<T> => {
 export const fetchContext = () => get<SocialContext>('context')
 export const fetchFeed = () => get<{ cards: SocialCard[] }>('feed').then((r) => r.cards)
 export const fetchExplore = () => get<{ cards: SocialCard[] }>('explore').then((r) => r.cards)
+export const fetchSaved = () => get<{ cards: SocialCard[] }>('saved').then((r) => r.cards)
 export const fetchSuggestions = () =>
   get<{ creators: SocialCreator[] }>('suggestions').then((r) => r.creators)
 export const fetchCreator = (uid: string) =>
@@ -75,6 +80,11 @@ export const followCreator = (uid: string) =>
   post<{ following: boolean }>({ action: 'follow', uid })
 export const unfollowCreator = (uid: string) =>
   post<{ following: boolean }>({ action: 'unfollow', uid })
+
+export const likeMap = (slug: string) => post<{ on: boolean }>({ action: 'like', slug })
+export const unlikeMap = (slug: string) => post<{ on: boolean }>({ action: 'unlike', slug })
+export const saveMap = (slug: string) => post<{ on: boolean }>({ action: 'save', slug })
+export const unsaveMap = (slug: string) => post<{ on: boolean }>({ action: 'unsave', slug })
 
 export const checkHandle = (handle: string) =>
   post<{ available: boolean; handle: string | null; reason?: string }>({
