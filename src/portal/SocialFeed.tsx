@@ -1,12 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  AtSign,
   Bell,
   Bookmark,
   BookmarkCheck,
   Check,
   ChevronDown,
   Compass,
-  Eye,
   Globe,
   Heart,
   Home,
@@ -26,136 +26,31 @@ import {
   X,
 } from 'lucide-react'
 import type { PortalUser } from './portalStore'
+import {
+  checkHandle,
+  fetchContext,
+  fetchCreator,
+  fetchExplore,
+  fetchFeed,
+  fetchSuggestions,
+  followCreator,
+  saveHandle,
+  unfollowCreator,
+  type SocialCard,
+  type SocialContext,
+  type SocialCreator,
+} from './socialApi'
 import './Feed.css'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Coquille visuelle du réseau social (TRANCHE 1, front-only, données MOCKÉES).
-// Aucun backend : likes / suivis / enregistrements sont de l'état local. Le feed
-// est le nouvel écran d'accueil post-login ; le dashboard créateur reste séparé
-// (`DashboardShell`), atteint via `onOpenDashboard` (créateur uniquement).
+// Réseau social (TRANCHE 1) branché sur de VRAIES données via `/api/social` :
+// feed « Accueil » (créateurs suivis, repli populaires), Explorer (toutes les
+// cartes publiques), profils créateurs réels, suivis persistés, pseudos uniques.
+// Likes / enregistrements restent locaux (persistés en tranche 2). Le dashboard
+// créateur reste séparé (`DashboardShell`), atteint via `onOpenDashboard`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type FeedView = 'feed' | 'explore' | 'following' | 'saved' | 'profile' | 'creator'
-
-type MockCreator = {
-  id: string
-  name: string
-  handle: string
-  bio: string
-  location: string
-  followers: number
-  following: number
-  maps: number
-  color: string
-}
-
-type MockPost = {
-  id: string
-  creatorId: string
-  title: string
-  location: string
-  gradient: string
-  views: number
-  likes: number
-  photos: number
-  // Slug de consultation réelle (`?m=<slug>`) pour rendre la démo vivante.
-  slug: string
-}
-
-// Créateurs mockés (avatars = initiales sur fond coloré).
-const CREATORS: MockCreator[] = [
-  {
-    id: 'c1',
-    name: 'Camille Vidal',
-    handle: '@camille',
-    bio: 'Photographe de montagne. Je cartographie mes treks en relief 3D.',
-    location: 'Chamonix',
-    followers: 1284,
-    following: 87,
-    maps: 23,
-    color: '#126b47',
-  },
-  {
-    id: 'c2',
-    name: 'Léo Marchand',
-    handle: '@leo',
-    bio: 'Roadtrips & bivouacs. Chaque virage mérite une carte.',
-    location: 'Annecy',
-    followers: 642,
-    following: 133,
-    maps: 12,
-    color: '#2a6f97',
-  },
-  {
-    id: 'c3',
-    name: 'Sofia Nkemba',
-    handle: '@sofia',
-    bio: 'Voyage lent, grandes traversées, photos argentiques.',
-    location: 'Lisbonne',
-    followers: 3510,
-    following: 42,
-    maps: 41,
-    color: '#8a5a44',
-  },
-  {
-    id: 'c4',
-    name: 'Hugo Perret',
-    handle: '@hugo',
-    bio: 'Trail runner. Le D+ comme terrain de jeu.',
-    location: 'Grenoble',
-    followers: 908,
-    following: 210,
-    maps: 18,
-    color: '#7048a8',
-  },
-]
-
-const POSTS: MockPost[] = [
-  {
-    id: 'p1',
-    creatorId: 'c1',
-    title: 'Tour du Mont-Blanc, étape des Grands',
-    location: 'Massif du Mont-Blanc',
-    gradient: 'linear-gradient(135deg, #1f6f54 0%, #0b3b2c 55%, #0a2740 100%)',
-    views: 4210,
-    likes: 318,
-    photos: 42,
-    slug: 'Halsa',
-  },
-  {
-    id: 'p2',
-    creatorId: 'c3',
-    title: 'Traversée des Açores en 9 jours',
-    location: 'São Miguel, Açores',
-    gradient: 'linear-gradient(135deg, #2a6f97 0%, #14476b 60%, #0d2233 100%)',
-    views: 9120,
-    likes: 742,
-    photos: 88,
-    slug: 'Halsa',
-  },
-  {
-    id: 'p3',
-    creatorId: 'c2',
-    title: 'Roadtrip Dolomites, cols et lacs',
-    location: 'Dolomites, Italie',
-    gradient: 'linear-gradient(135deg, #8a5a44 0%, #5c3a2a 55%, #2a1c16 100%)',
-    views: 2760,
-    likes: 205,
-    photos: 34,
-    slug: 'Halsa',
-  },
-  {
-    id: 'p4',
-    creatorId: 'c4',
-    title: 'Ultra du Vercors, 62 km',
-    location: 'Vercors',
-    gradient: 'linear-gradient(135deg, #4c3a7a 0%, #2f2650 55%, #171226 100%)',
-    views: 1530,
-    likes: 141,
-    photos: 19,
-    slug: 'Halsa',
-  },
-]
 
 const initials = (name: string): string =>
   name
@@ -169,6 +64,28 @@ const formatCount = (value: number): string =>
   value >= 1000
     ? `${(value / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} k`
     : String(value)
+
+// Couleur d'avatar déterministe (initiales) et dégradé de couverture provisoire
+// dérivés d'un identifiant : chaque créateur / carte a une teinte stable tant
+// que les vraies photos de couverture ne sont pas servies (tranche dédiée).
+const hashString = (value: string): number => {
+  let hash = 0
+  for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0
+  return hash
+}
+const colorFromId = (id: string): string => `hsl(${hashString(id) % 360} 42% 40%)`
+const gradientFromSlug = (slug: string): string => {
+  const hash = hashString(slug)
+  return `linear-gradient(135deg, hsl(${hash % 360} 46% 30%), hsl(${(hash >> 4) % 360} 42% 16%))`
+}
+
+const formatKm = (km: number): string | null =>
+  km > 0 ? `${km.toFixed(km < 10 ? 1 : 0)} km` : null
+const formatGain = (m: number): string | null => (m > 0 ? `+${Math.round(m)} m` : null)
+
+const openMap = (slug: string): void => {
+  window.location.assign(`/?m=${encodeURIComponent(slug)}`)
+}
 
 function Avatar({
   name,
@@ -207,62 +124,64 @@ function Avatar({
   )
 }
 
-const openMap = (slug: string): void => {
-  // Consultation publique réelle d'une carte (`?m=<slug>`), pour la démo.
-  window.location.assign(`/?m=${encodeURIComponent(slug)}`)
-}
-
 function PostCard({
-  post,
-  creator,
+  card,
   liked,
   saved,
   onToggleLike,
   onToggleSave,
   onOpenCreator,
 }: {
-  post: MockPost
-  creator: MockCreator | undefined
+  card: SocialCard
   liked: boolean
   saved: boolean
   onToggleLike: () => void
   onToggleSave: () => void
   onOpenCreator: () => void
 }) {
+  const author = card.author
+  const stats = [formatKm(card.distanceKm), formatGain(card.elevationGain)].filter(Boolean)
   return (
     <article className="feed-post">
-      <div className="feed-post-cover" style={{ backgroundImage: post.gradient }}>
-        <span className="feed-post-place">
-          <MapPin size={13} /> {post.location}
-        </span>
+      <div
+        className="feed-post-cover"
+        style={{ backgroundImage: gradientFromSlug(card.slug) }}
+      >
+        {stats.length ? (
+          <span className="feed-post-place">
+            <Mountain size={13} /> {stats.join(' · ')}
+          </span>
+        ) : null}
         <button
           className="feed-post-open"
           type="button"
-          onClick={() => openMap(post.slug)}
+          onClick={() => openMap(card.slug)}
         >
           <MapIcon size={15} /> Ouvrir la carte 3D
         </button>
       </div>
       <div className="feed-post-body">
-        <h3 className="feed-post-title">{post.title}</h3>
+        <h3 className="feed-post-title">{card.title}</h3>
         <div className="feed-post-author">
           <button className="feed-author-btn" type="button" onClick={onOpenCreator}>
-            <Avatar name={creator?.name ?? '?'} color={creator?.color} size={34} />
+            <Avatar
+              name={author.name}
+              photoURL={author.photoURL}
+              color={colorFromId(author.uid)}
+              size={34}
+            />
             <span>
-              <strong>{creator?.name ?? 'Créateur'}</strong>
-              <em>{creator?.handle}</em>
+              <strong>{author.name}</strong>
+              <em>{author.handle ? `@${author.handle}` : 'Créateur'}</em>
             </span>
           </button>
         </div>
         <ul className="feed-post-stats">
           <li>
-            <Eye size={14} /> {formatCount(post.views)}
+            <Heart size={14} /> {liked ? 1 : 0}
           </li>
           <li>
-            <Heart size={14} /> {formatCount(post.likes + (liked ? 1 : 0))}
-          </li>
-          <li>
-            <Images size={14} /> {post.photos}
+            <Images size={14} /> {card.mediaCount}
           </li>
         </ul>
         <div className="feed-post-actions">
@@ -300,43 +219,122 @@ export default function SocialFeed({
   user: PortalUser
   isCreator: boolean
   onOpenDashboard: () => void
-  // Passage viewer -> créateur : mène au choix du forfait (géré par PortalApp).
   onBecomeCreator: () => void
   onLogout: () => void
 }) {
   const [view, setView] = useState<FeedView>('feed')
-  const [activeCreatorId, setActiveCreatorId] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  // Modale d'accroche « devenir créateur » (front-only ; le vrai passage viewer
-  // → créateur viendra avec un endpoint serveur, cf. tranche suivante).
   const [upsellOpen, setUpsellOpen] = useState(false)
+
+  const [context, setContext] = useState<SocialContext | null>(null)
+  const [following, setFollowing] = useState<Set<string>>(new Set())
+  const [feed, setFeed] = useState<SocialCard[] | null>(null)
+  const [explore, setExplore] = useState<SocialCard[] | null>(null)
+  const [suggestions, setSuggestions] = useState<SocialCreator[]>([])
+  const [creatorData, setCreatorData] = useState<
+    { creator: SocialCreator; cards: SocialCard[]; following: boolean } | null
+  >(null)
+  const [creatorLoading, setCreatorLoading] = useState(false)
+
+  const [liked, setLiked] = useState<Record<string, boolean>>({})
+  const [saved, setSaved] = useState<Record<string, boolean>>({})
+
+  // Chargement initial : contexte (pseudo + suivis), feed et suggestions. Toléré
+  // en échec (ex. `npm run dev` sans backend) → états vides.
+  useEffect(() => {
+    let alive = true
+    fetchContext()
+      .then((ctx) => {
+        if (!alive) return
+        setContext(ctx)
+        setFollowing(new Set(ctx.following))
+      })
+      .catch(() => {})
+    fetchFeed()
+      .then((cards) => alive && setFeed(cards))
+      .catch(() => alive && setFeed([]))
+    fetchSuggestions()
+      .then((creators) => alive && setSuggestions(creators))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Explorer (et « suivis », qui filtre l'explore) : chargé à la demande.
+  useEffect(() => {
+    if ((view === 'explore' || view === 'following') && explore === null) {
+      let alive = true
+      fetchExplore()
+        .then((cards) => alive && setExplore(cards))
+        .catch(() => alive && setExplore([]))
+      return () => {
+        alive = false
+      }
+    }
+    return undefined
+  }, [view, explore])
 
   const openUpsell = () => {
     setUpsellOpen(true)
     setMenuOpen(false)
   }
-  const [liked, setLiked] = useState<Record<string, boolean>>({})
-  const [saved, setSaved] = useState<Record<string, boolean>>({})
-  const [followed, setFollowed] = useState<Record<string, boolean>>({
-    c1: true,
-    c3: true,
-  })
 
-  const creatorById = useMemo(
-    () => new Map(CREATORS.map((creator) => [creator.id, creator])),
-    [],
-  )
+  const toggleLike = (slug: string) =>
+    setLiked((prev) => ({ ...prev, [slug]: !prev[slug] }))
+  const toggleSave = (slug: string) =>
+    setSaved((prev) => ({ ...prev, [slug]: !prev[slug] }))
 
-  const toggleLike = (id: string) =>
-    setLiked((prev) => ({ ...prev, [id]: !prev[id] }))
-  const toggleSave = (id: string) =>
-    setSaved((prev) => ({ ...prev, [id]: !prev[id] }))
-  const toggleFollow = (id: string) =>
-    setFollowed((prev) => ({ ...prev, [id]: !prev[id] }))
+  // Suivi persistant : mise à jour optimiste (ensemble + compteurs du profil
+  // ouvert), revert si l'appel échoue.
+  const toggleFollow = async (uid: string) => {
+    const wasFollowing = following.has(uid)
+    setFollowing((prev) => {
+      const next = new Set(prev)
+      if (wasFollowing) next.delete(uid)
+      else next.add(uid)
+      return next
+    })
+    setCreatorData((prev) =>
+      prev && prev.creator.uid === uid
+        ? {
+            ...prev,
+            following: !wasFollowing,
+            creator: {
+              ...prev.creator,
+              followerCount: Math.max(0, prev.creator.followerCount + (wasFollowing ? -1 : 1)),
+            },
+          }
+        : prev,
+    )
+    try {
+      if (wasFollowing) await unfollowCreator(uid)
+      else await followCreator(uid)
+    } catch {
+      setFollowing((prev) => {
+        const next = new Set(prev)
+        if (wasFollowing) next.add(uid)
+        else next.delete(uid)
+        return next
+      })
+    }
+  }
 
-  const openCreator = (id: string) => {
-    setActiveCreatorId(id)
+  const openCreator = (uid: string) => {
     setView('creator')
+    setCreatorData(null)
+    setCreatorLoading(true)
+    fetchCreator(uid)
+      .then((data) => {
+        setCreatorData(data)
+        setFollowing((prev) => {
+          const next = new Set(prev)
+          if (data.following) next.add(uid)
+          return next
+        })
+      })
+      .catch(() => setCreatorData(null))
+      .finally(() => setCreatorLoading(false))
   }
 
   const go = (next: FeedView) => {
@@ -351,23 +349,36 @@ export default function SocialFeed({
     { id: 'saved', label: 'Enregistrées', icon: <Bookmark size={19} /> },
   ]
 
-  const savedPosts = POSTS.filter((post) => saved[post.id])
-  const followingPosts = POSTS.filter((post) => followed[post.creatorId])
-  const suggestions = CREATORS.filter((creator) => !followed[creator.id])
+  // Cartes connues (feed + explore + profil ouvert) pour résoudre les
+  // enregistrements locaux par slug.
+  const knownCards = useMemo(() => {
+    const map = new Map<string, SocialCard>()
+    for (const card of [
+      ...(feed ?? []),
+      ...(explore ?? []),
+      ...(creatorData?.cards ?? []),
+    ]) {
+      map.set(card.slug, card)
+    }
+    return map
+  }, [feed, explore, creatorData])
 
-  const renderPosts = (posts: MockPost[], emptyLabel: string) =>
-    posts.length ? (
+  const savedCards = [...knownCards.values()].filter((card) => saved[card.slug])
+  const followingCards = (explore ?? []).filter((card) => following.has(card.author.uid))
+  const visibleSuggestions = suggestions.filter((creator) => !following.has(creator.uid))
+
+  const renderCards = (cards: SocialCard[], emptyLabel: string) =>
+    cards.length ? (
       <div className="feed-list">
-        {posts.map((post) => (
+        {cards.map((card) => (
           <PostCard
-            key={post.id}
-            post={post}
-            creator={creatorById.get(post.creatorId)}
-            liked={Boolean(liked[post.id])}
-            saved={Boolean(saved[post.id])}
-            onToggleLike={() => toggleLike(post.id)}
-            onToggleSave={() => toggleSave(post.id)}
-            onOpenCreator={() => openCreator(post.creatorId)}
+            key={card.slug}
+            card={card}
+            liked={Boolean(liked[card.slug])}
+            saved={Boolean(saved[card.slug])}
+            onToggleLike={() => toggleLike(card.slug)}
+            onToggleSave={() => toggleSave(card.slug)}
+            onOpenCreator={() => openCreator(card.author.uid)}
           />
         ))}
       </div>
@@ -378,18 +389,25 @@ export default function SocialFeed({
       </div>
     )
 
+  const renderLoading = () => (
+    <div className="feed-empty">
+      <Mountain size={30} />
+      <p>Chargement…</p>
+    </div>
+  )
+
   const renderCenter = () => {
     if (view === 'creator') {
-      const creator = activeCreatorId ? creatorById.get(activeCreatorId) : undefined
-      if (!creator) return null
-      const creatorPosts = POSTS.filter((post) => post.creatorId === creator.id)
+      if (creatorLoading) return renderLoading()
+      if (!creatorData) {
+        return renderCards([], 'Profil introuvable.')
+      }
       return (
         <CreatorProfile
-          creator={creator}
-          followed={Boolean(followed[creator.id])}
-          onToggleFollow={() => toggleFollow(creator.id)}
-          posts={creatorPosts}
-          onOpenMap={openMap}
+          creator={creatorData.creator}
+          following={following.has(creatorData.creator.uid)}
+          onToggleFollow={() => toggleFollow(creatorData.creator.uid)}
+          cards={creatorData.cards}
         />
       )
     }
@@ -398,6 +416,13 @@ export default function SocialFeed({
         <OwnProfile
           user={user}
           isCreator={isCreator}
+          currentHandle={context?.handle ?? null}
+          suggestedHandle={context?.suggestedHandle ?? ''}
+          followerCount={context?.followerCount ?? 0}
+          followingCount={following.size}
+          onHandleSaved={(handle) =>
+            setContext((prev) => (prev ? { ...prev, handle } : prev))
+          }
           onOpenDashboard={onOpenDashboard}
           onOpenUpsell={openUpsell}
         />
@@ -406,38 +431,51 @@ export default function SocialFeed({
     if (view === 'explore') {
       return (
         <>
-          <h2 className="feed-section-title"><Globe size={18} /> Explorer</h2>
-          {renderPosts(POSTS, 'Rien à explorer pour l’instant.')}
+          <h2 className="feed-section-title">
+            <Globe size={18} /> Explorer
+          </h2>
+          {explore === null
+            ? renderLoading()
+            : renderCards(explore, 'Aucune carte publique pour l’instant.')}
         </>
       )
     }
     if (view === 'following') {
       return (
         <>
-          <h2 className="feed-section-title"><Users size={18} /> Créateurs suivis</h2>
-          {renderPosts(
-            followingPosts,
-            'Tu ne suis encore personne. Explore pour trouver des créateurs.',
-          )}
+          <h2 className="feed-section-title">
+            <Users size={18} /> Créateurs suivis
+          </h2>
+          {explore === null
+            ? renderLoading()
+            : renderCards(
+                followingCards,
+                'Tu ne suis encore personne. Explore pour trouver des créateurs.',
+              )}
         </>
       )
     }
     if (view === 'saved') {
       return (
         <>
-          <h2 className="feed-section-title"><Bookmark size={18} /> Enregistrées</h2>
-          {renderPosts(savedPosts, 'Aucune carte enregistrée pour le moment.')}
+          <h2 className="feed-section-title">
+            <Bookmark size={18} /> Enregistrées
+          </h2>
+          {renderCards(savedCards, 'Aucune carte enregistrée pour le moment.')}
         </>
       )
     }
-    return renderPosts(POSTS, 'Ton feed est vide.')
+    if (feed === null) return renderLoading()
+    return renderCards(feed, 'Ton feed est vide. Explore pour suivre des créateurs.')
   }
 
   return (
     <div className="feed-shell">
       <header className="feed-header">
         <div className="feed-brand">
-          <span className="portal-logo"><Compass size={22} /></span>
+          <span className="portal-logo">
+            <Compass size={22} />
+          </span>
           <strong>Relieo</strong>
         </div>
         <label className="feed-search">
@@ -481,18 +519,10 @@ export default function SocialFeed({
                 )}
                 {isCreator ? (
                   <>
-                    <button
-                      role="menuitem"
-                      type="button"
-                      onClick={onOpenDashboard}
-                    >
+                    <button role="menuitem" type="button" onClick={onOpenDashboard}>
                       <LayoutDashboard size={16} /> Dashboard créateur
                     </button>
-                    <button
-                      role="menuitem"
-                      type="button"
-                      onClick={onOpenDashboard}
-                    >
+                    <button role="menuitem" type="button" onClick={onOpenDashboard}>
                       <Settings size={16} /> Paramètres
                     </button>
                   </>
@@ -529,56 +559,80 @@ export default function SocialFeed({
 
         <aside className="feed-aside">
           <section className="feed-card">
-            <h3><UserPlus size={16} /> Créateurs à suivre</h3>
-            <ul className="feed-suggest">
-              {suggestions.map((creator) => (
-                <li key={creator.id}>
-                  <button
-                    className="feed-suggest-user"
-                    type="button"
-                    onClick={() => openCreator(creator.id)}
-                  >
-                    <Avatar name={creator.name} color={creator.color} size={38} />
-                    <span>
-                      <strong>{creator.name}</strong>
-                      <em>{formatCount(creator.followers)} abonnés</em>
-                    </span>
-                  </button>
-                  <button
-                    className={`feed-follow${followed[creator.id] ? ' following' : ''}`}
-                    type="button"
-                    onClick={() => toggleFollow(creator.id)}
-                  >
-                    {followed[creator.id] ? <Check size={14} /> : null}
-                    {followed[creator.id] ? 'Suivi' : 'Suivre'}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="feed-card">
-            <h3><MapPin size={16} /> Près de chez toi</h3>
-            <ul className="feed-nearby">
-              <li><Mountain size={15} /> Pyrénées ariégeoises</li>
-              <li><Mountain size={15} /> Canal du Midi à vélo</li>
-              <li><Mountain size={15} /> Gorges du Tarn</li>
-            </ul>
+            <h3>
+              <UserPlus size={16} /> Créateurs à suivre
+            </h3>
+            {visibleSuggestions.length ? (
+              <ul className="feed-suggest">
+                {visibleSuggestions.map((creator) => (
+                  <li key={creator.uid}>
+                    <button
+                      className="feed-suggest-user"
+                      type="button"
+                      onClick={() => openCreator(creator.uid)}
+                    >
+                      <Avatar
+                        name={creator.name}
+                        photoURL={creator.photoURL}
+                        color={colorFromId(creator.uid)}
+                        size={38}
+                      />
+                      <span>
+                        <strong>{creator.name}</strong>
+                        <em>{formatCount(creator.followerCount)} abonnés</em>
+                      </span>
+                    </button>
+                    <button
+                      className="feed-follow"
+                      type="button"
+                      onClick={() => toggleFollow(creator.uid)}
+                    >
+                      Suivre
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="feed-aside-empty">
+                Pas encore de créateur à suggérer.
+              </p>
+            )}
           </section>
         </aside>
       </div>
 
       <nav className="feed-tabbar">
-        <button className={view === 'feed' ? 'active' : ''} type="button" onClick={() => go('feed')}>
-          <Home size={20} /><span>Accueil</span>
+        <button
+          className={view === 'feed' ? 'active' : ''}
+          type="button"
+          onClick={() => go('feed')}
+        >
+          <Home size={20} />
+          <span>Accueil</span>
         </button>
-        <button className={view === 'explore' ? 'active' : ''} type="button" onClick={() => go('explore')}>
-          <Globe size={20} /><span>Explorer</span>
+        <button
+          className={view === 'explore' ? 'active' : ''}
+          type="button"
+          onClick={() => go('explore')}
+        >
+          <Globe size={20} />
+          <span>Explorer</span>
         </button>
-        <button className={view === 'saved' ? 'active' : ''} type="button" onClick={() => go('saved')}>
-          <Bookmark size={20} /><span>Enregistrées</span>
+        <button
+          className={view === 'saved' ? 'active' : ''}
+          type="button"
+          onClick={() => go('saved')}
+        >
+          <Bookmark size={20} />
+          <span>Enregistrées</span>
         </button>
-        <button className={view === 'profile' ? 'active' : ''} type="button" onClick={() => go('profile')}>
-          <UserRound size={20} /><span>Profil</span>
+        <button
+          className={view === 'profile' ? 'active' : ''}
+          type="button"
+          onClick={() => go('profile')}
+        >
+          <UserRound size={20} />
+          <span>Profil</span>
         </button>
       </nav>
 
@@ -603,7 +657,9 @@ export default function SocialFeed({
             >
               <X size={18} />
             </button>
-            <span className="feed-upsell-badge"><Sparkles size={22} /></span>
+            <span className="feed-upsell-badge">
+              <Sparkles size={22} />
+            </span>
             <h2>Deviens créateur</h2>
             <p className="feed-upsell-sub">
               Passe de spectateur à créateur et partage tes propres aventures.
@@ -641,58 +697,87 @@ export default function SocialFeed({
 
 function CreatorProfile({
   creator,
-  followed,
+  following,
   onToggleFollow,
-  posts,
-  onOpenMap,
+  cards,
 }: {
-  creator: MockCreator
-  followed: boolean
+  creator: SocialCreator
+  following: boolean
   onToggleFollow: () => void
-  posts: MockPost[]
-  onOpenMap: (slug: string) => void
+  cards: SocialCard[]
 }) {
   return (
     <div className="feed-profile">
-      <div className="feed-profile-banner" style={{ backgroundImage: 'linear-gradient(120deg, #126b47, #0b3b2c 60%, #0a2740)' }} />
+      <div
+        className="feed-profile-banner"
+        style={{ backgroundImage: gradientFromSlug(creator.uid) }}
+      />
       <div className="feed-profile-head">
-        <Avatar name={creator.name} color={creator.color} size={92} />
+        <Avatar
+          name={creator.name}
+          photoURL={creator.photoURL}
+          color={colorFromId(creator.uid)}
+          size={92}
+        />
         <div className="feed-profile-id">
           <h2>
             {creator.name}
             <span className="feed-badge">Créateur</span>
           </h2>
-          <p className="feed-profile-bio">{creator.bio}</p>
-          <p className="feed-profile-loc"><MapPin size={14} /> {creator.location}</p>
+          {creator.handle ? <p className="feed-profile-handle">@{creator.handle}</p> : null}
+          {creator.bio ? <p className="feed-profile-bio">{creator.bio}</p> : null}
+          {creator.location ? (
+            <p className="feed-profile-loc">
+              <MapPin size={14} /> {creator.location}
+            </p>
+          ) : null}
         </div>
         <button
-          className={`feed-follow big${followed ? ' following' : ''}`}
+          className={`feed-follow big${following ? ' following' : ''}`}
           type="button"
           onClick={onToggleFollow}
         >
-          {followed ? <Check size={15} /> : <UserPlus size={15} />}
-          {followed ? 'Suivi' : 'Suivre'}
+          {following ? <Check size={15} /> : <UserPlus size={15} />}
+          {following ? 'Suivi' : 'Suivre'}
         </button>
       </div>
       <ul className="feed-profile-counters">
-        <li><strong>{formatCount(creator.followers)}</strong> abonnés</li>
-        <li><strong>{creator.following}</strong> abonnements</li>
-        <li><strong>{creator.maps}</strong> cartes</li>
+        <li>
+          <strong>{formatCount(creator.followerCount)}</strong> abonnés
+        </li>
+        <li>
+          <strong>{formatCount(creator.followingCount)}</strong> abonnements
+        </li>
+        <li>
+          <strong>{creator.mapCount}</strong> cartes
+        </li>
       </ul>
-      <div className="feed-grid">
-        {posts.map((post) => (
-          <button
-            key={post.id}
-            className="feed-grid-card"
-            type="button"
-            onClick={() => onOpenMap(post.slug)}
-          >
-            <span className="feed-grid-cover" style={{ backgroundImage: post.gradient }} />
-            <span className="feed-grid-title">{post.title}</span>
-            <span className="feed-grid-meta"><Eye size={12} /> {formatCount(post.views)}</span>
-          </button>
-        ))}
-      </div>
+      {cards.length ? (
+        <div className="feed-grid">
+          {cards.map((card) => (
+            <button
+              key={card.slug}
+              className="feed-grid-card"
+              type="button"
+              onClick={() => openMap(card.slug)}
+            >
+              <span
+                className="feed-grid-cover"
+                style={{ backgroundImage: gradientFromSlug(card.slug) }}
+              />
+              <span className="feed-grid-title">{card.title}</span>
+              <span className="feed-grid-meta">
+                <Images size={12} /> {card.mediaCount}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="feed-empty">
+          <Mountain size={30} />
+          <p>Aucune carte publique.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -700,17 +785,30 @@ function CreatorProfile({
 function OwnProfile({
   user,
   isCreator,
+  currentHandle,
+  suggestedHandle,
+  followerCount,
+  followingCount,
+  onHandleSaved,
   onOpenDashboard,
   onOpenUpsell,
 }: {
   user: PortalUser
   isCreator: boolean
+  currentHandle: string | null
+  suggestedHandle: string
+  followerCount: number
+  followingCount: number
+  onHandleSaved: (handle: string) => void
   onOpenDashboard: () => void
   onOpenUpsell: () => void
 }) {
   return (
     <div className="feed-profile">
-      <div className="feed-profile-banner" style={{ backgroundImage: 'linear-gradient(120deg, #2a6f97, #14476b 60%, #0d2233)' }} />
+      <div
+        className="feed-profile-banner"
+        style={{ backgroundImage: gradientFromSlug(user.id) }}
+      />
       <div className="feed-profile-head">
         <Avatar name={user.name} photoURL={user.photoURL} size={92} />
         <div className="feed-profile-id">
@@ -718,9 +816,12 @@ function OwnProfile({
             {user.name}
             <span className="feed-badge">{isCreator ? 'Créateur' : 'Viewer'}</span>
           </h2>
+          {currentHandle ? <p className="feed-profile-handle">@{currentHandle}</p> : null}
           <p className="feed-profile-bio">{user.bio || 'Aucune bio pour l’instant.'}</p>
           {user.location ? (
-            <p className="feed-profile-loc"><MapPin size={14} /> {user.location}</p>
+            <p className="feed-profile-loc">
+              <MapPin size={14} /> {user.location}
+            </p>
           ) : null}
         </div>
         {isCreator ? (
@@ -729,6 +830,22 @@ function OwnProfile({
           </button>
         ) : null}
       </div>
+      <ul className="feed-profile-counters">
+        <li>
+          <strong>{formatCount(followerCount)}</strong> abonnés
+        </li>
+        <li>
+          <strong>{formatCount(followingCount)}</strong> abonnements
+        </li>
+      </ul>
+
+      <HandleEditor
+        key={currentHandle ?? suggestedHandle}
+        currentHandle={currentHandle}
+        suggestedHandle={suggestedHandle}
+        onSaved={onHandleSaved}
+      />
+
       {isCreator ? null : (
         <div className="feed-empty feed-become">
           <Mountain size={30} />
@@ -739,5 +856,110 @@ function OwnProfile({
         </div>
       )}
     </div>
+  )
+}
+
+// Éditeur de pseudo unique : vérification de disponibilité (à la frappe, avec
+// petit anti-rebond) + enregistrement via `/api/social`.
+function HandleEditor({
+  currentHandle,
+  suggestedHandle,
+  onSaved,
+}: {
+  currentHandle: string | null
+  suggestedHandle: string
+  onSaved: (handle: string) => void
+}) {
+  const [value, setValue] = useState(currentHandle ?? suggestedHandle)
+  const [status, setStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'checking' }
+    | { kind: 'available' }
+    | { kind: 'taken' }
+    | { kind: 'invalid' }
+    | { kind: 'saved' }
+    | { kind: 'error' }
+  >({ kind: 'idle' })
+  const [saving, setSaving] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const normalized = value.trim().replace(/^@+/, '').toLowerCase()
+  const unchanged = normalized === (currentHandle ?? '')
+
+  const onChange = (next: string) => {
+    setValue(next)
+    if (timer.current) clearTimeout(timer.current)
+    const candidate = next.trim().replace(/^@+/, '').toLowerCase()
+    if (!candidate || candidate === (currentHandle ?? '')) {
+      setStatus({ kind: 'idle' })
+      return
+    }
+    setStatus({ kind: 'checking' })
+    timer.current = setTimeout(() => {
+      checkHandle(candidate)
+        .then((result) => {
+          if (result.reason === 'invalid') setStatus({ kind: 'invalid' })
+          else if (result.available) setStatus({ kind: 'available' })
+          else setStatus({ kind: 'taken' })
+        })
+        .catch(() => setStatus({ kind: 'error' }))
+    }, 400)
+  }
+
+  const onSave = () => {
+    if (saving || unchanged || !normalized) return
+    setSaving(true)
+    saveHandle(normalized)
+      .then((result) => {
+        if (result.ok && result.handle) {
+          setStatus({ kind: 'saved' })
+          onSaved(result.handle)
+        } else if (result.reason === 'taken') setStatus({ kind: 'taken' })
+        else setStatus({ kind: 'invalid' })
+      })
+      .catch(() => setStatus({ kind: 'error' }))
+      .finally(() => setSaving(false))
+  }
+
+  const message: Record<typeof status.kind, string> = {
+    idle: '3 à 20 caractères : lettres, chiffres, « _ ».',
+    checking: 'Vérification…',
+    available: '✓ Disponible.',
+    taken: 'Déjà pris, essaie autre chose.',
+    invalid: 'Format invalide (a-z, 0-9, _).',
+    saved: '✓ Pseudo enregistré.',
+    error: 'Erreur réseau, réessaie.',
+  }
+
+  return (
+    <section className="feed-card feed-handle">
+      <h3>
+        <AtSign size={16} /> Ton pseudo
+      </h3>
+      <div className="feed-handle-row">
+        <span className="feed-handle-at">@</span>
+        <input
+          className="feed-handle-input"
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="pseudo"
+          spellCheck={false}
+          autoCapitalize="none"
+          maxLength={20}
+        />
+        <button
+          className="feed-handle-save"
+          type="button"
+          onClick={onSave}
+          disabled={saving || unchanged || !normalized || status.kind === 'taken'}
+        >
+          {saving ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+      </div>
+      <p className={`feed-handle-hint feed-handle-${status.kind}`}>
+        {message[status.kind]}
+      </p>
+    </section>
   )
 }
