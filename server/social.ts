@@ -1,6 +1,7 @@
 import { FieldValue, getFirestore, type DocumentData } from 'firebase-admin/firestore'
 import { adminApp } from './firebaseAdmin.js'
 import { readHikeIndex, type HikeIndexEntry } from './hikeIndex.js'
+import { publicCoverUrl } from './publicCovers.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Backend du réseau social (feed / explorer / profils créateurs / suivis /
@@ -38,6 +39,9 @@ export type SocialCard = {
   // Carte publiée mais protégée par un code d'accès : visible en recherche
   // (titre), mais son contenu reste inaccessible sans le code.
   protected: boolean
+  // URL de la couverture publique (servie sans ticket). Peut ne pas encore
+  // exister (miroir pas fait) → le client retombe sur un dégradé.
+  coverUrl: string
   updatedAt: string
   author: SocialAuthor
 }
@@ -140,6 +144,7 @@ const toCard = (
     likeCount: mapCounts?.likeCount ?? 0,
     saveCount: mapCounts?.saveCount ?? 0,
     protected: Boolean(hike.accessCodeHash),
+    coverUrl: publicCoverUrl(slug),
     updatedAt: hike.updatedAt,
     author: authorOf(profiles.get(hike.ownerId), hike.ownerId),
   }

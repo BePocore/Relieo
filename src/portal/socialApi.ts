@@ -19,6 +19,7 @@ export type SocialCard = {
   likeCount: number
   saveCount: number
   protected: boolean
+  coverUrl: string
   updatedAt: string
   author: SocialAuthor
 }

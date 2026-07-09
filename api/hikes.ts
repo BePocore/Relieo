@@ -14,6 +14,7 @@ import { activeTrailPath, trailFolder, trailLocation } from '../server/trailStor
 import { signalModerationScan } from '../server/mediaModeration.js'
 import { pickCoverFromProjectJson } from '../server/cover.js'
 import { readHikesStats } from '../server/stats.js'
+import { deletePublicCover, syncPublicCover } from '../server/publicCovers.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -59,6 +60,19 @@ export async function GET(request: Request) {
         hike.coverUrl = coverUrl
         await upsertHikeIndex({ folder: hike.folder, coverUrl })
       }
+    }
+
+    // Miroir PUBLIC des couvertures (servi sans ticket au feed social) : on
+    // s'assure que chaque carte publiée du propriétaire a sa couverture publique.
+    // Best-effort, borné, et sans réécrire un miroir déjà présent.
+    for (const hike of filtered
+      .filter((h) => h.status === 'published' && h.coverUrl)
+      .slice(0, 12)) {
+      await syncPublicCover({
+        slug: hike.slug,
+        status: 'published',
+        coverUrl: hike.coverUrl,
+      })
     }
 
     // Statistiques de consultation, uniquement sur demande explicite
@@ -187,6 +201,13 @@ export async function POST(request: Request) {
     // Statut uniquement : on ne réécrit pas le project.json (contenu préservé).
     await upsertHikeIndex({ folder, status })
 
+    // Couverture publique : (re)copiée à la publication, retirée à la
+    // dépublication. `force` pour refléter une éventuelle nouvelle couverture.
+    await syncPublicCover(
+      { slug: entry.slug, status, coverUrl: entry.coverUrl },
+      { force: true },
+    )
+
     // Pointeur public : coupé si on dépublie la carte active ; (ré)initialisé
     // s'il n'existe pas quand on publie.
     const activeBody = await r2GetText(activeTrailPath)
@@ -278,6 +299,7 @@ export async function DELETE(request: Request) {
 
     // Retrait du registre + coupure du pointeur public s'il visait cette carte.
     await removeHikeIndex(folder)
+    await deletePublicCover(entry.slug)
     const activeBody = await r2GetText(activeTrailPath)
     if (activeBody) {
       try {

@@ -84,6 +84,14 @@ const gradientFromSlug = (slug: string): string => {
   return `linear-gradient(135deg, hsl(${hash % 360} 46% 30%), hsl(${(hash >> 4) % 360} 42% 16%))`
 }
 
+// Fond de couverture : la vraie image par-dessus, un dégradé stable dessous. Si
+// l'image n'existe pas encore (miroir public pas fait) ou 404, le dégradé
+// s'affiche automatiquement (couche CSS inférieure).
+const coverBackground = (card: SocialCard): string =>
+  card.coverUrl
+    ? `url("${card.coverUrl}"), ${gradientFromSlug(card.slug)}`
+    : gradientFromSlug(card.slug)
+
 const formatKm = (km: number): string | null =>
   km > 0 ? `${km.toFixed(km < 10 ? 1 : 0)} km` : null
 const formatGain = (m: number): string | null => (m > 0 ? `+${Math.round(m)} m` : null)
@@ -161,7 +169,7 @@ function PostCard({
     <article className="feed-post">
       <div
         className="feed-post-cover"
-        style={{ backgroundImage: gradientFromSlug(card.slug) }}
+        style={{ backgroundImage: coverBackground(card) }}
       >
         {stats.length ? (
           <span className="feed-post-place">
@@ -952,7 +960,7 @@ function CreatorProfile({
             >
               <span
                 className="feed-grid-cover"
-                style={{ backgroundImage: gradientFromSlug(card.slug) }}
+                style={{ backgroundImage: coverBackground(card) }}
               />
               <span className="feed-grid-title">{card.title}</span>
               <span className="feed-grid-meta">

@@ -117,6 +117,39 @@ const forbidden = (request: Request, env: Env, reason: string): Response =>
 const notFound = (request: Request, env: Env): Response =>
   new Response('Not Found', { status: 404, headers: corsHeaders(request, env) })
 
+// Cache PUBLIC (CDN + navigateur) pour les objets deliberement publics.
+const PUBLIC_CACHE_CONTROL = 'public, max-age=3600'
+
+// --- Objets publics (couvertures des cartes) -----------------------------
+// `relieo/public/...` est un espace VOLONTAIREMENT public : il ne contient que
+// les couvertures des cartes publiees, mises en miroir cote serveur. On les sert
+// SANS ticket et SANS controle de moderation (chemin dedie, jamais du contenu
+// prive : le contenu des cartes reste sous `relieo/users/...`, protege par ticket).
+const servePublicObject = async (
+  request: Request,
+  env: Env,
+  key: string,
+): Promise<Response> => {
+  if (request.method === 'HEAD') {
+    const head = await env.MEDIA_BUCKET.head(key)
+    if (!head) return notFound(request, env)
+    const headers = corsHeaders(request, env)
+    head.writeHttpMetadata(headers)
+    headers.set('etag', head.httpEtag)
+    headers.set('Cache-Control', PUBLIC_CACHE_CONTROL)
+    headers.set('Content-Length', String(head.size))
+    return new Response(null, { status: 200, headers })
+  }
+  const object = await env.MEDIA_BUCKET.get(key)
+  if (!object) return notFound(request, env)
+  const headers = corsHeaders(request, env)
+  object.writeHttpMetadata(headers)
+  headers.set('etag', object.httpEtag)
+  headers.set('Cache-Control', PUBLIC_CACHE_CONTROL)
+  headers.set('Content-Length', String(object.size))
+  return new Response(object.body, { status: 200, headers })
+}
+
 // --- Endpoints de moderation (hors flux media) ---------------------------
 // POST /_moderation/scan?token=<MODERATION_SIGNAL_SECRET>      -> lance un passage de scan
 //      (body optionnel { ids: [...] } pour prioriser les medias d'une publication)
@@ -175,6 +208,11 @@ export default {
 
     const key = keyFromPath(url.pathname)
     if (!key) return forbidden(request, env, 'cle invalide')
+
+    // Espace public (couvertures des cartes publiees) : servi sans ticket.
+    if (key.startsWith('relieo/public/')) {
+      return servePublicObject(request, env, key)
+    }
 
     const rawTicket = readTicket(request, env)
     if (!rawTicket) return forbidden(request, env, 'ticket absent')

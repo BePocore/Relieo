@@ -23,6 +23,7 @@ import {
   upsertHikeIndex,
   type HikeIndexEntry,
 } from '../server/hikeIndex.js'
+import { syncPublicCover } from '../server/publicCovers.js'
 import {
   hashAccessCode,
   TICKET_COOKIE,
@@ -556,6 +557,8 @@ export async function PUT(request: Request) {
       typeof value === 'number' && Number.isFinite(value) ? value : undefined
     const asString = (value: unknown): string | undefined =>
       typeof value === 'string' && value.trim() ? value.trim() : undefined
+    // Cover : celle fournie, sinon une image au hasard de la carte.
+    const coverUrl = asString(meta.coverUrl) ?? pickRandomCoverUrl(migrated.project)
     await upsertHikeIndex({
       code: target.code,
       folder: target.folder,
@@ -571,10 +574,16 @@ export async function PUT(request: Request) {
       pointCount: asNumber(meta.pointCount) ?? migrated.project.points.length,
       mediaCount:
         asNumber(meta.mediaCount) ?? (migrated.project.mediaLibrary?.length ?? 0),
-      // Cover : celle fournie, sinon une image au hasard de la carte.
-      coverUrl: asString(meta.coverUrl) ?? pickRandomCoverUrl(migrated.project),
+      coverUrl,
       updatedAt: target.updatedAt,
     })
+
+    // Couverture publique (feed social) : miroir rafraîchi quand la carte est
+    // publiée (best-effort, ne bloque pas la sauvegarde).
+    await syncPublicCover(
+      { slug: canonicalSlug, status, coverUrl },
+      { force: true },
+    )
 
     return Response.json(
       {
