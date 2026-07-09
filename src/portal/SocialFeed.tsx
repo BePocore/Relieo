@@ -373,6 +373,9 @@ export default function SocialFeed({
     setCreatorData((prev) =>
       prev ? { ...prev, cards: patch(prev.cards) ?? prev.cards } : prev,
     )
+    setSearchResults((prev) =>
+      prev ? { ...prev, maps: patch(prev.maps) ?? prev.maps } : prev,
+    )
   }
 
   // Like / enregistrement persistés : bascule optimiste, revert si l'appel échoue.
