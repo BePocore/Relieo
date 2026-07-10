@@ -110,7 +110,11 @@ export const uploadMedia = async ({
   if (!trailCode.trim()) {
     throw new Error('Renseigne le code de la carte avant l’import.')
   }
-  const fileName = file instanceof File ? file.name : `${fingerprint}.jpg`
+  // Un Blob n'a pas de nom : on derive l'extension du type (les traces sont du
+  // JSON -> `.json`, conforme au stockage `<carte>/traces/...json` ; sinon `.jpg`).
+  const blobExtension = file.type === 'application/json' ? 'json' : 'jpg'
+  const fileName =
+    file instanceof File ? file.name : `${fingerprint}.${blobExtension}`
   const contentType = file.type || 'application/octet-stream'
   // Jeton Firebase prioritaire ; repli sur le mot de passe admin (compat).
   const authHeader: Record<string, string> = idToken

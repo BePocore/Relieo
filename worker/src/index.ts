@@ -230,8 +230,10 @@ export default {
     // Tant que MODERATION_ENFORCE !== "1", on sert tout (deploiement progressif sans casser la prod).
     // Exception : les fichiers de traces GPS (JSON de points sous /traces/, pas des medias) ne
     // passent jamais au scan -> ils sont exemptes du controle de moderation. Le ticket, lui,
-    // reste obligatoire (verifie ci-dessus).
-    const isTraceFile = key.includes('/traces/') && key.endsWith('.json')
+    // reste obligatoire (verifie ci-dessus). On exempte TOUT ce qui vit sous /traces/ quelle que
+    // soit l'extension : cote client, le blob de trace est nomme `<empreinte>.jpg` (Blob sans nom),
+    // donc un test sur `.json` laissait passer ces fichiers dans le scan -> 403 pour le public.
+    const isTraceFile = key.includes('/traces/')
     const enforce = env.MODERATION_ENFORCE === '1'
     if (!isTraceFile && !(await canServe(env.MEDIA_BUCKET, key, ticket.role, enforce))) {
       return forbidden(request, env, 'media indisponible (moderation)')
