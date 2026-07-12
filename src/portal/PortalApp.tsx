@@ -27,6 +27,7 @@ import {
   Globe,
   HardDrive,
   Image,
+  Images,
   KeyRound,
   LayoutDashboard,
   Lock,
@@ -54,6 +55,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
+import type { MapKind } from '../types'
 import {
   type User,
   EmailAuthProvider,
@@ -449,12 +451,15 @@ function CreateHikeDialog({
   onCreate,
 }: {
   onClose: () => void
-  onCreate: (title: string, code: string) => void
+  onCreate: (title: string, code: string, kind: MapKind) => void
 }) {
   const [title, setTitle] = useState('')
   const [code, setCode] = useState('')
   // Défaut : carte privée (une carte ne devient publique que sur choix explicite).
   const [isPublic, setIsPublic] = useState(false)
+  // Type de carte : randonnée (complet) ou exposition de photos (sans traces).
+  // FIGÉ après la création (décision produit).
+  const [kind, setKind] = useState<MapKind>('hike')
 
   // Une carte publique n'a pas besoin de code ; une carte privée l'exige.
   const ready = title.trim() !== '' && (isPublic || code.trim() !== '')
@@ -479,6 +484,35 @@ function CreateHikeDialog({
           <span>Nom de la carte</span>
           <input autoFocus placeholder="Tour du Mont Blanc" value={title} onChange={(event) => setTitle(event.target.value)} />
         </label>
+
+        <div className="visibility-choice" role="radiogroup" aria-label="Type de carte">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={kind === 'hike'}
+            className={kind === 'hike' ? 'visibility-option active' : 'visibility-option'}
+            onClick={() => setKind('hike')}
+          >
+            <Mountain size={17} />
+            <strong>Randonnée</strong>
+            <small>Traces GPS, distance, dénivelé, photos</small>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={kind === 'gallery'}
+            className={kind === 'gallery' ? 'visibility-option active' : 'visibility-option'}
+            onClick={() => setKind('gallery')}
+          >
+            <Images size={17} />
+            <strong>Exposition photos</strong>
+            <small>Photos et vidéos sur la carte, sans trace GPS</small>
+          </button>
+        </div>
+        <p className="create-visibility-hint">
+          Le type de carte est définitif : il ne pourra plus être changé après
+          la création.
+        </p>
 
         <div className="visibility-choice" role="radiogroup" aria-label="Visibilité de la carte">
           <button
@@ -521,7 +555,7 @@ function CreateHikeDialog({
           className="portal-primary"
           disabled={!ready}
           type="button"
-          onClick={() => onCreate(title.trim(), isPublic ? '' : code.trim())}
+          onClick={() => onCreate(title.trim(), isPublic ? '' : code.trim(), kind)}
         >
           <Plus size={17} /> Créer la carte
         </button>
@@ -1797,7 +1831,7 @@ function DashboardShell({
     setCreateOpen(true)
   }
 
-  const createHike = (title: string, accessCode: string) => {
+  const createHike = (title: string, accessCode: string, kind: MapKind) => {
     setCreateOpen(false)
     // Identifiant d'URL OPAQUE (aléatoire, folder-safe) : ne révèle rien. Le code
     // d'accès secret est transmis au Studio via sessionStorage (jamais l'URL).
@@ -1807,8 +1841,11 @@ function DashboardShell({
     } catch {
       // sessionStorage indisponible : le propriétaire saisira le code au Studio.
     }
+    // Le type de carte n'est pas un secret : il passe par l'URL du Studio
+    // vierge (persisté dans mapConfig à la première sauvegarde).
+    const kindParam = kind === 'gallery' ? '&kind=gallery' : ''
     window.location.assign(
-      `/?mode=studio&new=${encodeURIComponent(slug)}&title=${encodeURIComponent(title)}`,
+      `/?mode=studio&new=${encodeURIComponent(slug)}&title=${encodeURIComponent(title)}${kindParam}`,
     )
   }
 

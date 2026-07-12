@@ -3823,3 +3823,24 @@
     white-space: normal;
   }
 }
+
+/* ── Réglages de la carte (Studio) : vue 2D/3D + fond par défaut ── */
+
+.studio-setting-label {
+  display: block;
+  margin: 2px 0 -2px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.studio-visibility.studio-triple {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.studio-visibility.studio-triple .studio-visibility-option {
+  font-size: 0.78rem;
+  padding: 6px 4px;
+}

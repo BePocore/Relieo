@@ -29,6 +29,8 @@ import {
 import type {
   ImportedMedia,
   ImportReport,
+  MapKind,
+  MapViewMode,
   PointType,
   Trace,
   TrailPoint,
@@ -36,6 +38,7 @@ import type {
   UploadProgress,
 } from '../types'
 import type { LightboxMedia } from '../App'
+import { basemapOptions, type BasemapId } from '../lib/basemaps'
 import { formatFileSize, formatMediaQuality } from '../lib/media'
 import { pointTypeLabels } from '../lib/pointMeta'
 import { ElevationProfile } from './ElevationProfile'
@@ -55,6 +58,14 @@ type StudioPanelProps = {
   mediaLibrary: ImportedMedia[]
   accessCode: string
   accessMode: 'public' | 'private'
+  // Type de carte (figé à la création) : une 'gallery' n'a pas d'import de
+  // traces ni de profil d'altitude.
+  mapKind: MapKind
+  // Réglages de vue de la carte (persistés dans mapConfig).
+  viewMode: MapViewMode
+  defaultBasemapId: BasemapId
+  onViewModeChange: (mode: MapViewMode) => void
+  onDefaultBasemapChange: (id: BasemapId) => void
   moderationPending: string[]
   onSelectPoint: (point: TrailPoint) => void
   onClose: () => void
@@ -657,6 +668,11 @@ export function StudioPanel({
   mediaLibrary,
   accessCode,
   accessMode,
+  mapKind,
+  viewMode,
+  defaultBasemapId,
+  onViewModeChange,
+  onDefaultBasemapChange,
   moderationPending,
   onSelectPoint,
   onClose,
@@ -927,7 +943,9 @@ export function StudioPanel({
         <Mountain aria-hidden="true" size={22} />
       </div>
 
-      <ElevationProfile traces={traces} stats={stats} />
+      {mapKind === 'gallery' ? null : (
+        <ElevationProfile traces={traces} stats={stats} />
+      )}
 
       <div className="studio-actions">
         {/* Sans Firebase (mode de repli), on demande le mot de passe Studio.
@@ -1001,6 +1019,67 @@ export function StudioPanel({
             restent modérés avant d’être visibles par le public.
           </p>
         )}
+
+        <span className="studio-setting-label">Vue de la carte</span>
+        <div
+          className="studio-visibility studio-triple"
+          role="radiogroup"
+          aria-label="Mode de vue de la carte"
+        >
+          {(
+            [
+              { id: 'both', label: '3D + 2D' },
+              { id: '2d', label: '2D seule' },
+              { id: '3d', label: '3D seule' },
+            ] as Array<{ id: MapViewMode; label: string }>
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={viewMode === option.id}
+              className={
+                viewMode === option.id
+                  ? 'studio-visibility-option active'
+                  : 'studio-visibility-option'
+              }
+              onClick={() => onViewModeChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span className="studio-setting-label">Fond de carte par défaut</span>
+        <div
+          className="studio-visibility studio-triple"
+          role="radiogroup"
+          aria-label="Fond de carte par défaut"
+        >
+          {basemapOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={defaultBasemapId === option.id}
+              title={option.description}
+              className={
+                defaultBasemapId === option.id
+                  ? 'studio-visibility-option active'
+                  : 'studio-visibility-option'
+              }
+              onClick={() => onDefaultBasemapChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="studio-publish-hint">
+          En « 3D + 2D », les visiteurs gardent le bouton de bascule Relief/2D.
+          En « 2D seule » ou « 3D seule », la vue est verrouillée pour tout le
+          monde. Le fond choisi est celui à l’ouverture, chacun peut ensuite en
+          changer.
+        </p>
+
         <button
           className="primary-action"
           disabled={
@@ -1120,6 +1199,8 @@ export function StudioPanel({
 
       {activeTab === 'import' ? (
         <div className="import-grid">
+          {/* Une exposition de photos n'a pas de traces : imports masqués. */}
+          {mapKind === 'gallery' ? null : (<>
           <label className="upload-tile">
             <FileUp aria-hidden="true" size={22} />
             <span>
@@ -1196,6 +1277,7 @@ export function StudioPanel({
               )}
             </div>
           ) : null}
+          </>)}
 
           {traces.length > 0 ? (
             <div className="trace-list">

@@ -74,6 +74,7 @@ import { formatDistance, formatGain } from './lib/format'
 import { DayTimeline } from './components/DayTimeline'
 import { SlideshowEditor } from './components/SlideshowEditor'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
+import { cleanMapConfig, configBasemap } from './lib/mapConfig'
 import {
   googleDriveImportConfigured,
   pickGoogleDriveMedia,
@@ -81,6 +82,8 @@ import {
 import type {
   ImportedMedia,
   ImportReport,
+  MapConfig,
+  MapViewMode,
   MediaKind,
   PointType,
   SlideshowMediaSettings,
@@ -357,6 +360,7 @@ const projectSignature = (input: {
   accessCode: string
   pointsSourceName: string
   slideshow: SlideshowSettings | undefined
+  mapConfig: MapConfig
 }): string =>
   JSON.stringify({
     points: exportablePoints(input.points),
@@ -365,6 +369,8 @@ const projectSignature = (input: {
     accessCode: input.accessCode.trim(),
     pointsSourceName: input.pointsSourceName,
     slideshow: input.slideshow ?? null,
+    // Normalisé (défauts retirés) pour rester stable entre chargement et état.
+    mapConfig: cleanMapConfig(input.mapConfig) ?? null,
   })
 
 const normalizeProject = (
@@ -391,6 +397,12 @@ const normalizeProject = (
       typeof candidate.slideshow === 'object' &&
       !Array.isArray(candidate.slideshow)
         ? candidate.slideshow
+        : undefined,
+    mapConfig:
+      candidate.mapConfig &&
+      typeof candidate.mapConfig === 'object' &&
+      !Array.isArray(candidate.mapConfig)
+        ? candidate.mapConfig
         : undefined,
   }
 }
@@ -548,6 +560,11 @@ function App() {
   const [newTrailCode] = useState(() =>
     new URLSearchParams(window.location.search).get('new')?.trim() ?? '',
   )
+  // Type choisi à la création d'une carte vierge (`&kind=gallery`) : posé dans
+  // mapConfig au démarrage du Studio vide, persisté à la première sauvegarde.
+  const [newMapKindParam] = useState(
+    () => new URLSearchParams(window.location.search).get('kind')?.trim() ?? '',
+  )
   // Carte ouverte par son identifiant d'URL opaque : `?m=<slug>` (ou `?code=`
   // legacy). Le propriétaire est toujours déduit du jeton Firebase côté API.
   const [hikeCode] = useState(() => {
@@ -585,7 +602,22 @@ function App() {
   const settleTimerRef = useRef<number | null>(null)
   // Le relief reste le mode principal, avec une vue 2D manuelle si nécessaire.
   const [perfMode, setPerfMode] = useState<PerfMode>('auto')
-  const mapFlat2D = perfMode === 'force-2d'
+  // Réglages de la carte (persistés dans project.json) : type (figé à la
+  // création), mode de vue 2D/3D, fond par défaut. Objet vide = défauts.
+  const [mapConfig, setMapConfig] = useState<MapConfig>({})
+  const isGalleryMap = mapConfig.kind === 'gallery'
+  const mapViewMode: MapViewMode =
+    mapConfig.viewMode === '2d' || mapConfig.viewMode === '3d'
+      ? mapConfig.viewMode
+      : 'both'
+  // Vue verrouillée par carte : '2d'/'3d' ignorent le cycle Auto/2D/3D (dont
+  // le badge est alors masqué) ; 'both' = comportement historique.
+  const mapFlat2D =
+    mapViewMode === '2d'
+      ? true
+      : mapViewMode === '3d'
+        ? false
+        : perfMode === 'force-2d'
   const [isSaving, setIsSaving] = useState(false)
   // Statut de publication de la carte courante : une carte reste un brouillon
   // (autosave en draft) jusqu'à publication explicite. Une carte chargée déjà
@@ -673,11 +705,15 @@ function App() {
       .map((point, index) => normalizePoint(point, index))
       .filter((point): point is TrailPoint => point !== null)
     const loadedMediaLibrary = project.mediaLibrary ?? []
+    const loadedMapConfig = project.mapConfig ?? {}
     setTraces(loadedTraces)
     setPoints(loadedPoints)
     setMediaLibrary(loadedMediaLibrary)
     setPointsSourceName(project.pointsSourceName)
     setSlideshowSettings(project.slideshow)
+    setMapConfig(loadedMapConfig)
+    // Fond d'ouverture choisi pour cette carte (le sélecteur reste disponible).
+    setBasemap(configBasemap(loadedMapConfig))
     // Le code d'accès est write-only : jamais renvoyé par le serveur, donc vide
     // au chargement. Le propriétaire en pose un nouveau dans le Studio au besoin.
     setAccessCode('')
@@ -689,6 +725,7 @@ function App() {
         accessCode: '',
         pointsSourceName: project.pointsSourceName,
         slideshow: project.slideshow,
+        mapConfig: loadedMapConfig,
       }),
     )
     // Le contenu complet est là (métadonnées seules n'appellent pas applyProject).
@@ -719,11 +756,15 @@ function App() {
           } catch {
             newSecret = ''
           }
+          // Type choisi à la création (URL `&kind=`), figé ensuite.
+          const blankMapConfig: MapConfig =
+            newMapKindParam === 'gallery' ? { kind: 'gallery' } : {}
           setTraces(blankTraces)
           setPoints(blankPoints)
           setMediaLibrary(blankMediaLibrary)
           setPointsSourceName(blankPointsSourceName)
           setSlideshowSettings(undefined)
+          setMapConfig(blankMapConfig)
           setAccessCode(newSecret)
           // Un code choisi à la création ⇒ carte privée ; code vide ⇒ publique.
           setAccessMode(newSecret ? 'private' : 'public')
@@ -737,6 +778,7 @@ function App() {
               accessCode: newSecret,
               pointsSourceName: blankPointsSourceName,
               slideshow: undefined,
+              mapConfig: blankMapConfig,
             }),
           )
           setAccessGranted(true)
@@ -855,7 +897,15 @@ function App() {
     }
 
     void loadTrail()
-  }, [applyProject, isNewBlankStudio, newTrailCode, hikeCode, isStudioMode, mapSlug])
+  }, [
+    applyProject,
+    isNewBlankStudio,
+    newMapKindParam,
+    newTrailCode,
+    hikeCode,
+    isStudioMode,
+    mapSlug,
+  ])
 
   // Renouvellement du ticket d'acces media (~mi-vie) tant que la carte reste
   // ouverte. Le tout premier ticket est obtenu au chargement (ou à la validation
@@ -936,8 +986,17 @@ function App() {
         accessCode,
         pointsSourceName,
         slideshow: slideshowSettings,
+        mapConfig,
       }),
-    [accessCode, mediaLibrary, points, pointsSourceName, slideshowSettings, traces],
+    [
+      accessCode,
+      mapConfig,
+      mediaLibrary,
+      points,
+      pointsSourceName,
+      slideshowSettings,
+      traces,
+    ],
   )
   const usedMediaUrls = useMemo(
     () => mediaUrlsUsedByPoints(points, mediaLibrary),
@@ -1027,6 +1086,7 @@ function App() {
     hikeTitle,
     isPublished,
     slideshow: slideshowSettings,
+    mapConfig,
     signature: currentProjectSignature,
   })
   useEffect(() => {
@@ -1042,6 +1102,7 @@ function App() {
       hikeTitle,
       isPublished,
       slideshow: slideshowSettings,
+      mapConfig,
       signature: currentProjectSignature,
     }
   }, [
@@ -1051,6 +1112,7 @@ function App() {
     currentProjectSignature,
     hikeTitle,
     isPublished,
+    mapConfig,
     mediaLibrary,
     points,
     pointsSourceName,
@@ -1099,6 +1161,7 @@ function App() {
         traces: tracesForStorage(persistedTraces),
         accessCode: snapshot.accessCode.trim() || undefined,
         slideshow: snapshot.slideshow,
+        mapConfig: cleanMapConfig(snapshot.mapConfig),
         points: exportablePoints(snapshot.points),
         mediaLibrary: snapshot.mediaLibrary,
         trackSourceName:
@@ -1145,6 +1208,7 @@ function App() {
           accessCode: snapshot.accessCode,
           pointsSourceName: snapshot.pointsSourceName,
           slideshow: snapshot.slideshow,
+          mapConfig: snapshot.mapConfig,
         }),
       )
       syncStudioUrlToCode(mapSlug)
@@ -1404,6 +1468,25 @@ function App() {
   const handleBasemapChange = useCallback((nextBasemap: BasemapId) => {
     setBasemap(nextBasemap)
   }, [])
+
+  // Réglages de la carte (Studio) : mode de vue et fond par défaut, persistés
+  // dans mapConfig (autosave). Changer le fond par défaut bascule aussi la vue
+  // courante pour un retour visuel immédiat.
+  const handleViewModeChange = useCallback(
+    (mode: MapViewMode) => {
+      setMapConfig((current) => ({ ...current, viewMode: mode }))
+      scheduleAutosave()
+    },
+    [scheduleAutosave],
+  )
+  const handleDefaultBasemapChange = useCallback(
+    (id: BasemapId) => {
+      setMapConfig((current) => ({ ...current, defaultBasemap: id }))
+      setBasemap(id)
+      scheduleAutosave()
+    },
+    [scheduleAutosave],
+  )
 
   // Conserve le cycle existant : Auto → 2D → 3D → Auto.
   const handleCyclePerfMode = useCallback(() => {
@@ -2664,6 +2747,7 @@ function App() {
         accessCode,
         pointsSourceName,
         slideshow: slideshowSettings,
+        mapConfig,
       })
 
       const project: TrailProject = {
@@ -2673,6 +2757,7 @@ function App() {
         traces: tracesForStorage(persistedTraces),
         accessCode: accessCode.trim() || undefined,
         slideshow: slideshowSettings,
+        mapConfig: cleanMapConfig(mapConfig),
         points: exportablePoints(points),
         mediaLibrary,
         trackSourceName:
@@ -2758,6 +2843,7 @@ function App() {
     accessMode,
     isProtected,
     adminPassword,
+    mapConfig,
     mapSlug,
     mediaLibrary,
     points,
@@ -2840,7 +2926,12 @@ function App() {
               </button>
             </>
           )}
-          <StatsBar stats={stats} pointCount={points.length} />
+          <StatsBar
+            stats={stats}
+            pointCount={points.length}
+            galleryMode={isGalleryMap}
+            mediaCount={mediaPoints.length}
+          />
         </div>
       </header>
 
@@ -2853,22 +2944,26 @@ function App() {
             </div>
           ) : null}
 
-          <button
-            type="button"
-            className="terrain-badge terrain-toggle"
-            onClick={handleCyclePerfMode}
-            title="Mode carte : Auto / 2D / 3D"
-            aria-label="Mode carte : cliquer pour basculer entre Auto, 2D et Relief 3D"
-          >
-            {mapFlat2D ? (
-              <MapIcon aria-hidden="true" size={16} />
-            ) : (
-              <Mountain aria-hidden="true" size={16} />
-            )}
-            <span>
-              {mapFlat2D ? 'Vue 2D' : 'Relief 3D'}
-            </span>
-          </button>
+          {/* Bascule Auto/2D/3D : seulement si la carte laisse le choix
+              (mode de vue « 3D + 2D ») ; sinon la vue est verrouillée. */}
+          {mapViewMode === 'both' ? (
+            <button
+              type="button"
+              className="terrain-badge terrain-toggle"
+              onClick={handleCyclePerfMode}
+              title="Mode carte : Auto / 2D / 3D"
+              aria-label="Mode carte : cliquer pour basculer entre Auto, 2D et Relief 3D"
+            >
+              {mapFlat2D ? (
+                <MapIcon aria-hidden="true" size={16} />
+              ) : (
+                <Mountain aria-hidden="true" size={16} />
+              )}
+              <span>
+                {mapFlat2D ? 'Vue 2D' : 'Relief 3D'}
+              </span>
+            </button>
+          ) : null}
 
           <BasemapControl basemap={basemap} onChange={handleBasemapChange} />
 
@@ -3099,6 +3194,11 @@ function App() {
                   mediaLibrary={mediaLibrary}
                   accessCode={accessCode}
                   accessMode={accessMode}
+                  mapKind={isGalleryMap ? 'gallery' : 'hike'}
+                  viewMode={mapViewMode}
+                  defaultBasemapId={configBasemap(mapConfig)}
+                  onViewModeChange={handleViewModeChange}
+                  onDefaultBasemapChange={handleDefaultBasemapChange}
                   moderationPending={moderationPending}
                   onSelectPoint={handleSelectPoint}
                   onClose={handleClosePoint}
@@ -3152,6 +3252,7 @@ function App() {
                   mediaLibrary={mediaLibrary}
                   dayPlan={dayPlan}
                   activeDayKey={activeDayKey}
+                  galleryMode={isGalleryMap}
                   onSelectDay={handleSelectDay}
                   onSelectPoint={handleSelectPoint}
                   onShowMedia={handleOpenLightbox}

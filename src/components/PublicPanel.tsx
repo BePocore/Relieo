@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, Mountain, Play } from 'lucide-react'
+import { ChevronRight, Images, Mountain, Play } from 'lucide-react'
 import { ElevationProfile } from './ElevationProfile'
 import { DayElevationSparkline } from './DayElevationSparkline'
 import { PointDetail } from './PointDetail'
@@ -24,6 +24,9 @@ type PublicPanelProps = {
   mediaLibrary: ImportedMedia[]
   dayPlan: DayPlan
   activeDayKey: string | null
+  // Carte « exposition de photos » : pas de trace GPS, on masque le profil
+  // d'altitude et on adapte l'en-tête (les jours, eux, restent).
+  galleryMode?: boolean
   onSelectDay: (key: string | null) => void
   onSelectPoint: (point: TrailPoint) => void
   onShowMedia: (media: LightboxMedia) => void
@@ -38,6 +41,7 @@ export function PublicPanel({
   mediaLibrary,
   dayPlan,
   activeDayKey,
+  galleryMode = false,
   onSelectDay,
   onSelectPoint,
   onShowMedia,
@@ -159,13 +163,17 @@ export function PublicPanel({
     <div className="panel-content">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Parcours</p>
-          <h2>Points de passage</h2>
+          <p className="eyebrow">{galleryMode ? 'Exposition' : 'Parcours'}</p>
+          <h2>{galleryMode ? 'Photos & médias' : 'Points de passage'}</h2>
         </div>
-        <Mountain aria-hidden="true" size={22} />
+        {galleryMode ? (
+          <Images aria-hidden="true" size={22} />
+        ) : (
+          <Mountain aria-hidden="true" size={22} />
+        )}
       </div>
 
-      <ElevationProfile traces={traces} stats={stats} />
+      {galleryMode ? null : <ElevationProfile traces={traces} stats={stats} />}
 
       {dayPlan.multiDay ? (
         <div className="day-sections">

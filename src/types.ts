@@ -63,6 +63,26 @@ export type ImportedMedia = {
   locationSource?: 'exif' | 'video-metadata'
 }
 
+// Type de carte, choisi à la création (FIGÉ ensuite, décision produit) :
+// 'hike' = randonnée/voyage classique (comportement historique complet),
+// 'gallery' = exposition de photos SANS trace GPS (les imports de traces et
+// tous les affichages distance/dénivelé sont retirés ; les jours et la
+// timeline restent, datés par l'EXIF). Extensible plus tard.
+export type MapKind = 'hike' | 'gallery'
+
+// Mode de vue de la carte : 'both' = badge Auto/2D/3D actuel (le visiteur
+// bascule), '2d' = vue 2D verrouillée partout, '3d' = relief 3D verrouillé.
+export type MapViewMode = 'both' | '2d' | '3d'
+
+// Réglages de la carte, persistés dans project.json. Tout est facultatif :
+// absent = comportement historique ('hike', 'both', fond topo).
+// `defaultBasemap` reprend les ids de lib/basemaps ('satellite'|'topo'|'streets').
+export type MapConfig = {
+  kind?: MapKind
+  viewMode?: MapViewMode
+  defaultBasemap?: string
+}
+
 // Réglages du diaporama, édités au Studio (SlideshowEditor). Tout est
 // facultatif : absent = comportement automatique historique. `days` est clé
 // par la date locale 'YYYY-MM-DD' du jour (stable quand le plan de journées
@@ -101,6 +121,7 @@ export type TrailProject = {
   accessCode?: string
   mediaLibrary?: ImportedMedia[]
   slideshow?: SlideshowSettings
+  mapConfig?: MapConfig
 }
 
 export type UploadProgress = {
