@@ -63,6 +63,34 @@ export type ImportedMedia = {
   locationSource?: 'exif' | 'video-metadata'
 }
 
+// Réglages du diaporama, édités au Studio (SlideshowEditor). Tout est
+// facultatif : absent = comportement automatique historique. `days` est clé
+// par la date locale 'YYYY-MM-DD' du jour (stable quand le plan de journées
+// se recalcule) ou 'undated' pour la carte « Non datés » ; `media` est clé
+// par l'id du point porteur du média.
+export type SlideshowDaySettings = {
+  title?: string
+  intro?: string
+}
+
+export type SlideshowMediaSettings = {
+  durationMs?: number
+  excluded?: boolean
+}
+
+export type SlideshowEndCardSettings = {
+  enabled?: boolean
+  title?: string
+}
+
+export type SlideshowSettings = {
+  photoMs?: number
+  breakMs?: number
+  days?: Record<string, SlideshowDaySettings>
+  media?: Record<string, SlideshowMediaSettings>
+  endCard?: SlideshowEndCardSettings
+}
+
 export type TrailProject = {
   points: TrailPoint[]
   pointsSourceName: string
@@ -72,6 +100,7 @@ export type TrailProject = {
   traces?: Trace[]
   accessCode?: string
   mediaLibrary?: ImportedMedia[]
+  slideshow?: SlideshowSettings
 }
 
 export type UploadProgress = {

@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  Clapperboard,
   Compass,
   Copy,
   LayoutDashboard,
@@ -61,8 +62,17 @@ import {
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
 import { buildDayPlan, computeDayStats } from './lib/days'
+import {
+  END_CARD_DEFAULT_INTRO,
+  END_CARD_DEFAULT_TITLE,
+  UNDATED_DAY_KEY,
+  UNDATED_DEFAULT_INTRO,
+  UNDATED_DEFAULT_LABEL,
+  defaultDayIntro,
+} from './lib/slideshow'
 import { formatDistance, formatGain } from './lib/format'
 import { DayTimeline } from './components/DayTimeline'
+import { SlideshowEditor } from './components/SlideshowEditor'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
 import {
   googleDriveImportConfigured,
@@ -73,6 +83,8 @@ import type {
   ImportReport,
   MediaKind,
   PointType,
+  SlideshowMediaSettings,
+  SlideshowSettings,
   Trace,
   TrailPoint,
   TrailProject,
@@ -108,13 +120,18 @@ export type LightboxMedia = {
   kind: MediaKind | '360' | 'day-break'
   title?: string
   dayBreak?: DayBreakInfo
+  // Durée d'affichage personnalisée en lecture auto (réglages du diaporama),
+  // prioritaire sur la durée globale. Ignorée pour les vidéos.
+  durationMs?: number
 }
 
 // Construit la liste plein écran (photos / vidéos / 360) à partir de points.
-// Réutilisé pour le clic sur un groupe ET le diaporama de toute la page.
+// Réutilisé pour le clic sur un groupe ET le diaporama de toute la page ;
+// `mediaSettings` (réglages du diaporama) porte les durées personnalisées.
 const pointsToLightboxItems = (
   points: TrailPoint[],
   mediaLibrary: ImportedMedia[],
+  mediaSettings?: Record<string, SlideshowMediaSettings>,
 ): LightboxMedia[] =>
   points
     .map((point): LightboxMedia | null => {
@@ -124,7 +141,15 @@ const pointsToLightboxItems = (
       }
       const kind =
         point.type === '360' && media.kind === 'image' ? '360' : media.kind
-      return { src: media.src, kind, title: point.title }
+      const durationMs = point.id
+        ? mediaSettings?.[point.id]?.durationMs
+        : undefined
+      return {
+        src: media.src,
+        kind,
+        title: point.title,
+        ...(durationMs ? { durationMs } : {}),
+      }
     })
     .filter((item): item is LightboxMedia => item !== null)
 
@@ -331,6 +356,7 @@ const projectSignature = (input: {
   mediaLibrary: ImportedMedia[]
   accessCode: string
   pointsSourceName: string
+  slideshow: SlideshowSettings | undefined
 }): string =>
   JSON.stringify({
     points: exportablePoints(input.points),
@@ -338,6 +364,7 @@ const projectSignature = (input: {
     mediaLibrary: input.mediaLibrary,
     accessCode: input.accessCode.trim(),
     pointsSourceName: input.pointsSourceName,
+    slideshow: input.slideshow ?? null,
   })
 
 const normalizeProject = (
@@ -359,6 +386,12 @@ const normalizeProject = (
     trackSourceName: candidate.trackSourceName ?? 'carte publiee en ligne',
     pointsSourceName: candidate.pointsSourceName ?? 'carte publiee en ligne',
     savedAt: candidate.savedAt ?? new Date().toISOString(),
+    slideshow:
+      candidate.slideshow &&
+      typeof candidate.slideshow === 'object' &&
+      !Array.isArray(candidate.slideshow)
+        ? candidate.slideshow
+        : undefined,
   }
 }
 
@@ -607,6 +640,11 @@ function App() {
   const [savedProjectSignature, setSavedProjectSignature] = useState<string | null>(
     null,
   )
+  // Réglages du diaporama (persistés dans project.json, édités au Studio).
+  const [slideshowSettings, setSlideshowSettings] = useState<
+    SlideshowSettings | undefined
+  >(undefined)
+  const [showSlideshowEditor, setShowSlideshowEditor] = useState(false)
   const [hasPanelDraft, setHasPanelDraft] = useState(false)
   const [showDashboardConfirm, setShowDashboardConfirm] = useState(false)
   const isGoogleDriveConfigured = googleDriveImportConfigured()
@@ -639,6 +677,7 @@ function App() {
     setPoints(loadedPoints)
     setMediaLibrary(loadedMediaLibrary)
     setPointsSourceName(project.pointsSourceName)
+    setSlideshowSettings(project.slideshow)
     // Le code d'accès est write-only : jamais renvoyé par le serveur, donc vide
     // au chargement. Le propriétaire en pose un nouveau dans le Studio au besoin.
     setAccessCode('')
@@ -649,6 +688,7 @@ function App() {
         mediaLibrary: loadedMediaLibrary,
         accessCode: '',
         pointsSourceName: project.pointsSourceName,
+        slideshow: project.slideshow,
       }),
     )
     // Le contenu complet est là (métadonnées seules n'appellent pas applyProject).
@@ -683,6 +723,7 @@ function App() {
           setPoints(blankPoints)
           setMediaLibrary(blankMediaLibrary)
           setPointsSourceName(blankPointsSourceName)
+          setSlideshowSettings(undefined)
           setAccessCode(newSecret)
           // Un code choisi à la création ⇒ carte privée ; code vide ⇒ publique.
           setAccessMode(newSecret ? 'private' : 'public')
@@ -695,6 +736,7 @@ function App() {
               mediaLibrary: blankMediaLibrary,
               accessCode: newSecret,
               pointsSourceName: blankPointsSourceName,
+              slideshow: undefined,
             }),
           )
           setAccessGranted(true)
@@ -893,8 +935,9 @@ function App() {
         mediaLibrary,
         accessCode,
         pointsSourceName,
+        slideshow: slideshowSettings,
       }),
-    [accessCode, mediaLibrary, points, pointsSourceName, traces],
+    [accessCode, mediaLibrary, points, pointsSourceName, slideshowSettings, traces],
   )
   const usedMediaUrls = useMemo(
     () => mediaUrlsUsedByPoints(points, mediaLibrary),
@@ -983,6 +1026,7 @@ function App() {
     stats,
     hikeTitle,
     isPublished,
+    slideshow: slideshowSettings,
     signature: currentProjectSignature,
   })
   useEffect(() => {
@@ -997,6 +1041,7 @@ function App() {
       stats,
       hikeTitle,
       isPublished,
+      slideshow: slideshowSettings,
       signature: currentProjectSignature,
     }
   }, [
@@ -1009,6 +1054,7 @@ function App() {
     mediaLibrary,
     points,
     pointsSourceName,
+    slideshowSettings,
     stats,
     traces,
   ])
@@ -1052,6 +1098,7 @@ function App() {
         track: [],
         traces: tracesForStorage(persistedTraces),
         accessCode: snapshot.accessCode.trim() || undefined,
+        slideshow: snapshot.slideshow,
         points: exportablePoints(snapshot.points),
         mediaLibrary: snapshot.mediaLibrary,
         trackSourceName:
@@ -1097,6 +1144,7 @@ function App() {
           mediaLibrary: snapshot.mediaLibrary,
           accessCode: snapshot.accessCode,
           pointsSourceName: snapshot.pointsSourceName,
+          slideshow: snapshot.slideshow,
         }),
       )
       syncStudioUrlToCode(mapSlug)
@@ -1186,64 +1234,118 @@ function App() {
   // (comportement historique). Voyage multi-jours : diaporama NARRATIF, dans
   // l'ordre chronologique par jour, avec une carte de transition avant chaque
   // journée (« Jour N », date, distance, D+, médias) pour raconter l'avancée.
+  // Les réglages du Studio (slideshowSettings) personnalisent titres/intros
+  // des jours, durées, médias masqués et carte de fin.
   const slideshowItems = useMemo<LightboxMedia[]>(() => {
-    if (!dayPlan.multiDay) {
-      return pointsToLightboxItems(mediaPoints, mediaLibrary)
-    }
-    const dayKeyByPoint = new Map<TrailPoint, string | null>()
-    points.forEach((point, index) => {
-      dayKeyByPoint.set(point, dayPlan.pointDayKeys[index] ?? null)
-    })
+    const mediaSettings = slideshowSettings?.media
+    const daySettings = slideshowSettings?.days
+    const shownMediaPoints = mediaPoints.filter(
+      (point) => !(point.id && mediaSettings?.[point.id]?.excluded),
+    )
     const items: LightboxMedia[] = []
-    dayPlan.days.forEach((day, dayIndex) => {
-      const dayStats = computeDayStats(day, traces)
+
+    if (!dayPlan.multiDay) {
+      items.push(
+        ...pointsToLightboxItems(shownMediaPoints, mediaLibrary, mediaSettings),
+      )
+    } else {
+      const dayKeyByPoint = new Map<TrailPoint, string | null>()
+      points.forEach((point, index) => {
+        dayKeyByPoint.set(point, dayPlan.pointDayKeys[index] ?? null)
+      })
+      dayPlan.days.forEach((day, dayIndex) => {
+        const dayStats = computeDayStats(day, traces)
+        // Médias du jour dans l'ordre le long du tracé (porté par mediaPoints).
+        const dayMedia = shownMediaPoints.filter(
+          (point) => dayKeyByPoint.get(point) === day.key,
+        )
+        const custom = daySettings?.[day.key]
+        const dayLabel = custom?.title?.trim() || day.label
+        items.push({
+          src: `day-break-${day.key}`,
+          kind: 'day-break',
+          title: dayLabel,
+          dayBreak: {
+            label: dayLabel,
+            dateLabel: day.dateLabel,
+            color: day.color,
+            intro: custom?.intro?.trim() || defaultDayIntro(dayIndex),
+            distanceLabel:
+              dayStats.distanceMeters > 0
+                ? formatDistance(dayStats.distanceMeters)
+                : undefined,
+            gainLabel:
+              dayStats.elevationGainMeters > 0
+                ? formatGain(dayStats.elevationGainMeters)
+                : undefined,
+            mediaCount: dayMedia.length,
+          },
+        })
+        items.push(...pointsToLightboxItems(dayMedia, mediaLibrary, mediaSettings))
+      })
+      // Médias non datés en fin de récit, sous leur propre carte.
+      const undatedMedia = shownMediaPoints.filter(
+        (point) => (dayKeyByPoint.get(point) ?? null) === null,
+      )
+      if (undatedMedia.length > 0) {
+        const custom = daySettings?.[UNDATED_DAY_KEY]
+        const undatedLabel = custom?.title?.trim() || UNDATED_DEFAULT_LABEL
+        items.push({
+          src: 'day-break-undated',
+          kind: 'day-break',
+          title: undatedLabel,
+          dayBreak: {
+            label: undatedLabel,
+            dateLabel: 'Sans date',
+            color: '#93a1b5',
+            intro: custom?.intro?.trim() || UNDATED_DEFAULT_INTRO,
+            mediaCount: undatedMedia.length,
+          },
+        })
+        items.push(
+          ...pointsToLightboxItems(undatedMedia, mediaLibrary, mediaSettings),
+        )
+      }
+    }
+
+    // Carte de fin (stats totales du voyage) : activée par défaut pour les
+    // voyages multi-jours, sur demande pour les cartes d'un seul jour.
+    const endCard = slideshowSettings?.endCard
+    const endEnabled = endCard?.enabled ?? dayPlan.multiDay
+    if (endEnabled && items.length > 0) {
+      const endLabel = endCard?.title?.trim() || END_CARD_DEFAULT_TITLE
       items.push({
-        src: `day-break-${day.key}`,
+        src: 'day-break-end',
         kind: 'day-break',
-        title: day.label,
+        title: endLabel,
         dayBreak: {
-          label: day.label,
-          dateLabel: day.dateLabel,
-          color: day.color,
-          intro: dayIndex === 0 ? 'Le voyage commence' : 'La suite du voyage',
+          label: endLabel,
+          dateLabel: hikeTitle.trim(),
+          color: '#4fd1a1',
+          intro: END_CARD_DEFAULT_INTRO,
           distanceLabel:
-            dayStats.distanceMeters > 0
-              ? formatDistance(dayStats.distanceMeters)
+            stats.distanceMeters > 0
+              ? formatDistance(stats.distanceMeters)
               : undefined,
           gainLabel:
-            dayStats.elevationGainMeters > 0
-              ? formatGain(dayStats.elevationGainMeters)
+            stats.elevationGainMeters > 0
+              ? formatGain(stats.elevationGainMeters)
               : undefined,
-          mediaCount: day.mediaCount,
+          mediaCount: shownMediaPoints.length,
         },
       })
-      // Médias du jour dans l'ordre le long du tracé (déjà porté par mediaPoints).
-      const dayMedia = mediaPoints.filter(
-        (point) => dayKeyByPoint.get(point) === day.key,
-      )
-      items.push(...pointsToLightboxItems(dayMedia, mediaLibrary))
-    })
-    // Médias non datés en fin de récit, sous leur propre carte.
-    const undatedMedia = mediaPoints.filter(
-      (point) => (dayKeyByPoint.get(point) ?? null) === null,
-    )
-    if (undatedMedia.length > 0) {
-      items.push({
-        src: 'day-break-undated',
-        kind: 'day-break',
-        title: 'Médias non datés',
-        dayBreak: {
-          label: 'Non datés',
-          dateLabel: 'Sans date',
-          color: '#93a1b5',
-          intro: 'Pour finir',
-          mediaCount: undatedMedia.length,
-        },
-      })
-      items.push(...pointsToLightboxItems(undatedMedia, mediaLibrary))
     }
     return items
-  }, [dayPlan, mediaPoints, points, mediaLibrary, traces])
+  }, [
+    dayPlan,
+    mediaPoints,
+    points,
+    mediaLibrary,
+    traces,
+    slideshowSettings,
+    stats,
+    hikeTitle,
+  ])
   const handleOpenSlideshow = useCallback(() => {
     if (slideshowItems.length === 0) return
     const key = slideshowResumeKey(mapSlug)
@@ -1276,6 +1378,23 @@ function App() {
       persistKey: key || undefined,
     })
   }, [slideshowItems, mapSlug])
+
+  // Réglages du diaporama (éditeur du Studio) : chaque modif marque le projet
+  // « non sauvegardé » (signature) et programme une autosave discrète.
+  const handleSlideshowSettingsChange = useCallback(
+    (next: SlideshowSettings | undefined) => {
+      setSlideshowSettings(next)
+      scheduleAutosave()
+    },
+    [scheduleAutosave],
+  )
+
+  // Prévisualisation depuis l'éditeur : le vrai diaporama, du début, sans
+  // toucher à la position de reprise mémorisée.
+  const handlePreviewSlideshow = useCallback(() => {
+    if (slideshowItems.length === 0) return
+    setLightbox({ items: slideshowItems, index: 0 })
+  }, [slideshowItems])
 
   const handleAdminPasswordChange = useCallback((password: string) => {
     setAdminPassword(password)
@@ -2544,6 +2663,7 @@ function App() {
         mediaLibrary,
         accessCode,
         pointsSourceName,
+        slideshow: slideshowSettings,
       })
 
       const project: TrailProject = {
@@ -2552,6 +2672,7 @@ function App() {
         track: [],
         traces: tracesForStorage(persistedTraces),
         accessCode: accessCode.trim() || undefined,
+        slideshow: slideshowSettings,
         points: exportablePoints(points),
         mediaLibrary,
         trackSourceName:
@@ -2641,6 +2762,7 @@ function App() {
     mediaLibrary,
     points,
     pointsSourceName,
+    slideshowSettings,
     traces,
     hikeTitle,
     stats,
@@ -2793,6 +2915,19 @@ function App() {
               <Play aria-hidden="true" size={18} />
               <span>Diaporama</span>
             </button>
+            {isStudioMode ? (
+              <button
+                aria-label="Personnaliser le diaporama"
+                className="map-tool-button"
+                title="Personnaliser le diaporama (jours, durées, médias)"
+                type="button"
+                onClick={() => setShowSlideshowEditor(true)}
+                disabled={mediaPoints.length === 0}
+              >
+                <Clapperboard aria-hidden="true" size={18} />
+                <span>Éditer diapo</span>
+              </button>
+            ) : null}
             <button
               aria-label={isStudioMode ? 'Ouvrir le studio' : 'Voir le parcours'}
               className="map-tool-button"
@@ -3028,11 +3163,27 @@ function App() {
         ) : null}
       </main>
 
+      {isStudioMode && showSlideshowEditor ? (
+        <SlideshowEditor
+          dayPlan={dayPlan}
+          points={points}
+          mediaPoints={mediaPoints}
+          mediaLibrary={mediaLibrary}
+          settings={slideshowSettings}
+          onChange={handleSlideshowSettingsChange}
+          onPreview={handlePreviewSlideshow}
+          canPreview={slideshowItems.length > 0}
+          onClose={() => setShowSlideshowEditor(false)}
+        />
+      ) : null}
+
       {lightbox ? (
         <MediaLightbox
           items={lightbox.items}
           startIndex={lightbox.index}
           persistKey={lightbox.persistKey}
+          photoMs={slideshowSettings?.photoMs}
+          breakMs={slideshowSettings?.breakMs}
           onClose={handleCloseLightbox}
         />
       ) : null}

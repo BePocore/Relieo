@@ -9,24 +9,28 @@ import {
 import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react'
 import { Panorama360 } from './Panorama360'
 import type { LightboxMedia } from '../App'
+import { SLIDESHOW_BREAK_MS, SLIDESHOW_PHOTO_MS } from '../lib/slideshow'
 
 type MediaLightboxProps = {
   items: LightboxMedia[]
   startIndex?: number
   // Diaporama : clé localStorage où mémoriser la position pour la reprise.
   persistKey?: string
+  // Durées d'affichage en lecture auto, personnalisables par carte (réglages
+  // du Studio). Les vidéos, elles, jouent jusqu'à leur fin avant d'avancer,
+  // pour laisser parler les mini-vlogs. Un média peut aussi porter sa propre
+  // durée (`durationMs`), prioritaire sur la durée globale.
+  photoMs?: number
+  breakMs?: number
   onClose: () => void
 }
-
-// Durées d'affichage en lecture auto (les vidéos, elles, jouent jusqu'à leur
-// fin avant d'avancer, pour laisser parler les mini-vlogs).
-const PHOTO_MS = 4200
-const BREAK_MS = 2600
 
 export function MediaLightbox({
   items,
   startIndex = 0,
   persistKey,
+  photoMs = SLIDESHOW_PHOTO_MS,
+  breakMs = SLIDESHOW_BREAK_MS,
   onClose,
 }: MediaLightboxProps) {
   const [index, setIndex] = useState(startIndex)
@@ -103,6 +107,9 @@ export function MediaLightbox({
 
   // Segments de progression : un par jour (de sa carte de transition jusqu'à
   // la suivante), largeur proportionnelle au nombre de slides, teinté du jour.
+  // Les slides qui précèdent la première carte (ex. carte de fin seule sur une
+  // carte d'un seul jour) forment un segment neutre pour que la barre couvre
+  // bien tout le diaporama.
   const segments = useMemo(() => {
     if (!hasBreaks) return []
     const segs: Array<{ color: string; start: number; length: number }> = []
@@ -115,6 +122,8 @@ export function MediaLightbox({
         })
       } else if (segs.length > 0) {
         segs[segs.length - 1].length += 1
+      } else {
+        segs.push({ color: '#4fd1a1', start: i, length: 1 })
       }
     })
     return segs
@@ -144,17 +153,20 @@ export function MediaLightbox({
   }, [onClose, count])
 
   // Lecture auto : les vidéos avancent sur leur fin (onEnded), le reste sur
-  // une minuterie. Boucle en fin de diaporama.
+  // une minuterie (durée du média si personnalisée, sinon durée globale).
+  // Boucle en fin de diaporama.
   useEffect(() => {
     if (!playing || count <= 1) return
     const current = items[safeIndex]
     if (current?.kind === 'video') return
-    const delay = current?.kind === 'day-break' ? BREAK_MS : PHOTO_MS
+    const delay =
+      current?.durationMs ??
+      (current?.kind === 'day-break' ? breakMs : photoMs)
     const timer = window.setTimeout(() => {
       setIndex((c) => (c + 1) % count)
     }, delay)
     return () => window.clearTimeout(timer)
-  }, [playing, safeIndex, count, items])
+  }, [playing, safeIndex, count, items, photoMs, breakMs])
 
   if (!media) return null
 
