@@ -97,6 +97,7 @@ import type {
 } from './types'
 import { MediaLightbox } from './components/MediaLightbox'
 import { AccessGate } from './components/AccessGate'
+import { ConsultTutorial } from './components/ConsultTutorial'
 import { UnavailableMap } from './components/UnavailableMap'
 import { useVideoPosters } from './useVideoPosters'
 import { useFramedThumbnails } from './useFramedThumbnails'
@@ -3002,6 +3003,7 @@ function App() {
             <button
               aria-label="Lancer le diaporama de tous les médias"
               className="map-tool-button"
+              data-tuto="slideshow"
               title="Diaporama de tous les médias"
               type="button"
               onClick={handleOpenSlideshow}
@@ -3026,6 +3028,7 @@ function App() {
             <button
               aria-label={isStudioMode ? 'Ouvrir le studio' : 'Voir le parcours'}
               className="map-tool-button"
+              data-tuto="parcours"
               title={isStudioMode ? 'Studio' : 'Parcours'}
               type="button"
               onClick={() => setIsPanelOpen(true)}
@@ -3324,6 +3327,17 @@ function App() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {!isStudioMode ? (
+        <ConsultTutorial
+          active={mapReady && !needsAccess && !loadFailed}
+          hasMedia={mediaPoints.length > 0}
+          hasSlideshow={slideshowItems.length > 0}
+          flat2D={mapFlat2D}
+          multiDay={dayPlan.multiDay}
+          gallery={isGalleryMap}
+        />
       ) : null}
 
       <div

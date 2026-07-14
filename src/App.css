@@ -3844,3 +3844,169 @@
   font-size: 0.78rem;
   padding: 6px 4px;
 }
+
+/* ── Tuto de consultation (spotlight visiteur anonyme) ── */
+
+.consult-tuto {
+  position: fixed;
+  inset: 0;
+  z-index: 84;
+  pointer-events: auto;
+}
+
+.consult-tuto-scrim {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.consult-tuto-scrim path {
+  fill: rgba(3, 8, 6, 0.66);
+}
+
+.consult-tuto-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+.consult-tuto-bubble {
+  position: absolute;
+  width: min(340px, calc(100vw - 32px));
+  padding: 15px 16px 11px;
+  border-radius: 16px;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  backdrop-filter: blur(14px);
+  animation: consult-tuto-pop 180ms ease;
+}
+
+.consult-tuto-bubble.is-centered {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes consult-tuto-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.consult-tuto-bubble.is-centered {
+  animation: none;
+}
+
+.consult-tuto-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.consult-tuto-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.consult-tuto-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 26px 8px 0;
+}
+
+.consult-tuto-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.consult-tuto-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.consult-tuto-text {
+  margin: 0 0 12px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.consult-tuto-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.consult-tuto-never {
+  padding: 4px 2px;
+  background: none;
+  border: 0;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.consult-tuto-never:hover {
+  color: var(--text-dim);
+  text-decoration: underline;
+}
+
+.consult-tuto-foot-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.consult-tuto-count {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.consult-tuto-next {
+  padding: 8px 15px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.consult-tuto-next:hover {
+  background: var(--accent-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .consult-tuto-bubble {
+    animation: none;
+  }
+}
