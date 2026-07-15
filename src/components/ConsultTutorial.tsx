@@ -12,6 +12,7 @@
 
 import {
   Check,
+  Hand,
   Images,
   Layers,
   List,
@@ -61,6 +62,15 @@ type Step = {
   Icon: LucideIcon
   title: string
   text: string
+  /**
+   * Cible manipulable pendant l'étape : le trou laisse passer les clics, on
+   * apprend en essayant. Réservé aux contrôles à effet immédiat (relief, fond
+   * de carte) ; interdit à ceux qui ouvrent quelque chose PAR-DESSUS le tuto
+   * (médias et diaporama ouvrent la lightbox, parcours ouvre le panneau).
+   */
+  interactive?: boolean
+  /** Invitation à manipuler, affichée sous le texte des étapes interactives. */
+  hint?: string
 }
 
 const clamp = (v: number, min: number, max: number): number =>
@@ -96,6 +106,10 @@ function buildSteps({
     text: flat2D
       ? 'Fais pivoter, zoome et recadre la vue avec ces boutons (ou directement à deux doigts sur la carte).'
       : 'Incline la vue pour révéler le relief, fais-la pivoter et zoome avec ces boutons (ou à deux doigts sur la carte).',
+    interactive: true,
+    hint: flat2D
+      ? 'Essaie : ces boutons marchent tout de suite.'
+      : 'Essaie : incline la vue, le relief apparaît.',
   })
 
   steps.push({
@@ -104,6 +118,8 @@ function buildSteps({
     Icon: Layers,
     title: 'Changer de fond',
     text: 'Passe de la vue satellite au fond topographique ou carte, selon ce que tu veux voir.',
+    interactive: true,
+    hint: 'Essaie : la carte change aussitôt.',
   })
 
   if (hasMedia) {
@@ -301,14 +317,16 @@ export function ConsultTutorial({
     setDone(true)
   }, [])
 
-  // Clavier : Échap = passer, → / Entrée = suivant.
+  // Clavier : Échap = passer, → = suivant. (Pas Entrée : sur une étape
+  // interactive, un bouton de la carte gardant le focus déclencherait à la fois
+  // son action et le passage à l'étape suivante.)
   useEffect(() => {
     if (!started || done) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
         finishSeen()
-      } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+      } else if (e.key === 'ArrowRight') {
         e.preventDefault()
         next()
       }
@@ -342,10 +360,27 @@ export function ConsultTutorial({
         preserveAspectRatio="none"
         aria-hidden="true"
       >
+        {/* Seul le tracé capte les clics : son trou (fill-rule evenodd) les
+            laisse passer vers la cible. */}
         <path d={overlayPath(size.w, size.h, rect)} fillRule="evenodd" />
         {rect ? (
           <rect
-            className="consult-tuto-ring"
+            className={
+              step.interactive
+                ? 'consult-tuto-ring is-live'
+                : 'consult-tuto-ring'
+            }
+            x={holeX}
+            y={holeY}
+            width={holeW}
+            height={holeH}
+            rx={holeR}
+          />
+        ) : null}
+        {/* Étape non interactive : on rebouche le trou côté clics. */}
+        {rect && !step.interactive ? (
+          <rect
+            className="consult-tuto-block"
             x={holeX}
             y={holeY}
             width={holeW}
@@ -377,6 +412,12 @@ export function ConsultTutorial({
           <h2 className="consult-tuto-title">{step.title}</h2>
         </div>
         <p className="consult-tuto-text">{step.text}</p>
+        {step.hint ? (
+          <p className="consult-tuto-hint">
+            <Hand aria-hidden="true" size={13} />
+            <span>{step.hint}</span>
+          </p>
+        ) : null}
 
         <div className="consult-tuto-foot">
           <button className="consult-tuto-never" type="button" onClick={never}>

@@ -3847,21 +3847,26 @@
 
 /* ── Tuto de consultation (spotlight visiteur anonyme) ── */
 
+/* Rien ne capte les clics par défaut : seuls le voile peint (hors trou) et la
+   bulle le font, ce qui rend la cible manipulable sur les étapes interactives. */
 .consult-tuto {
   position: fixed;
   inset: 0;
   z-index: 84;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .consult-tuto-scrim {
   position: absolute;
   inset: 0;
   display: block;
+  pointer-events: none;
 }
 
+/* Le trou (fill-rule evenodd) n'est pas peint : les clics y passent. */
 .consult-tuto-scrim path {
   fill: rgba(3, 8, 6, 0.66);
+  pointer-events: auto;
 }
 
 .consult-tuto-ring {
@@ -3869,6 +3874,30 @@
   stroke: var(--accent);
   stroke-width: 2;
   opacity: 0.9;
+  pointer-events: none;
+}
+
+/* Étape interactive : l'anneau respire pour inviter à toucher. */
+.consult-tuto-ring.is-live {
+  animation: consult-tuto-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes consult-tuto-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+    stroke-width: 2;
+  }
+  50% {
+    opacity: 1;
+    stroke-width: 3;
+  }
+}
+
+/* Étape non interactive : on rebouche le trou côté clics. */
+.consult-tuto-block {
+  fill: none;
+  pointer-events: all;
 }
 
 .consult-tuto-bubble {
@@ -3881,6 +3910,7 @@
   box-shadow: var(--shadow);
   color: var(--text);
   backdrop-filter: blur(14px);
+  pointer-events: auto;
   animation: consult-tuto-pop 180ms ease;
 }
 
@@ -3957,6 +3987,24 @@
   color: var(--text-dim);
 }
 
+.consult-tuto-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 12px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.consult-tuto-hint svg {
+  flex: none;
+}
+
 .consult-tuto-foot {
   display: flex;
   align-items: center;
@@ -4006,7 +4054,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .consult-tuto-bubble {
+  .consult-tuto-bubble,
+  .consult-tuto-ring.is-live {
     animation: none;
   }
 }
