@@ -21,6 +21,7 @@ import {
   EyeOff,
   Film,
   Gavel,
+  GraduationCap,
   HardDrive,
   Image as ImageIcon,
   LayoutDashboard,
@@ -40,6 +41,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import type { PortalUser } from '../portalStore'
+import { CONSULT_TUTORIAL_STEPS } from '../../lib/consultTutorial'
 import { getIdToken } from '../firebase'
 import { requestMediaTicket, startMediaTicketRefresh } from '../../lib/mediaTicket'
 import { PLANS, formatBytes, type PlanId } from '../plans'
@@ -266,6 +268,7 @@ type AdminSection =
   | 'sanctions'
   | 'media-moderation'
   | 'media-inventory'
+  | 'tutorial'
   | 'notifications'
   | 'storage'
 
@@ -277,8 +280,20 @@ const SECTION_TITLES: Record<AdminSection, string> = {
   sanctions: 'Sanctions',
   'media-moderation': 'Modération IA',
   'media-inventory': 'Tous les médias',
+  tutorial: 'Tuto de consultation',
   notifications: 'Notifications',
   storage: 'Stockage R2',
+}
+
+/** Compteurs du tuto de consultation (anonymes et agrégés, cf. server/stats.ts). */
+type TutorialStats = {
+  started: number
+  completed: number
+  skipped: number
+  never: number
+  abandoned: number
+  dropoff: Record<string, number>
+  daily: Record<string, number>
 }
 
 type CostPlatform = {
@@ -546,6 +561,7 @@ export function AdminApp({
   const [sanctions, setSanctions] = useState<Sanction[]>([])
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
   const [mediaMod, setMediaMod] = useState<MediaModeration | null>(null)
+  const [tutorial, setTutorial] = useState<TutorialStats | null>(null)
   // Modale de rejet d'un média + message transmis au propriétaire.
   const [rejectMediaTarget, setRejectMediaTarget] = useState<MediaReviewGroup | null>(null)
   const [rejectMediaMessage, setRejectMediaMessage] = useState('')
@@ -627,6 +643,7 @@ export function AdminApp({
         email: EmailUsage
         costs: Costs
         mediaModeration: MediaModeration
+        tutorial?: TutorialStats
       }
       setOverview(data.overview)
       setUsers(data.users)
@@ -636,6 +653,8 @@ export function AdminApp({
       setEmail(data.email)
       setCosts(data.costs)
       setMediaMod(data.mediaModeration)
+      // Optionnel : un déploiement antérieur à la mesure ne renvoie rien.
+      setTutorial(data.tutorial ?? null)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -1152,6 +1171,7 @@ export function AdminApp({
       badge: mediaReviewGroups.length || undefined,
     },
     { id: 'media-inventory', label: 'Médias', icon: <ImageIcon size={18} /> },
+    { id: 'tutorial', label: 'Tuto', icon: <GraduationCap size={18} /> },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
   ]
 
@@ -1829,6 +1849,135 @@ export function AdminApp({
       </p>
     </section>
   )
+
+  // Tuto de consultation : est-ce qu'il sert, ou est-ce qu'il fait fuir ?
+  const tutorialView = (() => {
+    const started = tutorial?.started ?? 0
+    const completed = tutorial?.completed ?? 0
+    const skipped = tutorial?.skipped ?? 0
+    const never = tutorial?.never ?? 0
+    const abandoned = tutorial?.abandoned ?? 0
+    const share = (value: number): string =>
+      started > 0 ? `${Math.round((value / started) * 100)} %` : '—'
+
+    // Entonnoir : personne ne va plus loin que là où les précédents se sont
+    // arrêtés, donc « atteint » = démarrages moins tous les arrêts d'avant.
+    const funnel = CONSULT_TUTORIAL_STEPS.map((step, index) => {
+      const lostBefore = CONSULT_TUTORIAL_STEPS.slice(0, index).reduce(
+        (sum, previous) => sum + (tutorial?.dropoff[previous.key] ?? 0),
+        0,
+      )
+      return {
+        key: step.key,
+        label: step.label,
+        reached: Math.max(0, started - lostBefore),
+        lost: tutorial?.dropoff[step.key] ?? 0,
+      }
+    })
+
+    // Démarrages des 30 derniers jours (les clés sont des dates ISO : l'ordre
+    // lexicographique est l'ordre chronologique).
+    const since = new Date()
+    since.setDate(since.getDate() - 29)
+    const sinceKey = since.toISOString().slice(0, 10)
+    const last30 = Object.entries(tutorial?.daily ?? {})
+      .filter(([day]) => day >= sinceKey)
+      .reduce((sum, [, count]) => sum + (count ?? 0), 0)
+
+    return (
+      <>
+        <section className="admin-stats" aria-label="Tuto de consultation">
+          <article className="admin-stat-card featured">
+            <span><GraduationCap size={18} /></span>
+            <p>Affichages</p>
+            <strong>{started}</strong>
+            <small>{last30} sur les 30 derniers jours</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><Check size={18} /></span>
+            <p>Terminés</p>
+            <strong>{completed}</strong>
+            <small>{share(completed)} des affichages</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><ChevronRight size={18} /></span>
+            <p>Passés</p>
+            <strong>{skipped}</strong>
+            <small>{share(skipped)} · croix ou Échap</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><LogOut size={18} /></span>
+            <p>Abandonnés</p>
+            <strong>{abandoned}</strong>
+            <small>{share(abandoned)} · onglet fermé pendant le tour</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><EyeOff size={18} /></span>
+            <p>Ne plus afficher</p>
+            <strong>{never}</strong>
+            <small>{share(never)} · refus définitif</small>
+          </article>
+        </section>
+
+        <section className="admin-panel" aria-label="Entonnoir du tuto">
+          <header className="admin-panel-head">
+            <h2><LineChart size={18} /> Entonnoir</h2>
+            <p>
+              Combien de visiteurs atteignent chaque étape, et combien lâchent
+              dessus. Une étape absente d’une carte (pas de média, vue
+              verrouillée…) est sautée : personne ne peut y lâcher, la barre
+              reste donc au niveau de la précédente.
+            </p>
+          </header>
+          {started === 0 ? (
+            <p className="admin-empty">
+              Aucun affichage mesuré pour l’instant. Les chiffres apparaîtront
+              dès qu’un visiteur ouvrira une carte publiée.
+            </p>
+          ) : (
+            <ol className="admin-funnel">
+              {funnel.map((step) => (
+                <li key={step.key}>
+                  <div className="admin-funnel-head">
+                    <strong>{step.label}</strong>
+                    <span>
+                      {step.reached}
+                      <small>
+                        {started > 0
+                          ? ` · ${Math.round((step.reached / started) * 100)} %`
+                          : ''}
+                      </small>
+                    </span>
+                  </div>
+                  <div className="admin-funnel-bar">
+                    <span
+                      style={{
+                        width:
+                          started > 0
+                            ? `${Math.max(0, (step.reached / started) * 100)}%`
+                            : '0%',
+                      }}
+                    />
+                  </div>
+                  {step.lost > 0 ? (
+                    <p className="admin-funnel-loss">
+                      {step.lost} arrêt{step.lost > 1 ? 's' : ''} sur cette étape
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="admin-email-foot">
+            Mesure anonyme et agrégée : aucun identifiant visiteur n’est envoyé
+            ni stocké, seulement des compteurs. Comme le compteur de vues, elle
+            est ouverte (n’importe qui peut l’appeler) : ces chiffres sont des
+            indicateurs, pas de la comptabilité.
+          </p>
+        </section>
+      </>
+    )
+  })()
 
   const growthPanel = (
     <section className="admin-panel" aria-label="Évolution des utilisateurs">
@@ -2514,6 +2663,8 @@ export function AdminApp({
             mediaModerationView
           ) : section === 'media-inventory' ? (
             inventoryTable
+          ) : section === 'tutorial' ? (
+            tutorialView
           ) : section === 'notifications' ? (
             notificationsView
           ) : (

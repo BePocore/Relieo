@@ -1335,3 +1335,59 @@
 .admin-pill.neutral { background: #eef1f6; color: #5a657a; }
 .admin-pill.info { background: #e6f0fb; color: #1f5fa8; }
 .admin-pill.muted { background: transparent; color: var(--admin-muted); font-weight: 500; }
+
+/* ── Entonnoir du tuto de consultation ── */
+
+.admin-funnel {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-funnel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.admin-funnel-head strong {
+  font-size: 14px;
+  color: var(--admin-ink);
+}
+
+.admin-funnel-head > span {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--admin-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-funnel-head small {
+  font-weight: 500;
+  color: var(--admin-muted);
+}
+
+.admin-funnel-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--admin-green-soft);
+}
+
+.admin-funnel-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--admin-green);
+  transition: width 240ms ease;
+}
+
+.admin-funnel-loss {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: var(--admin-muted);
+}

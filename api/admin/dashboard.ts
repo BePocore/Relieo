@@ -21,6 +21,7 @@ import { readHikeIndex } from '../../server/hikeIndex.js'
 import { readAllProfiles } from '../../server/firestoreAdmin.js'
 import { readAllModeration } from '../../server/moderation.js'
 import { readSanctions } from '../../server/sanctions.js'
+import { readTutorialStats } from '../../server/stats.js'
 import { readAdminNotifications } from '../../server/adminNotifications.js'
 import { emailConfigured } from '../../server/email.js'
 import {
@@ -72,6 +73,7 @@ export async function GET(request: Request) {
       mediaModItems,
       mediaModUsage,
       mediaModHistory,
+      tutorial,
     ] = await Promise.all([
       getAuth(adminApp()).listUsers(1000),
       readHikeIndex(),
@@ -84,6 +86,7 @@ export async function GET(request: Request) {
       readMediaModerationItems(),
       readMediaModerationUsage(),
       readMediaModerationHistory(),
+      readTutorialStats(),
     ])
 
     const publishedCount = hikes.filter((h) => h.status === 'published').length
@@ -357,6 +360,7 @@ export async function GET(request: Request) {
       email,
       costs,
       mediaModeration,
+      tutorial,
     }
     return new Response(rewriteMediaUrls(JSON.stringify(payload)), {
       headers: { ...jsonHeaders, 'Content-Type': 'application/json' },

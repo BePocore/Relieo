@@ -43,7 +43,11 @@ import { userMapLimit, userStorageScope } from '../server/userStorage.js'
 import { readProfilePlan } from '../server/firestoreAdmin.js'
 import { formatBytes } from '../server/format.js'
 import { pickRandomCoverUrl } from '../server/cover.js'
-import { recordHikeView } from '../server/stats.js'
+import {
+  isTutorialEvent,
+  recordHikeView,
+  recordTutorialEvent,
+} from '../server/stats.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -225,6 +229,45 @@ const moveProjectMedia = async (
   return {
     project: { ...project, mediaLibrary, points },
     migratedSourceKeys: Array.from(new Set(migratedSourceKeys)),
+  }
+}
+
+/**
+ * Mesure du tuto de consultation (visiteur ANONYME).
+ *
+ * Hébergé ici, et non sur une route dédiée, parce que la limite de 12 fonctions
+ * serverless du plan Vercel Hobby est atteinte : un handler de plus dans un
+ * fichier existant ne coûte aucune fonction.
+ *
+ * Ne lit rien, n'expose rien, n'authentifie personne : il ne fait qu'incrémenter
+ * des compteurs agrégés (aucun identifiant visiteur n'est reçu ni stocké).
+ * Comme `recordHikeView`, c'est un compteur public : n'importe qui peut le
+ * solliciter, donc les chiffres sont indicatifs, pas de la comptabilité.
+ */
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as {
+      action?: unknown
+      event?: unknown
+      step?: unknown
+    }
+    if (body?.action !== 'tuto' || !isTutorialEvent(body.event)) {
+      return Response.json(
+        { message: 'Requête inconnue.' },
+        { status: 400, headers: jsonHeaders },
+      )
+    }
+    await recordTutorialEvent(
+      body.event,
+      typeof body.step === 'string' ? body.step : '',
+    )
+    // Rien à renvoyer : le visiteur n'attend pas de réponse.
+    return new Response(null, { status: 204 })
+  } catch {
+    return Response.json(
+      { message: 'Requête invalide.' },
+      { status: 400, headers: jsonHeaders },
+    )
   }
 }
 

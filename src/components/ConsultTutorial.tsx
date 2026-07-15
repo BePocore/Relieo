@@ -35,7 +35,9 @@ import {
 import {
   dismissConsultTutorialForever,
   markConsultTutorialSeen,
+  sendConsultTutorialEvent,
   shouldShowConsultTutorial,
+  type ConsultTutorialStepKey,
 } from '../lib/consultTutorial'
 
 type ConsultTutorialProps = {
@@ -56,7 +58,8 @@ type ConsultTutorialProps = {
 type Box = { left: number; top: number; width: number; height: number }
 
 type Step = {
-  key: string
+  /** Clé typée : elle est remontée telle quelle à la mesure. */
+  key: ConsultTutorialStepKey
   /** Sélecteurs CSS de la cible (le 1er trouvé gagne) ; null = carte centrée. */
   selectors: string[] | null
   Icon: LucideIcon
@@ -217,9 +220,13 @@ export function ConsultTutorial({
     if (started || done || !active || steps.length === 0) return
     // Pas de mémoire à afficher : on ne démarre simplement pas (rendu null).
     if (!shouldShowConsultTutorial()) return
-    const t = window.setTimeout(() => setStarted(true), START_DELAY_MS)
+    const first = steps[0]?.key ?? 'welcome'
+    const t = window.setTimeout(() => {
+      setStarted(true)
+      sendConsultTutorialEvent('start', first)
+    }, START_DELAY_MS)
     return () => window.clearTimeout(t)
-  }, [active, started, done, steps.length])
+  }, [active, started, done, steps])
 
   // Mesure de la cible courante (sélecteurs → rect), sans re-render inutile.
   const measure = useCallback(() => {
@@ -297,25 +304,52 @@ export function ConsultTutorial({
     setPos({ left, top })
   }, [rect, stepIndex, size, started, done])
 
+  /** Étape en cours, pour dire à la mesure OÙ le visiteur s'est arrêté. */
+  const currentKey = useCallback(
+    (): ConsultTutorialStepKey =>
+      steps[Math.min(stepIndex, steps.length - 1)]?.key ?? 'welcome',
+    [steps, stepIndex],
+  )
+
+  /** « Passer » (croix ou Échap) : re-propose après la fenêtre de silence. */
   const finishSeen = useCallback(() => {
+    sendConsultTutorialEvent('skip', currentKey())
+    markConsultTutorialSeen()
+    setDone(true)
+  }, [currentKey])
+
+  /** « Terminer » : le visiteur est allé au bout. */
+  const complete = useCallback(() => {
+    sendConsultTutorialEvent('done', 'end')
     markConsultTutorialSeen()
     setDone(true)
   }, [])
 
+  // La fin se décide ICI et pas dans l'updater de setStepIndex : React
+  // double-appelle les updaters en StrictMode, ce qui enverrait la mesure
+  // deux fois.
   const next = useCallback(() => {
-    setStepIndex((i) => {
-      if (i >= steps.length - 1) {
-        finishSeen()
-        return i
-      }
-      return i + 1
-    })
-  }, [steps.length, finishSeen])
+    if (stepIndex >= steps.length - 1) {
+      complete()
+      return
+    }
+    setStepIndex(stepIndex + 1)
+  }, [stepIndex, steps.length, complete])
 
   const never = useCallback(() => {
+    sendConsultTutorialEvent('never', currentKey())
     dismissConsultTutorialForever()
     setDone(true)
-  }, [])
+  }, [currentKey])
+
+  // Onglet fermé pendant le tour : on distingue « il est parti » de « il a
+  // cliqué Passer », sinon l'abandon serait un trou noir dans la mesure.
+  useEffect(() => {
+    if (!started || done) return
+    const onHide = () => sendConsultTutorialEvent('abandon', currentKey())
+    window.addEventListener('pagehide', onHide)
+    return () => window.removeEventListener('pagehide', onHide)
+  }, [started, done, currentKey])
 
   // Clavier : Échap = passer, → = suivant. (Pas Entrée : sur une étape
   // interactive, un bouton de la carte gardant le focus déclencherait à la fois
