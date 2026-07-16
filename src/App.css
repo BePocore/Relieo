@@ -1266,6 +1266,13 @@
   font-weight: 700;
 }
 
+.lightbox-caption em {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-style: normal;
+}
+
 .lightbox-nav {
   position: absolute;
   top: 50%;

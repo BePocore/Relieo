@@ -127,6 +127,9 @@ export type LightboxMedia = {
   src: string
   kind: MediaKind | '360' | 'day-break'
   title?: string
+  // Date de prise (EXIF, ISO) : sert de libellé contextuel à la place d'un nom
+  // de fichier générique dans la lightbox.
+  takenAt?: string
   dayBreak?: DayBreakInfo
   // Durée d'affichage personnalisée en lecture auto (réglages du diaporama),
   // prioritaire sur la durée globale. Ignorée pour les vidéos.
@@ -152,10 +155,12 @@ const pointsToLightboxItems = (
       const durationMs = point.id
         ? mediaSettings?.[point.id]?.durationMs
         : undefined
+      const takenAt = findPointMediaItem(point, mediaLibrary)?.takenAt
       return {
         src: media.src,
         kind,
         title: point.title,
+        ...(takenAt ? { takenAt } : {}),
         ...(durationMs ? { durationMs } : {}),
       }
     })
@@ -1342,8 +1347,16 @@ function App() {
         // Image d'un point 360 : viewer panoramique au lieu de l'image plate.
         const kind =
           point.type === '360' && media.kind === 'image' ? '360' : media.kind
+        const takenAt = findPointMediaItem(point, mediaLibrary)?.takenAt
         setLightbox({
-          items: [{ src: media.src, kind, title: point.title }],
+          items: [
+            {
+              src: media.src,
+              kind,
+              title: point.title,
+              ...(takenAt ? { takenAt } : {}),
+            },
+          ],
           index: 0,
         })
         return

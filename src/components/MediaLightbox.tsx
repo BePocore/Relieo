@@ -9,6 +9,7 @@ import {
 import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react'
 import { Panorama360 } from './Panorama360'
 import type { LightboxMedia } from '../App'
+import { mediaCaption } from '../lib/format'
 import { SLIDESHOW_BREAK_MS, SLIDESHOW_PHOTO_MS } from '../lib/slideshow'
 
 type MediaLightboxProps = {
@@ -38,6 +39,10 @@ export function MediaLightbox({
   const count = items.length
   const safeIndex = Math.min(index, count - 1)
   const media = items[safeIndex]
+  const caption =
+    media && media.kind !== 'day-break'
+      ? mediaCaption(media.title, media.takenAt)
+      : null
 
   // ── Reprise du diaporama ────────────────────────────────────────────────
   // On mémorise la position + l'heure à chaque changement de vue (couvre le
@@ -259,9 +264,10 @@ export function MediaLightbox({
             decoding="async"
           />
         )}
-        {media.kind !== 'day-break' ? (
+        {media.kind !== 'day-break' && caption ? (
           <p className="lightbox-caption">
-            {media.title ? <span>{media.title}</span> : null}
+            <span>{caption.primary}</span>
+            {caption.secondary ? <em>{caption.secondary}</em> : null}
             {count > 1 ? (
               <small>
                 {safeIndex + 1} / {count}
