@@ -59,6 +59,10 @@ import {
   takeEarlyMediaTicket,
   takeEarlyProjectFetch,
 } from './lib/earlyConsultation'
+import {
+  startMediaPrefetch,
+  type MediaPrefetchItem,
+} from './lib/mediaPrefetch'
 import { loadUserTraces, type UserTraceRecord } from './portal/userTraces'
 import { takePendingTraceImport } from './lib/pendingTraceImport'
 import {
@@ -1179,6 +1183,31 @@ function App() {
     )
     return out
   }, [mediaPoints, points, dayPlan, slideshowSettings])
+
+  // Médias en 2 temps (consultation) : une fois le voile levé, préchargement
+  // en fond des photos/360 pleine taille dans l'ordre de lecture → lightbox
+  // et diaporama instantanés. Petit délai pour laisser les dernières tuiles
+  // finir ; jamais en Studio ni avant l'affichage ; vidéos exclues (lourdes).
+  useEffect(() => {
+    if (!mapReady || isStudioMode) return
+    let stopPrefetch: (() => void) | null = null
+    const timer = window.setTimeout(() => {
+      const items: MediaPrefetchItem[] = []
+      for (const point of orderedMediaPoints) {
+        const media = resolvePointMedia(point, mediaLibrary)
+        if (!media || media.kind !== 'image') continue
+        items.push({
+          src: media.src,
+          kind: point.type === '360' ? '360' : 'image',
+        })
+      }
+      if (items.length > 0) stopPrefetch = startMediaPrefetch(items)
+    }, 1500)
+    return () => {
+      window.clearTimeout(timer)
+      stopPrefetch?.()
+    }
+  }, [mapReady, isStudioMode, orderedMediaPoints, mediaLibrary])
 
   // Autosave discrète : on garde un instantané à jour de tout ce qui part dans
   // le projet pour pouvoir publier en arrière-plan après un import, sans
