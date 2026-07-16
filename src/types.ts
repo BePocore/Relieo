@@ -40,6 +40,10 @@ export type TrailPoint = {
   description?: string
   altitude?: number
   color?: string
+  // Nom du lieu le plus proche (géocodage inverse fait UNE fois dans le Studio,
+  // stocké ici), affiché comme contexte dans la lightbox. Vide = pas encore
+  // géocodé (ou hors ligne / échec).
+  placeName?: string
   // Verrou de position (Studio). undefined = verrouillé par défaut ;
   // seul `false` autorise le déplacement. Non persisté.
   locked?: boolean

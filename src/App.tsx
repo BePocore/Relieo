@@ -75,6 +75,7 @@ import {
   orderMediaByDayTimeTrack,
 } from './lib/slideshow'
 import { formatDistance, formatGain } from './lib/format'
+import { reverseGeocode } from './lib/geocode'
 import { DayTimeline } from './components/DayTimeline'
 import { SlideshowEditor } from './components/SlideshowEditor'
 import { defaultBasemap, type BasemapId } from './lib/basemaps'
@@ -130,6 +131,8 @@ export type LightboxMedia = {
   // Date de prise (EXIF, ISO) : sert de libellé contextuel à la place d'un nom
   // de fichier générique dans la lightbox.
   takenAt?: string
+  // Lieu le plus proche (géocodé dans le Studio) : contexte affiché en priorité.
+  placeName?: string
   dayBreak?: DayBreakInfo
   // Durée d'affichage personnalisée en lecture auto (réglages du diaporama),
   // prioritaire sur la durée globale. Ignorée pour les vidéos.
@@ -161,6 +164,7 @@ const pointsToLightboxItems = (
         kind,
         title: point.title,
         ...(takenAt ? { takenAt } : {}),
+        ...(point.placeName ? { placeName: point.placeName } : {}),
         ...(durationMs ? { durationMs } : {}),
       }
     })
@@ -347,6 +351,7 @@ const exportablePoints = (points: TrailPoint[]): TrailPoint[] => {
       ...(point.skypixelUrl ? { skypixelUrl: point.skypixelUrl } : {}),
       ...(point.altitude !== undefined ? { altitude: point.altitude } : {}),
       ...(point.color ? { color: point.color } : {}),
+      ...(point.placeName ? { placeName: point.placeName } : {}),
     }
 
     if (point.video) {
@@ -1147,6 +1152,10 @@ function App() {
   // le projet pour pouvoir publier en arrière-plan après un import, sans
   // dépendre des closures des handlers.
   const autosaveTimerRef = useRef<number | null>(null)
+  // Géocodage inverse en tâche de fond (Studio) : ids déjà tentés (pour ne pas
+  // reboucler sur un échec). Les points les plus récents sont lus via
+  // latestProjectRef (mis à jour dans un effet plus bas).
+  const geocodeAttemptedRef = useRef<Set<string>>(new Set())
   const latestProjectRef = useRef({
     points,
     traces,
@@ -1322,6 +1331,54 @@ function App() {
     [],
   )
 
+  // Géocodeur de fond (Studio) : géocode UN point média géolocalisé à la fois
+  // (throttle léger), stocke le lieu dans `placeName`, et déclenche l'autosave.
+  // Best-effort : un échec est mémorisé (pas de reboucle).
+  useEffect(() => {
+    if (!isStudioMode) return
+    let cancelled = false
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+    const isMediaPoint = (point: TrailPoint) =>
+      point.type === 'photo' ||
+      point.type === 'video' ||
+      point.type === '360' ||
+      Boolean(point.image || point.video || point.skypixelUrl)
+    const run = async () => {
+      while (!cancelled) {
+        const next = latestProjectRef.current.points.find(
+          (point) =>
+            point.id &&
+            !point.placeName &&
+            isMediaPoint(point) &&
+            Number.isFinite(point.lat) &&
+            Number.isFinite(point.lng) &&
+            !geocodeAttemptedRef.current.has(point.id),
+        )
+        if (!next?.id) {
+          await sleep(3000) // rien à faire ; on re-scrute (nouveaux imports)
+          continue
+        }
+        geocodeAttemptedRef.current.add(next.id)
+        const place = await reverseGeocode(next.lat, next.lng)
+        if (cancelled) return
+        if (place) {
+          setPoints((current) =>
+            current.map((point) =>
+              point.id === next.id ? { ...point, placeName: place } : point,
+            ),
+          )
+          scheduleAutosave()
+        }
+        await sleep(600) // throttle poli entre deux requêtes
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [isStudioMode, scheduleAutosave])
+
   const handleSelectPoint = useCallback((point: TrailPoint) => {
     setSelectedPoint(point)
     setIsPanelOpen(true)
@@ -1355,6 +1412,7 @@ function App() {
               kind,
               title: point.title,
               ...(takenAt ? { takenAt } : {}),
+              ...(point.placeName ? { placeName: point.placeName } : {}),
             },
           ],
           index: 0,
@@ -2673,7 +2731,13 @@ function App() {
 
   const handleUpdatePoint = useCallback((point: TrailPoint) => {
     setPoints((current) =>
-      current.map((item) => (item.id === point.id ? point : item)),
+      current.map((item) =>
+        item.id === point.id
+          ? // Le lieu géocodé (ajouté en tâche de fond) n'est pas dans le
+            // brouillon d'édition : on le préserve pour ne pas l'effacer.
+            { ...point, placeName: point.placeName ?? item.placeName }
+          : item,
+      ),
     )
     setSelectedPoint(point)
     setIsPanelOpen(true)
@@ -2681,13 +2745,20 @@ function App() {
 
   const handleMovePoint = useCallback(
     (pointId: string, lat: number, lng: number) => {
+      // Le point bouge → son lieu géocodé devient périmé : on l'efface pour
+      // qu'il soit recalculé (le géocodeur de fond réessaiera).
+      geocodeAttemptedRef.current.delete(pointId)
       setPoints((current) =>
         current.map((point) =>
-          point.id === pointId ? { ...point, lat, lng } : point,
+          point.id === pointId
+            ? { ...point, lat, lng, placeName: undefined }
+            : point,
         ),
       )
       setSelectedPoint((current) =>
-        current?.id === pointId ? { ...current, lat, lng } : current,
+        current?.id === pointId
+          ? { ...current, lat, lng, placeName: undefined }
+          : current,
       )
       setSaveStatus('Position ajustée. Publie la carte pour la partager.')
     },

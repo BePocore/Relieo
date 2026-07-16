@@ -41,7 +41,7 @@ export function MediaLightbox({
   const media = items[safeIndex]
   const caption =
     media && media.kind !== 'day-break'
-      ? mediaCaption(media.title, media.takenAt)
+      ? mediaCaption(media.title, media.takenAt, media.placeName)
       : null
 
   // ── Reprise du diaporama ────────────────────────────────────────────────

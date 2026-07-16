@@ -44,14 +44,16 @@ export const isGenericMediaName = (name: string): boolean => {
   return false
 }
 
-// Libellé contextuel d'un média pour la lightbox : remplace un nom de fichier
-// générique par la date de prise (heure en sous-titre), ou garde un vrai titre
-// avec la date + heure dessous. Sans date exploitable, garde le nom tel quel.
+// Libellé contextuel d'un média pour la lightbox. Priorité au titre : un vrai
+// titre saisi passe en tête (lieu + date en sous-titre) ; sinon le lieu géocodé
+// ; sinon la date de prise ; à défaut le nom de fichier tel quel.
 export const mediaCaption = (
   title: string | undefined,
   takenAt: string | undefined,
+  placeName?: string,
 ): { primary: string; secondary?: string } => {
   const name = title?.trim() ?? ''
+  const place = placeName?.trim() || undefined
   const parsed = takenAt ? new Date(takenAt) : null
   const date = parsed && Number.isFinite(parsed.getTime()) ? parsed : null
   const dateLabel = date
@@ -67,15 +69,24 @@ export const mediaCaption = (
         minute: '2-digit',
       }).format(date)
     : undefined
-
-  if (!name || isGenericMediaName(name)) {
-    if (dateLabel) return { primary: dateLabel, secondary: timeLabel }
-    return { primary: name || 'Média' }
-  }
-  const secondary = dateLabel
+  const dateTime = dateLabel
     ? timeLabel
       ? `${dateLabel} · ${timeLabel}`
       : dateLabel
     : undefined
-  return { primary: name, secondary }
+
+  // Vrai titre saisi par le créateur : on le garde, contexte dessous.
+  if (name && !isGenericMediaName(name)) {
+    const secondary = [place, dateTime].filter(Boolean).join(' · ') || undefined
+    return { primary: name, secondary }
+  }
+  // Lieu géocodé : contexte le plus parlant à défaut de titre.
+  if (place) {
+    return { primary: place, secondary: dateTime }
+  }
+  // Date de prise.
+  if (dateLabel) {
+    return { primary: dateLabel, secondary: timeLabel }
+  }
+  return { primary: name || 'Média' }
 }
