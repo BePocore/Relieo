@@ -311,13 +311,7 @@ export function SlideshowEditor({
           endDrag()
         }}
       >
-        <button
-          type="button"
-          className="se-media-thumb"
-          aria-label={`Aperçu de « ${point.title} »`}
-          title="Cliquer pour l'aperçu"
-          onClick={() => onPreviewMedia(point)}
-        >
+        <div className="se-media-thumb">
           {isImage && media ? (
             <img
               src={media.thumbnailSrc ?? media.src}
@@ -350,10 +344,18 @@ export function SlideshowEditor({
             </span>
           ) : null}
           {excluded ? <span className="se-media-hidden-tag">Masqué</span> : null}
-          <span className="se-media-zoom" aria-hidden="true">
-            <ZoomIn size={16} />
-          </span>
-        </button>
+          <button
+            type="button"
+            className="se-media-preview"
+            aria-label={`Aperçu de « ${point.title} »`}
+            title="Cliquer pour l'aperçu"
+            onClick={() => onPreviewMedia(point)}
+          >
+            <span className="se-media-zoom" aria-hidden="true">
+              <ZoomIn size={16} />
+            </span>
+          </button>
+        </div>
         <p className="se-media-title" title={point.title}>
           {point.title}
         </p>

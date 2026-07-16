@@ -3691,14 +3691,22 @@
 .se-media-thumb {
   position: relative;
   height: 86px;
-  width: 100%;
   background: rgba(255, 255, 255, 0.05);
   display: grid;
   place-items: center;
+}
+
+/* Bouton d'aperçu : couvre toute la miniature sans casser son dimensionnement
+   (le thumb reste un div ; un button à sa place dérègle la hauteur des images). */
+.se-media-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border: 0;
   padding: 0;
-  color: inherit;
-  font: inherit;
+  margin: 0;
+  background: transparent;
   appearance: none;
   cursor: pointer;
 }
@@ -3719,7 +3727,7 @@
 }
 
 .se-media-thumb:hover .se-media-zoom,
-.se-media-thumb:focus-visible .se-media-zoom {
+.se-media-preview:focus-visible .se-media-zoom {
   opacity: 1;
 }
 
@@ -3739,6 +3747,8 @@
 }
 
 .se-media-thumb img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
