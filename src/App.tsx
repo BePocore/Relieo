@@ -53,6 +53,10 @@ import {
 } from './lib/cloudUpload'
 import { firebaseEnabled, getIdToken } from './portal/firebase'
 import { requestMediaTicket, startMediaTicketRefresh } from './lib/mediaTicket'
+import {
+  takeEarlyMediaTicket,
+  takeEarlyProjectFetch,
+} from './lib/earlyConsultation'
 import { loadUserTraces, type UserTraceRecord } from './portal/userTraces'
 import { takePendingTraceImport } from './lib/pendingTraceImport'
 import {
@@ -815,11 +819,22 @@ function App() {
         // reste inaccessible par son lien, même pour son auteur connecté.
         const authToken =
           hikeCode && isStudioMode ? await getIdToken() : null
-        const projectResponse = await fetch(projectEndpoint, {
-          cache: 'no-store',
-          credentials: 'include',
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
-        }).catch(() => null)
+        // Consultation publique : la réponse préchargée depuis le chunk
+        // d'entrée (Root, earlyConsultation) est consommée si elle correspond ;
+        // un échec du préchargement retombe sur une requête normale.
+        const earlyResponse = authToken
+          ? null
+          : takeEarlyProjectFetch(projectEndpoint)
+        let projectResponse = earlyResponse ? await earlyResponse : null
+        if (!projectResponse) {
+          projectResponse = await fetch(projectEndpoint, {
+            cache: 'no-store',
+            credentials: 'include',
+            headers: authToken
+              ? { Authorization: `Bearer ${authToken}` }
+              : undefined,
+          }).catch(() => null)
+        }
 
         let onlineProject: TrailProject | null = null
         let onlineError: string | null = null
@@ -871,7 +886,15 @@ function App() {
         // Ticket d'acces media (cookie pose) AVANT d'afficher, pour que les images
         // partent deja autorisees : en consultation (public) comme en Studio
         // (ticket proprietaire via le jeton Firebase deja recupere ci-dessus).
-        if (mapSlug) await requestMediaTicket({ code: mapSlug }, authToken)
+        // Le ticket precharge en parallele depuis Root est reutilise s'il a
+        // abouti ; sinon (echec, Studio) demande classique.
+        if (mapSlug) {
+          const earlyTicket = authToken ? null : takeEarlyMediaTicket(mapSlug)
+          const earlyTicketOk = earlyTicket ? await earlyTicket : null
+          if (earlyTicketOk === null) {
+            await requestMediaTicket({ code: mapSlug }, authToken)
+          }
+        }
         // Traces au nouveau format (fichiers R2) : rechargées via le videur (le
         // cookie ticket vient d'être posé) avant d'afficher la carte. Les
         // anciennes cartes (points inline) passent telles quelles.

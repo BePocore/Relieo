@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { DevGate } from './DevGate.tsx'
+import { startEarlyConsultation } from './lib/earlyConsultation.ts'
 
 const App = lazy(() => import('./App.tsx'))
 const PortalApp = lazy(() => import('./portal/PortalApp.tsx'))
@@ -24,6 +25,16 @@ const isMapRoute = (): boolean => isStudioRoute() || hasMapId()
 // (aucun risque, rien d'autre n'est exposé) ; le Studio, le portail et
 // l'inscription restent derrière le DevGate.
 const isPublicConsultation = (): boolean => hasMapId() && !isStudioRoute()
+
+// Préchargements (perf) : sur une route carte, le chunk MapLibre — le plus
+// lourd de l'app — part en téléchargement immédiatement, en parallèle du chunk
+// App, au lieu d'attendre le rendu qui suit le chargement du projet. En
+// consultation publique, la requête projet et le ticket média partent aussi
+// tout de suite (App consomme ces promesses via takeEarly*).
+if (isMapRoute()) {
+  void import('./components/MapLibreTrailMap')
+  if (isPublicConsultation()) startEarlyConsultation()
+}
 
 export function Root() {
   if (isPublicConsultation()) {
