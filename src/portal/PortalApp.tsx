@@ -2363,7 +2363,9 @@ function FirebaseAuthScreen({
     setError(null)
     try {
       await action()
-      navigate('/dashboard')
+      // Accueil post-connexion = le feed social pour tous (email comme Google) ;
+      // le créateur ouvre ensuite son dashboard depuis la nav du feed.
+      navigate('/')
     } catch (authError) {
       setError(firebaseErrorMessage(authError))
     } finally {
