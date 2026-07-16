@@ -373,9 +373,21 @@ const readVideoDimensions = async (
   })
 }
 
+// Date de prise d'une vidéo : les .mov iPhone portent un
+// `com.apple.quicktime.creationdate` sous forme de chaîne ISO dans leurs
+// métadonnées ; on récupère le premier horodatage ISO lisible du texte.
+const videoDatePattern =
+  /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/
+const dateFromVideoText = (text: string): string | undefined => {
+  const match = text.match(videoDatePattern)
+  if (!match) return undefined
+  const date = new Date(match[0].replace(' ', 'T'))
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined
+}
+
 const extractVideoMetadata = async (
   file: File,
-): Promise<Pick<ImportedMedia, 'lat' | 'lng' | 'locationSource'>> => {
+): Promise<Pick<ImportedMedia, 'lat' | 'lng' | 'locationSource' | 'takenAt'>> => {
   try {
     const sampleSize = Math.min(file.size, 32 * 1024 * 1024)
     const head = await file.slice(0, sampleSize).arrayBuffer()
@@ -384,7 +396,11 @@ const extractVideoMetadata = async (
         ? await file.slice(Math.max(file.size - sampleSize, 0)).arrayBuffer()
         : new ArrayBuffer(0)
     const text = `${decodeMetadataText(head)} ${decodeMetadataText(tail)}`
-    return coordinatesFromVideoText(text)
+    const takenAt = dateFromVideoText(text)
+    return {
+      ...coordinatesFromVideoText(text),
+      ...(takenAt ? { takenAt } : {}),
+    }
   } catch {
     return {}
   }

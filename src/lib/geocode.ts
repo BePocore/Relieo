@@ -30,9 +30,12 @@ export const reverseGeocode = async (
       data.locality?.trim() ||
       data.city?.trim() ||
       data.principalSubdivision?.trim()
-    const label = [locality, data.countryName?.trim()]
-      .filter(Boolean)
-      .join(', ')
+    // Les noms de pays FR de BigDataCloud portent un article entre parenthèses
+    // (« Norvège (la) ») : on le retire.
+    const country = data.countryName
+      ?.replace(/\s*\([^)]*\)\s*$/, '')
+      .trim()
+    const label = [locality, country].filter(Boolean).join(', ')
     return label || null
   } catch {
     return null
