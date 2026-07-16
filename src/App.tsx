@@ -1362,6 +1362,22 @@ function App() {
     [mediaLibrary],
   )
 
+  // Aperçu d'un média depuis l'éditeur de diaporama : ouvre la lightbox sur ce
+  // média (navigable parmi tous, dans l'ordre affiché) pour savoir ce que c'est.
+  const handlePreviewEditorMedia = useCallback(
+    (point: TrailPoint) => {
+      const previewable = orderedMediaPoints.filter((candidate) => {
+        const media = resolvePointMedia(candidate, mediaLibrary)
+        return Boolean(media) && (media?.kind === 'image' || media?.kind === 'video')
+      })
+      const items = pointsToLightboxItems(previewable, mediaLibrary)
+      if (items.length === 0) return
+      const index = Math.max(0, previewable.indexOf(point))
+      setLightbox({ items, index })
+    },
+    [orderedMediaPoints, mediaLibrary],
+  )
+
   // Diaporama. Carte d'un seul jour : tous les médias dans l'ordre du parcours
   // (comportement historique). Voyage multi-jours : diaporama NARRATIF, dans
   // l'ordre chronologique par jour, avec une carte de transition avant chaque
@@ -3352,9 +3368,11 @@ function App() {
           points={points}
           mediaPoints={mediaPoints}
           mediaLibrary={mediaLibrary}
+          videoPosters={videoPosters}
           settings={slideshowSettings}
           onChange={handleSlideshowSettingsChange}
           onPreview={handlePreviewSlideshow}
+          onPreviewMedia={handlePreviewEditorMedia}
           canPreview={slideshowItems.length > 0}
           onClose={() => setShowSlideshowEditor(false)}
         />

@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Video,
   X,
+  ZoomIn,
 } from 'lucide-react'
 import type {
   ImportedMedia,
@@ -51,9 +52,14 @@ type SlideshowEditorProps = {
   // Médias en ordre chronologique par jour (même source que le diaporama).
   mediaPoints: TrailPoint[]
   mediaLibrary: ImportedMedia[]
+  // Posters (première image) des vidéos, pour afficher un aperçu au lieu d'une
+  // simple icône dans les vignettes.
+  videoPosters?: Record<string, string>
   settings?: SlideshowSettings
   onChange: (next: SlideshowSettings | undefined) => void
   onPreview: () => void
+  // Ouvre un média en grand (lightbox) pour savoir ce que c'est.
+  onPreviewMedia: (point: TrailPoint) => void
   canPreview: boolean
   onClose: () => void
 }
@@ -98,9 +104,11 @@ export function SlideshowEditor({
   points,
   mediaPoints,
   mediaLibrary,
+  videoPosters = {},
   settings,
   onChange,
   onPreview,
+  onPreviewMedia,
   canPreview,
   onClose,
 }: SlideshowEditorProps) {
@@ -282,6 +290,7 @@ export function SlideshowEditor({
     const excluded = Boolean(entry?.excluded)
     const isVideo = media?.kind === 'video'
     const isImage = media?.kind === 'image'
+    const videoPoster = isVideo && media ? videoPosters[media.src] : undefined
     const canDrag = ctx.canReorder && Boolean(pointId)
     const isDragging = drag?.draggingId === pointId && Boolean(pointId)
     const classes = ['se-media']
@@ -302,10 +311,24 @@ export function SlideshowEditor({
           endDrag()
         }}
       >
-        <div className="se-media-thumb">
+        <button
+          type="button"
+          className="se-media-thumb"
+          aria-label={`Aperçu de « ${point.title} »`}
+          title="Cliquer pour l'aperçu"
+          onClick={() => onPreviewMedia(point)}
+        >
           {isImage && media ? (
             <img
               src={media.thumbnailSrc ?? media.src}
+              alt=""
+              decoding="async"
+              loading="lazy"
+              fetchPriority="low"
+            />
+          ) : videoPoster ? (
+            <img
+              src={videoPoster}
               alt=""
               decoding="async"
               loading="lazy"
@@ -321,8 +344,16 @@ export function SlideshowEditor({
             </span>
           )}
           <span className="se-media-order">{index + 1}</span>
+          {videoPoster ? (
+            <span className="se-media-play" aria-hidden="true">
+              <Play size={14} fill="currentColor" />
+            </span>
+          ) : null}
           {excluded ? <span className="se-media-hidden-tag">Masqué</span> : null}
-        </div>
+          <span className="se-media-zoom" aria-hidden="true">
+            <ZoomIn size={16} />
+          </span>
+        </button>
         <p className="se-media-title" title={point.title}>
           {point.title}
         </p>

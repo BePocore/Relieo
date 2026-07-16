@@ -3691,9 +3691,51 @@
 .se-media-thumb {
   position: relative;
   height: 86px;
+  width: 100%;
   background: rgba(255, 255, 255, 0.05);
   display: grid;
   place-items: center;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  appearance: none;
+  cursor: pointer;
+}
+
+.se-media-zoom {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: rgba(9, 14, 24, 0.72);
+  color: #e6edf5;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.se-media-thumb:hover .se-media-zoom,
+.se-media-thumb:focus-visible .se-media-zoom {
+  opacity: 1;
+}
+
+.se-media-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(9, 14, 24, 0.6);
+  color: #fff;
+  pointer-events: none;
 }
 
 .se-media-thumb img {
