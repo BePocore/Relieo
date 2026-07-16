@@ -1,10 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
+  ChevronLeft,
+  ChevronRight,
   Clapperboard,
   Eye,
   EyeOff,
   Globe,
+  GripVertical,
   Play,
+  RotateCcw,
   Video,
   X,
 } from 'lucide-react'
@@ -17,6 +21,7 @@ import type {
 import type { DayPlan } from '../lib/days'
 import { resolvePointMedia } from '../lib/media'
 import {
+  ALL_MEDIA_ORDER_KEY,
   END_CARD_DEFAULT_TITLE,
   MEDIA_DURATION_CHOICES_MS,
   SLIDESHOW_BREAK_MS,
@@ -24,24 +29,26 @@ import {
   UNDATED_DAY_KEY,
   UNDATED_DEFAULT_INTRO,
   UNDATED_DEFAULT_LABEL,
+  applyMediaOrder,
   cleanSlideshowSettings,
   defaultDayIntro,
 } from '../lib/slideshow'
 
 // ---------------------------------------------------------------------------
 // Éditeur du diaporama (Studio uniquement) : une timeline verticale des
-// journées avec leurs médias dans l'ordre EXACT de lecture (non déplaçables,
-// l'ordre suit le parcours et les jours). On y personnalise les cartes de
-// transition (titre + phrase d'intro), les durées d'affichage (globales et
-// par média), les médias masqués et la carte de fin. Chaque modification
-// remonte immédiatement à App (état + autosave), la timeline n'a pas de
-// bouton « Enregistrer ».
+// journées avec leurs médias dans l'ordre de lecture. L'ordre suit le parcours
+// et les jours par défaut, mais chaque média est réordonnable DANS SA JOURNÉE
+// (glisser-déposer à la souris + flèches ◀▶ tactiles/clavier) ; « Ordre auto »
+// remet la journée dans l'ordre du tracé. On y personnalise aussi les cartes de
+// transition (titre + intro), les durées (globales et par média), les médias
+// masqués et la carte de fin. Chaque modification remonte immédiatement à App
+// (état + autosave), la timeline n'a pas de bouton « Enregistrer ».
 // ---------------------------------------------------------------------------
 
 type SlideshowEditorProps = {
   dayPlan: DayPlan
   points: TrailPoint[]
-  // Médias dans l'ordre le long du parcours (même source que le diaporama).
+  // Médias en ordre chronologique par jour (même source que le diaporama).
   mediaPoints: TrailPoint[]
   mediaLibrary: ImportedMedia[]
   settings?: SlideshowSettings
@@ -62,8 +69,29 @@ type EditorSection = {
   media: TrailPoint[]
 }
 
+// État d'un glisser-déposer en cours (une seule section à la fois).
+type DragState = {
+  sectionKey: string
+  draggingId: string
+  ids: string[] // ordre live pendant le glissement
+  origin: string[] // ordre au début du drag (pour ne rien émettre si inchangé)
+  naturalIds: string[] // ordre automatique de la section (pour « ordre auto »)
+}
+
 const formatSeconds = (ms: number): string =>
   `${(ms / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} s`
+
+// Clé de section pour le Record `order` : une carte d'un seul jour n'a pas de
+// clé de jour → clé réservée 'all'.
+const sectionKeyOf = (key: string | null): string => key ?? ALL_MEDIA_ORDER_KEY
+
+const idsOf = (media: TrailPoint[]): string[] =>
+  media
+    .map((point) => point.id ?? '')
+    .filter((id): id is string => id.length > 0)
+
+const sameOrder = (a: string[], b: string[]): boolean =>
+  a.length === b.length && a.every((id, index) => id === b[index])
 
 export function SlideshowEditor({
   dayPlan,
@@ -77,9 +105,12 @@ export function SlideshowEditor({
   onClose,
 }: SlideshowEditorProps) {
   const current: SlideshowSettings = settings ?? {}
+  const [drag, setDrag] = useState<DragState | null>(null)
 
   // Une section par carte de transition (+ « Non datés »), ou une section
-  // unique à plat pour une carte d'un seul jour.
+  // unique à plat pour une carte d'un seul jour. Les médias restent ici dans
+  // l'ordre AUTOMATIQUE (le long du tracé) ; l'ordre custom est appliqué au
+  // rendu, pour pouvoir comparer et proposer « Ordre auto ».
   const sections = useMemo<EditorSection[]>(() => {
     const dayKeyByPoint = new Map<TrailPoint, string | null>()
     points.forEach((point, index) => {
@@ -155,23 +186,121 @@ export function SlideshowEditor({
     emit({ ...current, endCard: { ...(current.endCard ?? {}), ...patch } })
   }
 
+  // Persiste l'ordre d'une section (ou l'efface s'il retrouve l'ordre auto).
+  const commitOrder = (
+    sectionKey: string,
+    naturalIds: string[],
+    nextIds: string[],
+  ) => {
+    const order = { ...(current.order ?? {}) }
+    if (sameOrder(nextIds, naturalIds)) delete order[sectionKey]
+    else order[sectionKey] = nextIds
+    emit({ ...current, order })
+  }
+
+  const resetOrder = (sectionKey: string) => {
+    if (!current.order?.[sectionKey]) return
+    const order = { ...current.order }
+    delete order[sectionKey]
+    emit({ ...current, order })
+  }
+
+  // Flèches ◀▶ : échange deux médias voisins dans l'ordre affiché.
+  const moveMedia = (
+    sectionKey: string,
+    naturalIds: string[],
+    displayedIds: string[],
+    index: number,
+    dir: -1 | 1,
+  ) => {
+    const target = index + dir
+    if (target < 0 || target >= displayedIds.length) return
+    const next = [...displayedIds]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    commitOrder(sectionKey, naturalIds, next)
+  }
+
+  const startDrag = (
+    sectionKey: string,
+    displayedIds: string[],
+    naturalIds: string[],
+    draggingId: string,
+  ) => {
+    setDrag({
+      sectionKey,
+      draggingId,
+      ids: displayedIds,
+      origin: displayedIds,
+      naturalIds,
+    })
+  }
+
+  // Réordonne en direct : place le média glissé à l'emplacement du média survolé.
+  const dragOver = (sectionKey: string, overId: string) => {
+    setDrag((prev) => {
+      if (!prev || prev.sectionKey !== sectionKey || overId === prev.draggingId) {
+        return prev
+      }
+      const from = prev.ids.indexOf(prev.draggingId)
+      const to = prev.ids.indexOf(overId)
+      if (from < 0 || to < 0 || from === to) return prev
+      const ids = [...prev.ids]
+      ids.splice(from, 1)
+      ids.splice(to, 0, prev.draggingId)
+      return { ...prev, ids }
+    })
+  }
+
+  const endDrag = () => {
+    if (!drag) return
+    if (!sameOrder(drag.ids, drag.origin)) {
+      commitOrder(drag.sectionKey, drag.naturalIds, drag.ids)
+    }
+    setDrag(null)
+  }
+
   const photoMs = current.photoMs ?? SLIDESHOW_PHOTO_MS
   const breakMs = current.breakMs ?? SLIDESHOW_BREAK_MS
   const endEnabled = current.endCard?.enabled ?? dayPlan.multiDay
 
-  const renderMediaCard = (point: TrailPoint, index: number) => {
+  const renderMediaCard = (
+    point: TrailPoint,
+    index: number,
+    ctx: {
+      sectionKey: string
+      displayedIds: string[]
+      naturalIds: string[]
+      canReorder: boolean
+    },
+  ) => {
     const media = resolvePointMedia(point, mediaLibrary)
     // `normalizePoint` garantit un id au chargement ; sans id (cas limite),
-    // le média apparaît dans la timeline mais n'est pas personnalisable.
+    // le média apparaît dans la timeline mais n'est ni personnalisable ni
+    // réordonnable.
     const pointId = point.id ?? ''
     const entry = pointId ? current.media?.[pointId] : undefined
     const excluded = Boolean(entry?.excluded)
     const isVideo = media?.kind === 'video'
     const isImage = media?.kind === 'image'
+    const canDrag = ctx.canReorder && Boolean(pointId)
+    const isDragging = drag?.draggingId === pointId && Boolean(pointId)
+    const classes = ['se-media']
+    if (excluded) classes.push('excluded')
+    if (isDragging) classes.push('dragging')
     return (
       <div
-        className={excluded ? 'se-media excluded' : 'se-media'}
+        className={classes.join(' ')}
         key={pointId || `media-${index}`}
+        onDragEnter={() => {
+          if (drag && pointId) dragOver(ctx.sectionKey, pointId)
+        }}
+        onDragOver={(event) => {
+          if (drag?.sectionKey === ctx.sectionKey) event.preventDefault()
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          endDrag()
+        }}
       >
         <div className="se-media-thumb">
           {isImage && media ? (
@@ -244,6 +373,73 @@ export function SlideshowEditor({
             )}
           </button>
         </div>
+        {ctx.canReorder ? (
+          <div className="se-media-reorder">
+            <button
+              type="button"
+              className="se-media-move"
+              aria-label={`Déplacer « ${point.title} » vers la gauche`}
+              title="Déplacer vers la gauche"
+              disabled={!pointId || index === 0}
+              onClick={() =>
+                moveMedia(
+                  ctx.sectionKey,
+                  ctx.naturalIds,
+                  ctx.displayedIds,
+                  index,
+                  -1,
+                )
+              }
+            >
+              <ChevronLeft aria-hidden="true" size={15} />
+            </button>
+            <span
+              className="se-media-grip"
+              role="button"
+              aria-label={`Glisser « ${point.title} » pour le réordonner`}
+              title="Glisser pour réordonner"
+              draggable={canDrag}
+              onDragStart={(event) => {
+                if (!canDrag) return
+                event.dataTransfer.effectAllowed = 'move'
+                event.dataTransfer.setData('text/plain', pointId)
+                const card = (event.currentTarget as HTMLElement).closest(
+                  '.se-media',
+                ) as HTMLElement | null
+                if (card) {
+                  event.dataTransfer.setDragImage(card, card.clientWidth / 2, 24)
+                }
+                startDrag(
+                  ctx.sectionKey,
+                  ctx.displayedIds,
+                  ctx.naturalIds,
+                  pointId,
+                )
+              }}
+              onDragEnd={endDrag}
+            >
+              <GripVertical aria-hidden="true" size={15} />
+            </span>
+            <button
+              type="button"
+              className="se-media-move"
+              aria-label={`Déplacer « ${point.title} » vers la droite`}
+              title="Déplacer vers la droite"
+              disabled={!pointId || index === ctx.displayedIds.length - 1}
+              onClick={() =>
+                moveMedia(
+                  ctx.sectionKey,
+                  ctx.naturalIds,
+                  ctx.displayedIds,
+                  index,
+                  1,
+                )
+              }
+            >
+              <ChevronRight aria-hidden="true" size={15} />
+            </button>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -262,8 +458,8 @@ export function SlideshowEditor({
         <div className="se-head-titles">
           <h2>Diaporama</h2>
           <p>
-            L'ordre suit le parcours et les journées. Personnalise les cartes,
-            les durées et les médias affichés.
+            Réordonne les médias dans chaque journée (glisse-les ou utilise les
+            flèches), personnalise les cartes, les durées et les médias affichés.
           </p>
         </div>
         <div className="se-actions">
@@ -347,6 +543,14 @@ export function SlideshowEditor({
         {sections.map((section) => {
           const dayKey = section.key
           const daySetting = dayKey ? current.days?.[dayKey] : undefined
+          const orderKey = sectionKeyOf(section.key)
+          const activeIds =
+            drag?.sectionKey === orderKey ? drag.ids : current.order?.[orderKey]
+          const displayed = applyMediaOrder(section.media, activeIds)
+          const displayedIds = idsOf(displayed)
+          const naturalIds = idsOf(section.media)
+          const canReorder = section.media.length > 1
+          const isCustomOrder = Boolean(current.order?.[orderKey])
           const hiddenCount = section.media.filter((point) =>
             Boolean(point.id && current.media?.[point.id]?.excluded),
           ).length
@@ -395,10 +599,28 @@ export function SlideshowEditor({
                     ? ` · ${hiddenCount} masqué${hiddenCount > 1 ? 's' : ''}`
                     : ''}
                 </span>
+                {isCustomOrder ? (
+                  <button
+                    type="button"
+                    className="se-order-reset"
+                    title="Remettre les médias dans l'ordre du parcours"
+                    onClick={() => resetOrder(orderKey)}
+                  >
+                    <RotateCcw aria-hidden="true" size={13} />
+                    <span>Ordre auto</span>
+                  </button>
+                ) : null}
               </header>
-              {section.media.length > 0 ? (
+              {displayed.length > 0 ? (
                 <div className="se-media-strip">
-                  {section.media.map(renderMediaCard)}
+                  {displayed.map((point, index) =>
+                    renderMediaCard(point, index, {
+                      sectionKey: orderKey,
+                      displayedIds,
+                      naturalIds,
+                      canReorder,
+                    }),
+                  )}
                 </div>
               ) : (
                 <p className="se-day-empty">

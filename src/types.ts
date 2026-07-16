@@ -108,6 +108,12 @@ export type SlideshowSettings = {
   breakMs?: number
   days?: Record<string, SlideshowDaySettings>
   media?: Record<string, SlideshowMediaSettings>
+  // Ordre personnalisé des médias, par section : clé = date locale du jour
+  // ('YYYY-MM-DD'), 'undated', ou 'all' pour une carte d'un seul jour / expo.
+  // Valeur = ids de points dans l'ordre voulu. Absent = ordre automatique
+  // (le long du tracé). Les ids inconnus sont ignorés, les nouveaux médias
+  // non listés passent à la fin de leur section.
+  order?: Record<string, string[]>
   endCard?: SlideshowEndCardSettings
 }
 

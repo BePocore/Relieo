@@ -57,18 +57,22 @@ import { loadUserTraces, type UserTraceRecord } from './portal/userTraces'
 import { takePendingTraceImport } from './lib/pendingTraceImport'
 import {
   createImportedMedia,
+  findPointMediaItem,
   mediaKindFromFile,
   resolvePointMedia,
 } from './lib/media'
 import { createMediaPreview } from './lib/mediaPreview'
 import { buildDayPlan, computeDayStats } from './lib/days'
 import {
+  ALL_MEDIA_ORDER_KEY,
   END_CARD_DEFAULT_INTRO,
   END_CARD_DEFAULT_TITLE,
   UNDATED_DAY_KEY,
   UNDATED_DEFAULT_INTRO,
   UNDATED_DEFAULT_LABEL,
+  applyMediaOrder,
   defaultDayIntro,
+  orderMediaByDayTimeTrack,
 } from './lib/slideshow'
 import { formatDistance, formatGain } from './lib/format'
 import { DayTimeline } from './components/DayTimeline'
@@ -1031,6 +1035,9 @@ function App() {
     }
   }, [tilesReady, mapReady, assetsReady])
 
+  // Ordre par défaut des médias (diaporama + bandeau du bas) : CHRONOLOGIQUE
+  // par jour (heure de prise EXIF), pour raconter le déroulé du voyage. Les
+  // médias sans heure de prise gardent leur ordre le long du tracé (repli).
   const mediaPoints = useMemo(() => {
     const filtered = points.filter(
       (point) =>
@@ -1039,8 +1046,10 @@ function App() {
         point.type === '360' ||
         Boolean(point.image || point.video || point.skypixelUrl),
     )
+    if (filtered.length === 0) return filtered
 
-    // Route avec distance cumulée continue (trace 1 puis trace 2 ...).
+    // Route avec distance cumulée continue (trace 1 puis trace 2 ...) : sert de
+    // repli d'ordre pour les médias sans heure et à départager les ex æquo.
     const route: Array<{ lat: number; lng: number; cum: number }> = []
     let cum = 0
     for (const trace of traces) {
@@ -1049,10 +1058,8 @@ function App() {
         route.push({ lat: tracePoint.lat, lng: tracePoint.lng, cum })
       })
     }
-    if (route.length === 0) return filtered
-
-    // Clé de tri = distance le long du tracé du point de route le plus proche.
-    const orderKey = (point: TrailPoint): number => {
+    const trackKey = (point: TrailPoint): number => {
+      if (route.length === 0) return 0
       let nearest = Number.POSITIVE_INFINITY
       let key = 0
       for (const routePoint of route) {
@@ -1064,12 +1071,72 @@ function App() {
       }
       return key
     }
+    const trackKeyByPoint = new Map<TrailPoint, number>()
+    filtered.forEach((point) => trackKeyByPoint.set(point, trackKey(point)))
 
-    return filtered
-      .map((point) => ({ point, key: orderKey(point) }))
-      .sort((a, b) => a.key - b.key)
-      .map((entry) => entry.point)
-  }, [points, traces])
+    // Heure de prise (EXIF) par point.
+    const takenMsByPoint = new Map<TrailPoint, number | null>()
+    filtered.forEach((point) => {
+      const takenAt = findPointMediaItem(point, mediaLibrary)?.takenAt
+      const ms = takenAt ? Date.parse(takenAt) : NaN
+      takenMsByPoint.set(point, Number.isNaN(ms) ? null : ms)
+    })
+
+    // Rang du jour de chaque point (les jours du plan sont déjà chronologiques ;
+    // les médias non datés viennent en dernier).
+    const dayOrdinal = new Map<string, number>()
+    dayPlan.days.forEach((day, index) => dayOrdinal.set(day.key, index))
+    const undatedOrdinal = dayPlan.days.length
+    const dayRankByPoint = new Map<TrailPoint, number>()
+    points.forEach((point, index) => {
+      if (!trackKeyByPoint.has(point)) return
+      const key = dayPlan.pointDayKeys[index] ?? null
+      dayRankByPoint.set(
+        point,
+        key === null ? undatedOrdinal : (dayOrdinal.get(key) ?? undatedOrdinal),
+      )
+    })
+
+    // Tri : jour, puis heure de prise (datés avant non datés), puis tracé.
+    return orderMediaByDayTimeTrack(filtered, (point) => ({
+      day: dayRankByPoint.get(point) ?? undatedOrdinal,
+      takenMs: takenMsByPoint.get(point) ?? null,
+      track: trackKeyByPoint.get(point) ?? 0,
+    }))
+  }, [points, traces, dayPlan, mediaLibrary])
+
+  // Ordre des médias tel qu'affiché : ordre chrono par défaut + réordonnancement
+  // custom du Studio appliqué par journée (même ordre que le diaporama, mais
+  // médias masqués inclus). Alimente le bandeau du bas pour qu'il colle au diapo.
+  const orderedMediaPoints = useMemo<TrailPoint[]>(() => {
+    const order = slideshowSettings?.order
+    if (!order || Object.keys(order).length === 0) return mediaPoints
+    if (!dayPlan.multiDay) {
+      return applyMediaOrder(mediaPoints, order[ALL_MEDIA_ORDER_KEY])
+    }
+    const dayKeyByPoint = new Map<TrailPoint, string | null>()
+    points.forEach((point, index) => {
+      dayKeyByPoint.set(point, dayPlan.pointDayKeys[index] ?? null)
+    })
+    const out: TrailPoint[] = []
+    dayPlan.days.forEach((day) => {
+      out.push(
+        ...applyMediaOrder(
+          mediaPoints.filter((point) => dayKeyByPoint.get(point) === day.key),
+          order[day.key],
+        ),
+      )
+    })
+    out.push(
+      ...applyMediaOrder(
+        mediaPoints.filter(
+          (point) => (dayKeyByPoint.get(point) ?? null) === null,
+        ),
+        order[UNDATED_DAY_KEY],
+      ),
+    )
+    return out
+  }, [mediaPoints, points, dayPlan, slideshowSettings])
 
   // Autosave discrète : on garde un instantané à jour de tout ce qui part dans
   // le projet pour pouvoir publier en arrière-plan après un import, sans
@@ -1304,6 +1371,7 @@ function App() {
   const slideshowItems = useMemo<LightboxMedia[]>(() => {
     const mediaSettings = slideshowSettings?.media
     const daySettings = slideshowSettings?.days
+    const orderSettings = slideshowSettings?.order
     const shownMediaPoints = mediaPoints.filter(
       (point) => !(point.id && mediaSettings?.[point.id]?.excluded),
     )
@@ -1311,7 +1379,11 @@ function App() {
 
     if (!dayPlan.multiDay) {
       items.push(
-        ...pointsToLightboxItems(shownMediaPoints, mediaLibrary, mediaSettings),
+        ...pointsToLightboxItems(
+          applyMediaOrder(shownMediaPoints, orderSettings?.[ALL_MEDIA_ORDER_KEY]),
+          mediaLibrary,
+          mediaSettings,
+        ),
       )
     } else {
       const dayKeyByPoint = new Map<TrailPoint, string | null>()
@@ -1320,9 +1392,13 @@ function App() {
       })
       dayPlan.days.forEach((day, dayIndex) => {
         const dayStats = computeDayStats(day, traces)
-        // Médias du jour dans l'ordre le long du tracé (porté par mediaPoints).
-        const dayMedia = shownMediaPoints.filter(
-          (point) => dayKeyByPoint.get(point) === day.key,
+        // Médias du jour en ordre chronologique (porté par mediaPoints), sauf
+        // ordre custom du Studio pour cette journée.
+        const dayMedia = applyMediaOrder(
+          shownMediaPoints.filter(
+            (point) => dayKeyByPoint.get(point) === day.key,
+          ),
+          orderSettings?.[day.key],
         )
         const custom = daySettings?.[day.key]
         const dayLabel = custom?.title?.trim() || day.label
@@ -1349,8 +1425,11 @@ function App() {
         items.push(...pointsToLightboxItems(dayMedia, mediaLibrary, mediaSettings))
       })
       // Médias non datés en fin de récit, sous leur propre carte.
-      const undatedMedia = shownMediaPoints.filter(
-        (point) => (dayKeyByPoint.get(point) ?? null) === null,
+      const undatedMedia = applyMediaOrder(
+        shownMediaPoints.filter(
+          (point) => (dayKeyByPoint.get(point) ?? null) === null,
+        ),
+        orderSettings?.[UNDATED_DAY_KEY],
       )
       if (undatedMedia.length > 0) {
         const custom = daySettings?.[UNDATED_DAY_KEY]
@@ -3140,7 +3219,7 @@ function App() {
           )}
 
           <MediaRail
-            points={mediaPoints}
+            points={orderedMediaPoints}
             mediaLibrary={mediaLibrary}
             videoPosters={videoPosters}
             selectedPoint={selectedPoint}
