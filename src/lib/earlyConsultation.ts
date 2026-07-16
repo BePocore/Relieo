@@ -32,10 +32,31 @@ export function startEarlyConsultation(): void {
       credentials: 'include',
     }).catch(() => null),
   }
-  // Ticket média demandé en parallèle (il ne dépend que du slug). Pour une
-  // carte protégée non déverrouillée il échoue (null), sans conséquence : le
-  // flux de la porte de code redemande un ticket avec le code d'accès.
-  mediaTicket = { slug, promise: requestMediaTicket({ code: slug }) }
+  // Ticket média chaîné sur la réponse projet : il ne part que si la carte
+  // est réellement publique (contenu complet, non protégée). Une carte à code
+  // ne déclenche AUCUNE demande sans code d'accès (sinon 401 systématique en
+  // console) : sa porte de code gère le ticket, comme avant. Le chaînage ne
+  // coûte rien au chemin critique : la réponse projet arrive pendant le
+  // téléchargement du chunk App, le ticket part à ce moment-là.
+  mediaTicket = {
+    slug,
+    promise: projectFetch.promise.then(async (response) => {
+      if (!response?.ok) return null
+      try {
+        // clone() : App consommera le corps de la réponse originale.
+        const data = (await response.clone().json()) as {
+          protected?: boolean
+          isProtected?: boolean
+          points?: unknown
+        }
+        if (!Array.isArray(data.points)) return null
+        if (data.protected === true || data.isProtected === true) return null
+      } catch {
+        return null
+      }
+      return requestMediaTicket({ code: slug })
+    }),
+  }
 }
 
 // Réponse projet préchargée, consommée UNE seule fois et seulement si
