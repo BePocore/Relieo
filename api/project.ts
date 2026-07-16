@@ -24,6 +24,7 @@ import {
   type HikeIndexEntry,
 } from '../server/hikeIndex.js'
 import { syncPublicCover } from '../server/publicCovers.js'
+import { syncOgMeta } from '../server/ogMeta.js'
 import {
   hashAccessCode,
   TICKET_COOKIE,
@@ -627,6 +628,17 @@ export async function PUT(request: Request) {
       { slug: canonicalSlug, status, coverUrl },
       { force: true },
     )
+
+    // Métadonnées d'aperçu (Open Graph) : le projet complet est ici, donc on a
+    // le lieu (placeName des points) et le nombre de médias pour la description.
+    await syncOgMeta({
+      slug: canonicalSlug,
+      status,
+      title: asString(meta.title) ?? target.code,
+      points: migrated.project.points,
+      mediaCount:
+        asNumber(meta.mediaCount) ?? (migrated.project.mediaLibrary?.length ?? 0),
+    })
 
     return Response.json(
       {

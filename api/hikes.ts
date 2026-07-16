@@ -15,6 +15,7 @@ import { signalModerationScan } from '../server/mediaModeration.js'
 import { pickCoverFromProjectJson } from '../server/cover.js'
 import { readHikesStats } from '../server/stats.js'
 import { deletePublicCover, syncPublicCover } from '../server/publicCovers.js'
+import { deleteOgMeta, syncOgMeta } from '../server/ogMeta.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -208,6 +209,16 @@ export async function POST(request: Request) {
       { force: true },
     )
 
+    // Aperçu Open Graph : à la publication on garantit un JSON minimal (titre +
+    // nb de médias ; le lieu est ajouté par le prochain save), retiré à la
+    // dépublication.
+    await syncOgMeta({
+      slug: entry.slug,
+      status,
+      title: entry.title,
+      mediaCount: entry.mediaCount,
+    })
+
     // Pointeur public : coupé si on dépublie la carte active ; (ré)initialisé
     // s'il n'existe pas quand on publie.
     const activeBody = await r2GetText(activeTrailPath)
@@ -300,6 +311,7 @@ export async function DELETE(request: Request) {
     // Retrait du registre + coupure du pointeur public s'il visait cette carte.
     await removeHikeIndex(folder)
     await deletePublicCover(entry.slug)
+    await deleteOgMeta(entry.slug)
     const activeBody = await r2GetText(activeTrailPath)
     if (activeBody) {
       try {
