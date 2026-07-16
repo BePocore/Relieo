@@ -584,6 +584,16 @@ export function MapLibreTrailMap({
     if (!styleReady || !map) return
     const active = activeDayKey ?? null
 
+    // Jour sélectionné : on masque les ronds de comptage (clusters) pour ne
+    // laisser que les vignettes du jour. Sinon les ronds restent sur le canvas
+    // SOUS les vignettes (invisibles pour l'oeil mais comptés par la bulle).
+    const clusterVisibility = active !== null ? 'none' : 'visible'
+    for (const layerId of [clusterLayerId, 'cluster-count']) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', clusterVisibility)
+      }
+    }
+
     for (const marker of domMarkersRef.current) {
       const element = marker.getElement()
       const dayKey = element.dataset.dayKey ?? ''
@@ -854,6 +864,12 @@ export function MapLibreTrailMap({
       return
     }
     const check = () => {
+      // Jour sélectionné : les ronds sont masqués (on montre les vignettes) →
+      // pas de bulle.
+      if (activeDayKey) {
+        setClustersVisible(false)
+        return
+      }
       if (!map.getLayer(clusterLayerId)) return
       const found = map.queryRenderedFeatures({ layers: [clusterLayerId] })
       setClustersVisible(found.length > 0)
@@ -865,7 +881,7 @@ export function MapLibreTrailMap({
       map.off('moveend', check)
       map.off('idle', check)
     }
-  }, [styleReady, editable])
+  }, [styleReady, editable, activeDayKey])
 
   useEffect(() => {
     const map = mapRef.current
