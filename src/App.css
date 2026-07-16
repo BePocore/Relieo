@@ -356,6 +356,48 @@
   cursor: crosshair !important;
 }
 
+/* Bulle « Zoomez pour voir tous les médias » (consultation, ronds visibles) */
+.maplibre-cluster-hint {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 32px);
+  padding: 7px 13px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(8, 17, 13, 0.82);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: cluster-hint-in 200ms ease;
+}
+
+.maplibre-cluster-hint svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+@keyframes cluster-hint-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 /* ── Contrôles flottants sur la carte ───────────────────────── */
 
 .terrain-badge,

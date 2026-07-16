@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ZoomIn } from 'lucide-react'
 import maplibregl, {
   GeoJSONSource,
   LngLatBounds,
@@ -281,7 +282,13 @@ export function MapLibreTrailMap({
     onReady,
   })
   const readyRef = useRef(false)
+  // Recalcule la visibilité des vignettes (marqueurs HTML) depuis l'extérieur
+  // de l'effet qui les crée, notamment quand le jour sélectionné change.
+  const updateMarkerVisibilityRef = useRef<(() => void) | null>(null)
   const [styleReady, setStyleReady] = useState(false)
+  // Des ronds de comptage (clusters) sont visibles à l'écran → on invite à
+  // zoomer (consultation uniquement).
+  const [clustersVisible, setClustersVisible] = useState(false)
   const compact = useMemo(
     () =>
       window.matchMedia('(pointer: coarse)').matches ||
@@ -622,6 +629,10 @@ export function MapLibreTrailMap({
       routeFeaturesRef.current = features
       routeSource.setData({ type: 'FeatureCollection', features })
     }
+
+    // Le jour a changé : réaffiche/masque les vignettes en conséquence (le jour
+    // actif reste visible même sous le seuil de zoom).
+    updateMarkerVisibilityRef.current?.()
   }, [activeDayKey, traceDayKeys, traces, compact, styleReady])
 
   useEffect(() => {
@@ -633,11 +644,19 @@ export function MapLibreTrailMap({
 
     const updateMarkerVisibility = () => {
       const previewZoom = compact ? 13.5 : 13.2
-      const visible = map.getZoom() >= previewZoom
+      const zoomOk = map.getZoom() >= previewZoom
+      const activeDay = activeDayKeyRef.current
       for (const marker of createdMarkers) {
-        marker.getElement().hidden = !visible
+        const element = marker.getElement()
+        // Jour sélectionné : ses vignettes s'affichent même en dessous du seuil
+        // de zoom (quitte à se chevaucher), pour voir les médias du jour plutôt
+        // que les ronds de comptage.
+        const inActiveDay =
+          activeDay !== null && element.dataset.dayKey === activeDay
+        element.hidden = !(zoomOk || inActiveDay)
       }
     }
+    updateMarkerVisibilityRef.current = updateMarkerVisibility
 
     const syncPoints = async () => {
       for (const marker of domMarkersRef.current) marker.remove()
@@ -825,6 +844,28 @@ export function MapLibreTrailMap({
     pendingMediaUrls,
     pointDayKeys,
   ])
+
+  // Consultation : détecte si des ronds de comptage (clusters) sont visibles à
+  // l'écran, pour afficher une bulle « Zoomez pour voir tous les médias ».
+  useEffect(() => {
+    const map = mapRef.current
+    if (!styleReady || !map || editable) {
+      setClustersVisible(false)
+      return
+    }
+    const check = () => {
+      if (!map.getLayer(clusterLayerId)) return
+      const found = map.queryRenderedFeatures({ layers: [clusterLayerId] })
+      setClustersVisible(found.length > 0)
+    }
+    check()
+    map.on('moveend', check)
+    map.on('idle', check)
+    return () => {
+      map.off('moveend', check)
+      map.off('idle', check)
+    }
+  }, [styleReady, editable])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1027,6 +1068,12 @@ export function MapLibreTrailMap({
       }
     >
       <div ref={containerRef} className="trail-map-canvas" />
+      {!editable && clustersVisible ? (
+        <div className="maplibre-cluster-hint" role="status">
+          <ZoomIn aria-hidden="true" size={15} />
+          <span>Zoomez pour voir tous les médias</span>
+        </div>
+      ) : null}
       {/* Badge de perfs : outil de diagnostic réservé au Studio, masqué pour
           les visiteurs (aucune valeur pour eux, encombre le coin bas-gauche). */}
       {editable ? (
