@@ -359,7 +359,8 @@
 /* Bulle « Zoomez pour voir tous les médias » (consultation, ronds visibles) */
 .maplibre-cluster-hint {
   position: absolute;
-  top: 16px;
+  /* Sous la topbar flottante (aligné sur .status-banner). */
+  top: 92px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9;
@@ -395,6 +396,12 @@
   to {
     opacity: 1;
     transform: translate(-50%, 0);
+  }
+}
+
+@media (max-width: 900px) {
+  .maplibre-cluster-hint {
+    top: calc(max(8px, env(safe-area-inset-top)) + 62px);
   }
 }
 
