@@ -1,5 +1,5 @@
 import type { TrackPoint, TrailStats } from '../types'
-import { getIdToken } from './firebase'
+import { getIdToken } from './firebaseLazy'
 
 export const LOCAL_TRACE_DRAFT_KEY = 'relieo.tracker.draft'
 

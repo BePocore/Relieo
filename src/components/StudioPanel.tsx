@@ -47,7 +47,7 @@ import { PointTypeIcon } from './PointTypeIcon'
 import { ColorSwatches } from './ColorSwatches'
 import { paletteColors, traceColor } from '../lib/mapStyles'
 import { newPointTitle } from '../App'
-import { firebaseEnabled } from '../portal/firebase'
+import { firebaseEnabled } from '../portal/firebaseLazy'
 import type { UserTraceRecord } from '../portal/userTraces'
 
 type StudioPanelProps = {

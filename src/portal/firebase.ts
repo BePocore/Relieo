@@ -18,25 +18,11 @@ import {
   type Firestore,
 } from 'firebase/firestore'
 import type { AccountStatus, PortalNotification, ProfileExtras } from './portalStore'
+// Config extraite dans firebaseConfig.ts (sans SDK) pour que le graphe de la
+// carte connaisse firebaseEnabled sans télécharger le SDK (cf. firebaseLazy.ts).
+import { firebaseEnabled, firebaseWebConfig as config } from './firebaseConfig'
 
-const cleanEnv = (value: string | undefined): string | undefined => {
-  const cleaned = value?.replace(/^\uFEFF/, '').trim()
-  return cleaned || undefined
-}
-
-// Config web Firebase (valeurs publiques côté client). Le nettoyage du BOM
-// protège notamment les valeurs collées ou importées dans Vercel.
-const config = {
-  apiKey: cleanEnv(import.meta.env.VITE_FIREBASE_API_KEY),
-  authDomain: cleanEnv(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
-  projectId: cleanEnv(import.meta.env.VITE_FIREBASE_PROJECT_ID),
-  appId: cleanEnv(import.meta.env.VITE_FIREBASE_APP_ID),
-}
-
-// Firebase est obligatoire pour le portail et le Studio authentifie.
-export const firebaseEnabled = Boolean(
-  config.apiKey && config.authDomain && config.projectId && config.appId,
-)
+export { firebaseEnabled }
 
 let app: FirebaseApp | undefined
 let authInstance: Auth | undefined

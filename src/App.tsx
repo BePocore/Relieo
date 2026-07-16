@@ -51,7 +51,9 @@ import {
   fileFingerprints,
   uploadMedia,
 } from './lib/cloudUpload'
-import { firebaseEnabled, getIdToken } from './portal/firebase'
+// Façade paresseuse : le SDK Firebase ne se télécharge qu'au premier appel
+// réel (Studio, sauvegarde), jamais en consultation publique (perf).
+import { firebaseEnabled, getIdToken } from './portal/firebaseLazy'
 import { requestMediaTicket, startMediaTicketRefresh } from './lib/mediaTicket'
 import {
   takeEarlyMediaTicket,
@@ -106,7 +108,6 @@ import type {
 } from './types'
 import { MediaLightbox } from './components/MediaLightbox'
 import { AccessGate } from './components/AccessGate'
-import { ConsultTutorial } from './components/ConsultTutorial'
 import { UnavailableMap } from './components/UnavailableMap'
 import { useVideoPosters } from './useVideoPosters'
 import { useFramedThumbnails } from './useFramedThumbnails'
@@ -114,6 +115,14 @@ import { useFramedThumbnails } from './useFramedThumbnails'
 const MapLibreTrailMap = lazy(() =>
   import('./components/MapLibreTrailMap').then((module) => ({
     default: module.MapLibreTrailMap,
+  })),
+)
+
+// Tuto de consultation chargé en différé : il ne sert qu'une fois la carte
+// prête (monté sous condition mapReady), inutile dans le chemin critique.
+const ConsultTutorial = lazy(() =>
+  import('./components/ConsultTutorial').then((module) => ({
+    default: module.ConsultTutorial,
   })),
 )
 
@@ -3533,15 +3542,19 @@ function App() {
         </div>
       ) : null}
 
-      {!isStudioMode ? (
-        <ConsultTutorial
-          active={mapReady && !needsAccess && !loadFailed}
-          hasMedia={mediaPoints.length > 0}
-          hasSlideshow={slideshowItems.length > 0}
-          flat2D={mapFlat2D}
-          multiDay={dayPlan.multiDay}
-          gallery={isGalleryMap}
-        />
+      {!isStudioMode && mapReady && !needsAccess && !loadFailed ? (
+        // Monté (et son chunk téléchargé) seulement quand la carte est prête :
+        // le délai de démarrage interne du tuto (900 ms) couvre le chargement.
+        <Suspense fallback={null}>
+          <ConsultTutorial
+            active
+            hasMedia={mediaPoints.length > 0}
+            hasSlideshow={slideshowItems.length > 0}
+            flat2D={mapFlat2D}
+            multiDay={dayPlan.multiDay}
+            gallery={isGalleryMap}
+          />
+        </Suspense>
       ) : null}
 
       <div
