@@ -30,6 +30,7 @@ import {
   Images,
   KeyRound,
   LayoutDashboard,
+  Link2,
   Lock,
   LogOut,
   MailCheck,
@@ -564,6 +565,29 @@ function CreateHikeDialog({
   )
 }
 
+// Copie un texte dans le presse-papiers, avec repli textarea+execCommand pour
+// les navigateurs sans API clipboard (ou contexte non sécurisé).
+const copyTextToClipboard = async (text: string): Promise<boolean> => {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    try {
+      const area = document.createElement('textarea')
+      area.value = text
+      area.style.position = 'fixed'
+      area.style.opacity = '0'
+      document.body.appendChild(area)
+      area.select()
+      const ok = document.execCommand('copy')
+      area.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
 function HikeCard({
   hike,
   busy,
@@ -596,6 +620,33 @@ function HikeCard({
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
   }, [menuOpen])
+
+  // « Copier le lien » : le lien de consultation publique (`/?m=<slug>`), à
+  // partager. Retour visuel bref dans le menu, qui se referme ensuite.
+  const [linkCopied, setLinkCopied] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current)
+      }
+    },
+    [],
+  )
+  const handleCopyLink = async () => {
+    const slug = hike.slug ?? hike.code
+    const link = `${window.location.origin}/?m=${encodeURIComponent(slug)}`
+    const ok = await copyTextToClipboard(link)
+    if (!ok) return
+    setLinkCopied(true)
+    if (copiedTimerRef.current !== null) {
+      window.clearTimeout(copiedTimerRef.current)
+    }
+    copiedTimerRef.current = window.setTimeout(() => {
+      setLinkCopied(false)
+      setMenuOpen(false)
+    }, 1200)
+  }
 
   return (
     <article className="hike-card">
@@ -634,6 +685,22 @@ function HikeCard({
                   <><EyeOff size={15} /> Dépublier</>
                 ) : (
                   <><Check size={15} /> Publier</>
+                )}
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                title={
+                  hike.status === 'published'
+                    ? 'Copier le lien de consultation à partager'
+                    : 'Le lien ne fonctionnera qu’une fois la carte publiée'
+                }
+                onClick={() => void handleCopyLink()}
+              >
+                {linkCopied ? (
+                  <><Check size={15} /> Lien copié !</>
+                ) : (
+                  <><Link2 size={15} /> Copier le lien</>
                 )}
               </button>
               <button
