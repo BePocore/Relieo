@@ -744,6 +744,29 @@
   color: var(--text-faint);
 }
 
+.app-loader-retry {
+  margin-top: 6px;
+  padding: 9px 20px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.app-loader-retry:hover {
+  filter: brightness(1.05);
+}
+
+.app-loader-retry:active {
+  transform: scale(0.97);
+}
+
 @keyframes loaderSlide {
   0% { transform: translateX(-110%); }
   100% { transform: translateX(360%); }

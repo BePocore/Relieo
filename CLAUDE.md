@@ -85,6 +85,21 @@ A first-visit guided tour for the **public consultation** (`src/components/Consu
 
 > Known gaps: the tour ends on **no call to action** (signing up would hit the DevGate), and the **creator** tour of the original idea (`context/A_FAIRE.md`) is not built. A step absent from a given map flattens its funnel bar (nobody can drop on it) — noted in the tab.
 
+### Boot path & loading resilience — 2026-07-17/18
+
+**The veil.** `App.tsx` renders a full-screen loader (`.app-loader`) lifted by `loaderDone = mapReady || needsAccess || loadFailed`. `mapReady` waits for the map tiles (`tilesReady`) **and** the full batch of video posters + framed thumbnails (`assetsReady`), plus a 300 ms settle delay — so nothing flashes half-built. `loadFailed` lifts the veil in **both** modes: in consultation MapLibre is never mounted (the `UnavailableMap` screen shows instead) so `mapReady` would never come, and in the Studio a failed load must not leave the veil up forever either.
+
+**Critical path (perf work of 2026-07-17).** The audit found the blocker was ~600 KB of JS in a *cascade* (`index.js` → `App.js` → `api/project` → map chunk), not the media. Three fixes, all in place:
+- **Cascade broken** — `Root.tsx` fires the MapLibre chunk import immediately on a map route; in public consultation the project request **and** the media ticket also start from the entry chunk (`src/lib/earlyConsultation.ts`, promises consumed once by `App` via `takeEarlyProjectFetch`/`takeEarlyMediaTicket`, falling back to a normal request on mismatch/failure). The ticket is **chained on the project response** and only sent when the map is public — a code-protected map must not trigger a ticketless 401.
+- **Firebase off the critical path** — the SDK (~105 KB gzip) is behind a lazy façade (`src/portal/firebaseLazy.ts`, config split into `firebaseConfig.ts`); it only downloads at the first real `getIdToken` (Studio, save). Public consultation never loads it. The consultation tutorial is likewise `lazy`, mounted at `mapReady`. **Only the portal keeps the static import** — do not import `./firebase` from the map graph (`App.tsx`, `StudioPanel`, `userTraces`), or Firebase comes back into the boot path.
+- **Media in two passes** — `src/lib/mediaPrefetch.ts` prefetches full-size photos/360 in the background 1.5 s after the veil lifts (slideshow order, concurrency 2, videos excluded, respects save-data/2G, never in Studio). It **imitates the lightbox request** (no `crossOrigin` for photos, `'anonymous'` for 360) because the videur answers `Vary: Origin` — a mismatched request produces a cache entry the lightbox can't reuse.
+
+Measured in prod: Halsa 3G 14.4 → 4.8 s, Lofoten 3G 21.5 → 10.7 s. The remaining bottleneck is the external OpenTopoMap/Terrarium tiles.
+
+**Resilience guards (2026-07-18).** A SPA served from hashed asset files strands any tab holding an older version: its dynamic imports 404 and the app hangs on the veil with no message and no way out (hit in real life on a phone after several deploys in a row).
+- **Stale-chunk recovery** — `src/lib/chunkReload.ts`, installed from `main.tsx` **before any dynamic import**: listens for Vite's `vite:preloadError`, calls `preventDefault()` and reloads the page once. Anti-loop guard: the last forced reload's timestamp lives in `sessionStorage` (`relieo.chunk-reload`) and a second reload within 15 s is refused, so a persistent failure (offline, server down) can't put the tab in a reload loop.
+- **Veil watchdog** — after 25 s of an unresolved veil, `loaderStuck` flips and the loader grows a « Recharger » button (`.app-loader-retry`). Universal safety net whatever the cause. `loaderStuck` is only ever set from the timer callback, never synchronously in the effect body (`react-hooks/set-state-in-effect` is an **error** in this repo's lint config), and it is never reset — it only turns true after 25 s of continuous veil, a terminal state; the render pairs it with `!loaderDone`.
+
 ### MapLibre layer — `components/MapLibreTrailMap.tsx`
 
 The map, terrain, route layers, clusters and HTML media markers live in this component. A MapLibre map is created once in a `useEffect`; subsequent effects update GeoJSON sources and markers. Notable patterns:

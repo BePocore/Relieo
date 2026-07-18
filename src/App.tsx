@@ -678,6 +678,10 @@ function App() {
   // Échec du chargement initial d'une carte (code inconnu ou brouillon non
   // accessible) : déclenche l'écran « indisponible » côté visiteur.
   const [loadFailed, setLoadFailed] = useState(false)
+  // Chien de garde du voile de chargement : passe à true si le voile est encore
+  // là après un long délai, pour proposer un bouton « Recharger » plutôt que de
+  // laisser le visiteur bloqué sans issue (cf. vieil onglet après déploiement).
+  const [loaderStuck, setLoaderStuck] = useState(false)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [adminPassword, setAdminPassword] = useState('')
   const [pointsSourceName, setPointsSourceName] = useState('/data/points.json')
@@ -1080,6 +1084,26 @@ function App() {
       }
     }
   }, [tilesReady, mapReady, assetsReady])
+
+  // Chien de garde du voile : si après 25 s le chargement n'a toujours pas
+  // abouti (carte non prête, pas de porte de code, pas d'échec détecté), on
+  // propose un bouton « Recharger ». Filet de sécurité universel : quelle qu'en
+  // soit la cause (réseau très lent, tuiles externes muettes, état périmé), le
+  // visiteur n'est jamais bloqué indéfiniment sans issue.
+  const veilDone =
+    mapReady ||
+    (!isStudioMode && protectedGate && !accessGranted) ||
+    loadFailed
+  useEffect(() => {
+    // Le voile est levé (ou n'a jamais démarré) : rien à surveiller. On ne
+    // remet pas `loaderStuck` à false ici (setState synchrone proscrit) — c'est
+    // inutile : il ne passe à true qu'après 25 s de voile continu, un état
+    // terminal (soit l'utilisateur recharge, soit la carte finit par s'afficher
+    // et le voile est masqué). Le rendu combine de toute façon avec !loaderDone.
+    if (veilDone) return
+    const timer = window.setTimeout(() => setLoaderStuck(true), 25_000)
+    return () => window.clearTimeout(timer)
+  }, [veilDone])
 
   // Ordre par défaut des médias (diaporama + bandeau du bas) : CHRONOLOGIQUE
   // par jour (heure de prise EXIF), pour raconter le déroulé du voyage. Les
@@ -3100,9 +3124,11 @@ function App() {
   // `protectedGate` est posé quand le serveur n'a renvoyé que des métadonnées.
   const needsAccess = !isStudioMode && protectedGate && !accessGranted
   // On lève le voile plein écran dès que la carte est prête, que la porte de
-  // code la couvre, ou qu'on bascule sur l'écran « indisponible » (MapLibre
-  // n'étant alors jamais monté, `mapReady` ne passerait jamais à true).
-  const loaderDone = mapReady || needsAccess || (!isStudioMode && loadFailed)
+  // code la couvre, ou que le chargement a échoué (dans les deux modes : en
+  // consultation MapLibre n'est jamais monté donc `mapReady` ne viendrait
+  // jamais ; en Studio, un échec de chargement ne doit pas non plus laisser le
+  // voile figé à l'infini).
+  const loaderDone = mapReady || needsAccess || loadFailed
 
   return (
     <div className={isStudioMode ? 'app-shell studio-mode' : 'app-shell'}>
@@ -3599,7 +3625,20 @@ function App() {
           <span className="app-loader-bar">
             <span />
           </span>
-          <span className="app-loader-text">Chargement de la carte…</span>
+          <span className="app-loader-text">
+            {loaderStuck && !loaderDone
+              ? 'Le chargement prend plus de temps que prévu…'
+              : 'Chargement de la carte…'}
+          </span>
+          {loaderStuck && !loaderDone ? (
+            <button
+              type="button"
+              className="app-loader-retry"
+              onClick={() => window.location.reload()}
+            >
+              Recharger
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
