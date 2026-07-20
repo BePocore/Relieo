@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  Activity,
   AlertTriangle,
   Ban,
   Bell,
@@ -269,6 +270,7 @@ type AdminSection =
   | 'media-moderation'
   | 'media-inventory'
   | 'tutorial'
+  | 'health'
   | 'notifications'
   | 'storage'
 
@@ -281,6 +283,7 @@ const SECTION_TITLES: Record<AdminSection, string> = {
   'media-moderation': 'Modération IA',
   'media-inventory': 'Tous les médias',
   tutorial: 'Tuto de consultation',
+  health: 'Santé',
   notifications: 'Notifications',
   storage: 'Stockage R2',
 }
@@ -294,6 +297,28 @@ type TutorialStats = {
   abandoned: number
   dropoff: Record<string, number>
   daily: Record<string, number>
+}
+
+/** Monitoring santé client (anonyme, cf. server/health.ts). */
+type HealthEvent = {
+  type: 'js-error' | 'unhandled-rejection' | 'render-error' | 'veil-stuck'
+  at: string
+  route?: 'consult' | 'studio' | 'portal'
+  message?: string
+  stack?: string
+  detail?: Record<string, unknown>
+}
+type HealthTimingSample = {
+  ms: number
+  at: string
+  route: 'consult' | 'studio' | 'portal'
+  connection?: string
+  outcome: 'ready' | 'failed'
+}
+type HealthStats = {
+  counts: Record<string, number>
+  events: HealthEvent[]
+  timing: HealthTimingSample[]
 }
 
 type CostPlatform = {
@@ -562,6 +587,7 @@ export function AdminApp({
   const [notifications, setNotifications] = useState<AdminNotification[]>([])
   const [mediaMod, setMediaMod] = useState<MediaModeration | null>(null)
   const [tutorial, setTutorial] = useState<TutorialStats | null>(null)
+  const [health, setHealth] = useState<HealthStats | null>(null)
   // Modale de rejet d'un média + message transmis au propriétaire.
   const [rejectMediaTarget, setRejectMediaTarget] = useState<MediaReviewGroup | null>(null)
   const [rejectMediaMessage, setRejectMediaMessage] = useState('')
@@ -644,6 +670,7 @@ export function AdminApp({
         costs: Costs
         mediaModeration: MediaModeration
         tutorial?: TutorialStats
+        health?: HealthStats
       }
       setOverview(data.overview)
       setUsers(data.users)
@@ -655,6 +682,7 @@ export function AdminApp({
       setMediaMod(data.mediaModeration)
       // Optionnel : un déploiement antérieur à la mesure ne renvoie rien.
       setTutorial(data.tutorial ?? null)
+      setHealth(data.health ?? null)
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -1172,6 +1200,12 @@ export function AdminApp({
     },
     { id: 'media-inventory', label: 'Médias', icon: <ImageIcon size={18} /> },
     { id: 'tutorial', label: 'Tuto', icon: <GraduationCap size={18} /> },
+    {
+      id: 'health',
+      label: 'Santé',
+      icon: <Activity size={18} />,
+      badge: health?.events.length || undefined,
+    },
     { id: 'storage', label: 'Stockage R2', icon: <HardDrive size={18} /> },
   ]
 
@@ -1979,6 +2013,124 @@ export function AdminApp({
     )
   })()
 
+  // Monitoring santé client (2026-07-20, cf. server/health.ts) : erreurs JS
+  // globales, voile bloqué (avec l'état exact au moment du blocage) et temps
+  // de chargement réel — pour diagnostiquer un incident réel sans deviner.
+  const healthView = (() => {
+    const counts = health?.counts ?? {}
+    const jsErrors = (counts['js-error'] ?? 0) + (counts['unhandled-rejection'] ?? 0)
+    const renderErrors = counts['render-error'] ?? 0
+    const veilStuck = counts['veil-stuck'] ?? 0
+    const timing = health?.timing ?? []
+    const readyTimes = timing.filter((t) => t.outcome === 'ready').map((t) => t.ms)
+    const failedCount = timing.filter((t) => t.outcome === 'failed').length
+    const avgMs =
+      readyTimes.length > 0
+        ? Math.round(readyTimes.reduce((sum, ms) => sum + ms, 0) / readyTimes.length)
+        : null
+    const sortedTimes = [...readyTimes].sort((a, b) => a - b)
+    const p90Ms =
+      sortedTimes.length > 0
+        ? sortedTimes[Math.min(sortedTimes.length - 1, Math.floor(sortedTimes.length * 0.9))]
+        : null
+    const events = [...(health?.events ?? [])].reverse().slice(0, 30)
+
+    return (
+      <>
+        <section className="admin-stats" aria-label="Santé client">
+          <article className="admin-stat-card featured">
+            <span><Activity size={18} /></span>
+            <p>Chargement moyen</p>
+            <strong>{avgMs !== null ? `${(avgMs / 1000).toFixed(1)} s` : '—'}</strong>
+            <small>
+              {sortedTimes.length > 0
+                ? `p90 ${((p90Ms ?? 0) / 1000).toFixed(1)} s · ${sortedTimes.length} mesures`
+                : 'aucune mesure encore'}
+            </small>
+          </article>
+          <article className="admin-stat-card">
+            <span><AlertTriangle size={18} /></span>
+            <p>Voile bloqué (25 s)</p>
+            <strong>{veilStuck}</strong>
+            <small>chien de garde déclenché</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><Ban size={18} /></span>
+            <p>Chargements échoués</p>
+            <strong>{failedCount}</strong>
+            <small>sur {timing.length} mesures</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><AlertTriangle size={18} /></span>
+            <p>Erreurs JS</p>
+            <strong>{jsErrors}</strong>
+            <small>window.onerror + rejets non gérés</small>
+          </article>
+          <article className="admin-stat-card">
+            <span><AlertTriangle size={18} /></span>
+            <p>Erreurs de rendu</p>
+            <strong>{renderErrors}</strong>
+            <small>attrapées par le filet React</small>
+          </article>
+        </section>
+
+        <section className="admin-panel" aria-label="Derniers événements">
+          <header className="admin-panel-head">
+            <h2><Activity size={18} /> Derniers événements</h2>
+            <p>
+              Les {events.length} événements les plus récents (buffer borné à
+              60). Un « voile bloqué » porte le détail exact de ce qui manquait
+              à ce moment-là.
+            </p>
+          </header>
+          {events.length === 0 ? (
+            <p className="admin-empty">
+              Aucun incident mesuré pour l’instant.
+            </p>
+          ) : (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Quand</th>
+                    <th>Type</th>
+                    <th>Route</th>
+                    <th>Détail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((event, index) => (
+                    <tr key={`${event.at}-${index}`}>
+                      <td>{new Date(event.at).toLocaleString('fr-FR')}</td>
+                      <td>{event.type}</td>
+                      <td>{event.route ?? '—'}</td>
+                      <td>
+                        {event.detail ? (
+                          <code style={{ fontSize: '0.78em' }}>
+                            {Object.entries(event.detail)
+                              .map(([key, value]) => `${key}=${String(value)}`)
+                              .join(' · ')}
+                          </code>
+                        ) : (
+                          <span title={event.stack}>{event.message ?? '—'}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="admin-email-foot">
+            Mesure anonyme et best-effort : aucun identifiant visiteur, buffer
+            borné (les événements les plus anciens sont perdus). Un outil pour
+            diagnostiquer un incident réel, pas une comptabilité d’erreurs.
+          </p>
+        </section>
+      </>
+    )
+  })()
+
   const growthPanel = (
     <section className="admin-panel" aria-label="Évolution des utilisateurs">
       <header className="admin-panel-head admin-panel-head-row">
@@ -2665,6 +2817,8 @@ export function AdminApp({
             inventoryTable
           ) : section === 'tutorial' ? (
             tutorialView
+          ) : section === 'health' ? (
+            healthView
           ) : section === 'notifications' ? (
             notificationsView
           ) : (

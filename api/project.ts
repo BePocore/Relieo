@@ -49,6 +49,11 @@ import {
   recordHikeView,
   recordTutorialEvent,
 } from '../server/stats.js'
+import {
+  isHealthEventType,
+  recordHealthEvent,
+  recordHealthTiming,
+} from '../server/health.js'
 
 const jsonHeaders = { 'Cache-Control': 'no-store' }
 
@@ -234,7 +239,7 @@ const moveProjectMedia = async (
 }
 
 /**
- * Mesure du tuto de consultation (visiteur ANONYME).
+ * Mesure du tuto de consultation ET monitoring santé client (visiteur ANONYME).
  *
  * Hébergé ici, et non sur une route dédiée, parce que la limite de 12 fonctions
  * serverless du plan Vercel Hobby est atteinte : un handler de plus dans un
@@ -242,8 +247,11 @@ const moveProjectMedia = async (
  *
  * Ne lit rien, n'expose rien, n'authentifie personne : il ne fait qu'incrémenter
  * des compteurs agrégés (aucun identifiant visiteur n'est reçu ni stocké).
- * Comme `recordHikeView`, c'est un compteur public : n'importe qui peut le
+ * Comme `recordHikeView`, c'est un endpoint public : n'importe qui peut le
  * solliciter, donc les chiffres sont indicatifs, pas de la comptabilité.
+ *
+ * `action: 'health'` (2026-07-20) : erreurs JS / voile bloqué / temps de
+ * chargement réel, cf. server/health.ts pour le pourquoi.
  */
 export async function POST(request: Request) {
   try {
@@ -251,19 +259,54 @@ export async function POST(request: Request) {
       action?: unknown
       event?: unknown
       step?: unknown
+      kind?: unknown
+      type?: unknown
+      route?: unknown
+      message?: unknown
+      stack?: unknown
+      detail?: unknown
+      ms?: unknown
+      connection?: unknown
+      outcome?: unknown
     }
-    if (body?.action !== 'tuto' || !isTutorialEvent(body.event)) {
-      return Response.json(
-        { message: 'Requête inconnue.' },
-        { status: 400, headers: jsonHeaders },
+
+    if (body?.action === 'tuto') {
+      if (!isTutorialEvent(body.event)) {
+        return Response.json(
+          { message: 'Requête inconnue.' },
+          { status: 400, headers: jsonHeaders },
+        )
+      }
+      await recordTutorialEvent(
+        body.event,
+        typeof body.step === 'string' ? body.step : '',
       )
+      return new Response(null, { status: 204 })
     }
-    await recordTutorialEvent(
-      body.event,
-      typeof body.step === 'string' ? body.step : '',
+
+    if (body?.action === 'health') {
+      if (body.kind === 'timing') {
+        await recordHealthTiming({
+          ms: body.ms,
+          route: body.route,
+          connection: body.connection,
+          outcome: body.outcome,
+        })
+      } else if (isHealthEventType(body.type)) {
+        await recordHealthEvent(body.type, {
+          route: body.route,
+          message: body.message,
+          stack: body.stack,
+          detail: body.detail,
+        })
+      }
+      return new Response(null, { status: 204 })
+    }
+
+    return Response.json(
+      { message: 'Requête inconnue.' },
+      { status: 400, headers: jsonHeaders },
     )
-    // Rien à renvoyer : le visiteur n'attend pas de réponse.
-    return new Response(null, { status: 204 })
   } catch {
     return Response.json(
       { message: 'Requête invalide.' },

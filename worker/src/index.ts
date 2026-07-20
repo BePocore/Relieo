@@ -26,8 +26,17 @@ export interface Env extends ModerationEnv {
 
 const TICKET_COOKIE = 'relieo_media_ticket'
 // Cache navigateur PRIVE : jamais de cache partage/CDN pour du contenu sous controle d'acces
-// (sinon un fichier servi a un autorise pourrait etre resservi sans verification).
-const CACHE_CONTROL = 'private, max-age=300'
+// (sinon un fichier servi a un autorise pourrait etre resservi sans verification — `private`
+// couvre deja ce risque, quelle que soit la duree).
+// Duree LONGUE + `immutable` (2026-07-20, ex 5 min) : la cle R2 contient l'empreinte SHA-256
+// du contenu (`fingerprint-nomFichier`, cf. api/upload.ts) donc une meme URL ne change JAMAIS
+// de bytes — re-editer un media produit une AUTRE cle. A 5 min, chaque revisite (et le
+// prechargement de mediaPrefetch.ts) re-telechargeait tout depuis zero ; en carte de 200
+// medias c'est ~17 Mo de vignettes reprises a chaque ouverture. `immutable` evite meme la
+// requete de revalidation. Le risque residuel (un media modere/rejete reste visible dans le
+// cache d'un visiteur qui l'avait deja recu) existait deja a 5 min : le visiteur avait deja
+// les octets en clair, rien de nouveau n'est expose.
+const CACHE_CONTROL = 'private, max-age=604800, immutable'
 
 // --- CORS ----------------------------------------------------------------
 

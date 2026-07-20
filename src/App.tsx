@@ -63,6 +63,7 @@ import {
   startMediaPrefetch,
   type MediaPrefetchItem,
 } from './lib/mediaPrefetch'
+import { reportHealthEvent, reportHealthTiming } from './lib/health'
 import { loadUserTraces, type UserTraceRecord } from './portal/userTraces'
 import { takePendingTraceImport } from './lib/pendingTraceImport'
 import {
@@ -632,6 +633,25 @@ function App() {
   const [tilesReady, setTilesReady] = useState(false)
   const [mapReady, setMapReady] = useState(false)
   const settleTimerRef = useRef<number | null>(null)
+  // Instant de montage : sert au mini-RUM (temps de chargement réel remonté
+  // au monitoring santé, cf. l'effet de timing plus bas). Posé dans un effet
+  // (pas à l'init du ref) : `performance.now()` est impur, interdit pendant
+  // le rendu par ce lint (react-hooks/purity).
+  const bootTimeRef = useRef(0)
+  useEffect(() => {
+    bootTimeRef.current =
+      typeof performance !== 'undefined' ? performance.now() : Date.now()
+  }, [])
+  const timingReportedRef = useRef(false)
+  // Diagnostic du voile bloqué, tenu à jour par un effet dédié (cf. plus bas)
+  // et relu uniquement au déclenchement du chien de garde à 25 s.
+  const veilDiagRef = useRef({
+    tilesReady: false,
+    postersReady: false,
+    framedReady: false,
+    imageCount: 0,
+    videoCount: 0,
+  })
   // Le relief reste le mode principal, avec une vue 2D manuelle si nécessaire.
   const [perfMode, setPerfMode] = useState<PerfMode>('auto')
   // Réglages de la carte (persistés dans project.json) : type (figé à la
@@ -1071,6 +1091,23 @@ function App() {
   // + lot complet des posters vidéo + lot complet des vignettes encadrées.
   // Un court délai de stabilisation évite un flash pendant leur installation.
   const assetsReady = postersReady && framedReady
+
+  // « Dernière valeur connue », relue par le chien de garde au moment où il se
+  // déclenche (25 s plus tard). Effet SÉPARÉ de celui du chien de garde : ce
+  // dernier doit garder `[veilDone]` comme SEULE dépendance (sinon un flip de
+  // `tilesReady`/`postersReady` à 20 s repousserait le minuteur de 25 s à
+  // chaque fois, cassant le délai vérifié de bout en bout) — cet effet-ci, lui,
+  // peut se re-déclencher librement, il ne fait qu'écrire une ref.
+  useEffect(() => {
+    veilDiagRef.current = {
+      tilesReady,
+      postersReady,
+      framedReady,
+      imageCount: mediaLibrary.filter((m) => m.kind === 'image').length,
+      videoCount: mediaLibrary.filter((m) => m.kind === 'video').length,
+    }
+  }, [tilesReady, postersReady, framedReady, mediaLibrary])
+
   useEffect(() => {
     if (!tilesReady || mapReady) return
     if (settleTimerRef.current !== null) {
@@ -1101,9 +1138,39 @@ function App() {
     // terminal (soit l'utilisateur recharge, soit la carte finit par s'afficher
     // et le voile est masqué). Le rendu combine de toute façon avec !loaderDone.
     if (veilDone) return
-    const timer = window.setTimeout(() => setLoaderStuck(true), 25_000)
+    const timer = window.setTimeout(() => {
+      setLoaderStuck(true)
+      // État EXACT de ce qui bloquait, pour ne plus deviner après coup (cf.
+      // l'incident Lofoten du 2026-07-20 : deux visiteurs bloqués/plantés,
+      // aucune trace de ce qu'ils vivaient réellement). Lu depuis la ref (la
+      // valeur au moment du tir, 25 s après le montage de cet effet).
+      reportHealthEvent('veil-stuck', {
+        detail: {
+          ...veilDiagRef.current,
+          connection:
+            (navigator as { connection?: { effectiveType?: string } })
+              .connection?.effectiveType ?? undefined,
+          screen: `${window.innerWidth}x${window.innerHeight}`,
+        },
+      })
+    }, 25_000)
     return () => window.clearTimeout(timer)
   }, [veilDone])
+
+  // Mini-RUM : temps de chargement réel jusqu'à la levée du voile (ou échec),
+  // pour savoir ce que vivent les vrais visiteurs au lieu d'extrapoler depuis
+  // un audit Playwright sur un PC. Jamais en Studio (chargement authentifié,
+  // pas comparable). Un seul envoi par montage (`timingReportedRef`).
+  useEffect(() => {
+    if (isStudioMode || timingReportedRef.current) return
+    if (!mapReady && !loadFailed) return
+    timingReportedRef.current = true
+    const elapsedMs = Math.round(
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+        bootTimeRef.current,
+    )
+    reportHealthTiming(elapsedMs, loadFailed ? 'failed' : 'ready')
+  }, [isStudioMode, mapReady, loadFailed])
 
   // Ordre par défaut des médias (diaporama + bandeau du bas) : CHRONOLOGIQUE
   // par jour (heure de prise EXIF), pour raconter le déroulé du voyage. Les
