@@ -40,7 +40,6 @@ export type MapLibreTrailMapProps = {
   // studio (le propriétaire les voit ; le public ne les reçoit même pas).
   pendingMediaUrls?: string[]
   videoPosters?: Record<string, string>
-  framedThumbnails?: Record<string, string>
   // Plan de journées (lib/days.ts) : jour de chaque point (aligné sur points)
   // et de chaque trace. activeDayKey = jour sélectionné dans la timeline ;
   // les éléments des AUTRES jours sont atténués (les non datés restent pleins)

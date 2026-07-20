@@ -116,7 +116,6 @@ import { MediaLightbox } from './components/MediaLightbox'
 import { AccessGate } from './components/AccessGate'
 import { UnavailableMap } from './components/UnavailableMap'
 import { useVideoPosters } from './useVideoPosters'
-import { useFramedThumbnails } from './useFramedThumbnails'
 
 const MapLibreTrailMap = lazy(() =>
   import('./components/MapLibreTrailMap').then((module) => ({
@@ -635,9 +634,10 @@ function App() {
   const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   // Voile plein écran tant que la carte n'est pas prête. `tilesReady` = tuiles
-  // de carte chargées ; `mapReady` ajoute l'attente des vignettes photo (sinon
-  // le voile se lève avant que les marqueurs n'apparaissent → impression de
-  // « rechargement » des photos une fois la carte affichée).
+  // de carte chargées ; `mapReady` ajoute l'attente des posters vidéo (plafonnée,
+  // cf. POSTERS_TIMEOUT_MS plus bas) pour que les marqueurs vidéo n'apparaissent
+  // pas après coup. Les marqueurs photo utilisent la vignette serveur
+  // (thumbnailUrl), quasi instantanée : aucune attente client ne les concerne.
   const [tilesReady, setTilesReady] = useState(false)
   const [mapReady, setMapReady] = useState(false)
   const settleTimerRef = useRef<number | null>(null)
@@ -656,7 +656,6 @@ function App() {
   const veilDiagRef = useRef({
     tilesReady: false,
     postersReady: false,
-    framedReady: false,
     imageCount: 0,
     videoCount: 0,
   })
@@ -1092,13 +1091,32 @@ function App() {
     points,
     mediaLibrary,
   )
-  const { thumbnails: framedThumbnails, ready: framedReady } =
-    useFramedThumbnails(points, mediaLibrary, videoPosters)
 
-  // On lève le voile seulement quand TOUT est réellement prêt : tuiles de carte
-  // + lot complet des posters vidéo + lot complet des vignettes encadrées.
-  // Un court délai de stabilisation évite un flash pendant leur installation.
-  const assetsReady = postersReady && framedReady
+  // Plafond d'attente des posters vidéo (2026-07-20) : `useVideoPosters`
+  // livre son lot d'un bloc (Promise.all), donc une seule vidéo lente
+  // (chargement + décodage + capture d'image) retient TOUTES les autres
+  // derrière elle. Sur une carte riche en vidéos (Lofoten, 48 vidéos), ça
+  // pouvait bloquer le voile plusieurs dizaines de secondes pour un gain
+  // cosmétique (éviter que les marqueurs vidéo « poppent » après coup, cf.
+  // commit `19c5e07` du 2026-06-14). Passé ce délai, on révèle quand même :
+  // les marqueurs photo (vignettes serveur, quasi instantanées) sont déjà là,
+  // les marqueurs vidéo sans poster prêt suivront en tâche de fond dès que
+  // `videoPosters` se met à jour (MapLibreTrailMap les redessine alors).
+  const POSTERS_TIMEOUT_MS = 4_000
+  const [postersTimedOut, setPostersTimedOut] = useState(false)
+  useEffect(() => {
+    if (!tilesReady || postersReady) return
+    const timer = window.setTimeout(
+      () => setPostersTimedOut(true),
+      POSTERS_TIMEOUT_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [tilesReady, postersReady])
+
+  // On lève le voile quand les tuiles de carte sont prêtes ET que les posters
+  // vidéo sont soit finis, soit au-delà du plafond ci-dessus. Un court délai
+  // de stabilisation évite un flash pendant l'installation des marqueurs.
+  const assetsReady = postersReady || postersTimedOut
 
   // « Dernière valeur connue », relue par le chien de garde au moment où il se
   // déclenche (25 s plus tard). Effet SÉPARÉ de celui du chien de garde : ce
@@ -1110,11 +1128,10 @@ function App() {
     veilDiagRef.current = {
       tilesReady,
       postersReady,
-      framedReady,
       imageCount: mediaLibrary.filter((m) => m.kind === 'image').length,
       videoCount: mediaLibrary.filter((m) => m.kind === 'video').length,
     }
-  }, [tilesReady, postersReady, framedReady, mediaLibrary])
+  }, [tilesReady, postersReady, mediaLibrary])
 
   useEffect(() => {
     if (!tilesReady || mapReady) return
@@ -3577,7 +3594,6 @@ function App() {
                 createPointOnClick={Boolean(manualPlacementMedia)}
                 pendingMediaUrls={moderationPending}
                 videoPosters={videoPosters}
-                framedThumbnails={framedThumbnails}
                 pointDayKeys={dayPlan.pointDayKeys}
                 traceDayKeys={dayPlan.traceDayKeys}
                 activeDayKey={isStudioMode ? null : activeDayKey}
