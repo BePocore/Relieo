@@ -55,6 +55,9 @@ export const resolvePointMedia = (
   kind: MediaKind
   name?: string
   thumbnailSrc?: string
+  // Variante ~2000 px (cf. types.ts `ImportedMedia.displayUrl`), absente sur
+  // les médias pas encore rattrapés : les appelants retombent alors sur `src`.
+  displaySrc?: string
   width?: number
   height?: number
   durationSeconds?: number
@@ -70,6 +73,7 @@ export const resolvePointMedia = (
       kind: media.kind,
       name: media.name,
       thumbnailSrc: media.thumbnailUrl,
+      displaySrc: media.displayUrl,
       width: media.width,
       height: media.height,
       durationSeconds: media.durationSeconds,

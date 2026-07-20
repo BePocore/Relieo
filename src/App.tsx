@@ -48,6 +48,7 @@ import {
 import {
   cleanupUnusedUploadedMedia,
   deleteUploadedMedia,
+  fileFingerprint,
   fileFingerprints,
   uploadMedia,
 } from './lib/cloudUpload'
@@ -72,7 +73,7 @@ import {
   mediaKindFromFile,
   resolvePointMedia,
 } from './lib/media'
-import { createMediaPreview } from './lib/mediaPreview'
+import { createDisplayVariant, createMediaPreview } from './lib/mediaPreview'
 import { buildDayPlan, computeDayStats } from './lib/days'
 import {
   ALL_MEDIA_ORDER_KEY,
@@ -144,6 +145,9 @@ export type DayBreakInfo = {
 
 export type LightboxMedia = {
   src: string
+  // Original brut, présent seulement quand `src` est une variante allégée
+  // (donc différent d'elle) : active le bouton « Pleine résolution ».
+  fullSrc?: string
   kind: MediaKind | '360' | 'day-break'
   title?: string
   // Date de prise (EXIF, ISO) : sert de libellé contextuel à la place d'un nom
@@ -178,7 +182,10 @@ const pointsToLightboxItems = (
         : undefined
       const takenAt = findPointMediaItem(point, mediaLibrary)?.takenAt
       return {
-        src: media.src,
+        src: media.displaySrc ?? media.src,
+        // Bouton « Pleine résolution » seulement quand `src` est vraiment une
+        // variante allégée (sinon fullSrc === src, rien à gagner à l'afficher).
+        ...(media.displaySrc ? { fullSrc: media.src } : {}),
         kind,
         title: point.title,
         ...(takenAt ? { takenAt } : {}),
@@ -546,6 +553,7 @@ const mediaUrlsUsedByPoints = (
     if (!points.some((point) => pointUsesMedia(point, media))) continue
     urls.add(media.url)
     if (media.thumbnailUrl) urls.add(media.thumbnailUrl)
+    if (media.displayUrl) urls.add(media.displayUrl)
   }
   return Array.from(urls)
 }
@@ -1276,9 +1284,10 @@ function App() {
   }, [mediaPoints, points, dayPlan, slideshowSettings])
 
   // Médias en 2 temps (consultation) : une fois le voile levé, préchargement
-  // en fond des photos/360 pleine taille dans l'ordre de lecture → lightbox
-  // et diaporama instantanés. Petit délai pour laisser les dernières tuiles
-  // finir ; jamais en Studio ni avant l'affichage ; vidéos exclues (lourdes).
+  // en fond des photos/360 (variante d'affichage, pas l'original brut) dans
+  // l'ordre de lecture → lightbox et diaporama instantanés. Petit délai pour
+  // laisser les dernières tuiles finir ; jamais en Studio ni avant l'affichage ;
+  // vidéos exclues (lourdes).
   useEffect(() => {
     if (!mapReady || isStudioMode) return
     let stopPrefetch: (() => void) | null = null
@@ -1288,7 +1297,7 @@ function App() {
         const media = resolvePointMedia(point, mediaLibrary)
         if (!media || media.kind !== 'image') continue
         items.push({
-          src: media.src,
+          src: media.displaySrc ?? media.src,
           kind: point.type === '360' ? '360' : 'image',
         })
       }
@@ -1308,6 +1317,9 @@ function App() {
   // reboucler sur un échec). Les points les plus récents sont lus via
   // latestProjectRef (mis à jour dans un effet plus bas).
   const geocodeAttemptedRef = useRef<Set<string>>(new Set())
+  // Rattrapage de la variante d'affichage (Studio) : mêmes règles que le
+  // géocodeur ci-dessus (ids déjà tentés, lecture via latestProjectRef).
+  const displayBackfillAttemptedRef = useRef<Set<string>>(new Set())
   const latestProjectRef = useRef({
     points,
     traces,
@@ -1530,6 +1542,79 @@ function App() {
       cancelled = true
     }
   }, [isStudioMode, scheduleAutosave])
+
+  // Rattrapage de la variante d'affichage (Studio) : les cartes créées avant
+  // ce chantier (2026-07-20) n'ont que l'original + la vignette. En tâche de
+  // fond, UN média à la fois (throttle léger, comme le géocodeur ci-dessus) :
+  // retélécharge l'original depuis le videur (déjà autorisé, ticket posé),
+  // génère la variante dans le navigateur, l'envoie sur R2, persiste
+  // `displayUrl` et déclenche l'autosave. Best-effort : un échec (réseau,
+  // format) est mémorisé pour ne pas reboucler dessus indéfiniment ; la carte
+  // reste utilisable avec l'original en attendant (fallback `?? media.src`
+  // partout où `displaySrc` est consommé).
+  useEffect(() => {
+    if (!isStudioMode) return
+    let cancelled = false
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+    const run = async () => {
+      while (!cancelled) {
+        const next = latestProjectRef.current.mediaLibrary.find(
+          (media) =>
+            media.id &&
+            media.kind === 'image' &&
+            media.url &&
+            !media.url.startsWith('blob:') &&
+            !media.displayUrl &&
+            !displayBackfillAttemptedRef.current.has(media.id),
+        )
+        if (!next) {
+          await sleep(5000) // rien à faire ; re-scrute (nouveaux imports)
+          continue
+        }
+        displayBackfillAttemptedRef.current.add(next.id)
+        try {
+          const response = await fetch(next.url, { credentials: 'include' })
+          if (!response.ok) throw new Error('téléchargement impossible')
+          const blob = await response.blob()
+          const file = new File([blob], next.name || 'media.jpg', {
+            type: next.mimeType || blob.type,
+          })
+          const display = await createDisplayVariant(file, 'image')
+          if (display && !cancelled) {
+            const fingerprint = await fileFingerprint(file)
+            const idToken = (await getIdToken()) ?? undefined
+            const uploaded = await uploadMedia({
+              file: display,
+              fingerprint,
+              adminPassword: latestProjectRef.current.adminPassword,
+              idToken,
+              trailCode: mapSlug,
+              kind: 'display',
+            })
+            if (!cancelled) {
+              setMediaLibrary((current) =>
+                current.map((item) =>
+                  item.id === next.id
+                    ? { ...item, displayUrl: uploaded.url }
+                    : item,
+                ),
+              )
+              scheduleAutosave()
+            }
+          }
+        } catch {
+          // Best-effort : on retentera au prochain chargement du Studio
+          // (le ref n'est pas persisté), pas dans cette même session.
+        }
+        await sleep(800) // throttle poli entre deux médias
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [isStudioMode, scheduleAutosave, mapSlug])
 
   const handleSelectPoint = useCallback((point: TrailPoint) => {
     setSelectedPoint(point)
@@ -2146,11 +2231,27 @@ function App() {
               }).catch(() => null)
             : null
 
+          // Variante d'affichage (~2000 px) : photos uniquement, cf.
+          // mediaPreview.ts. Best-effort — un échec laisse `displayUrl` absent,
+          // les appelants retombent alors sur l'original.
+          const display = await createDisplayVariant(file, media.kind)
+          const displayUpload = display
+            ? await uploadMedia({
+                file: display,
+                fingerprint,
+                adminPassword,
+                idToken,
+                trailCode: mapSlug,
+                kind: 'display',
+              }).catch(() => null)
+            : null
+
           results[index] = {
             ...media,
             fingerprint,
             url: uploaded.url,
             ...(previewUpload ? { thumbnailUrl: previewUpload.url } : {}),
+            ...(displayUpload ? { displayUrl: displayUpload.url } : {}),
           }
         } catch (uploadError) {
           failed.push({
@@ -2665,6 +2766,7 @@ function App() {
         await deleteUploadedMedia({
           mediaUrl: ignoredMedia.url,
           thumbnailUrl: ignoredMedia.thumbnailUrl,
+          displayUrl: ignoredMedia.displayUrl,
           adminPassword,
           idToken,
           trailCode: mapSlug,
@@ -2738,18 +2840,35 @@ function App() {
                 kind: 'preview',
               }).catch(() => null)
             : null
+        const display = existing?.displayUrl
+          ? null
+          : await createDisplayVariant(file, media.kind)
+        const displayUpload = existing?.displayUrl
+          ? { url: existing.displayUrl }
+          : display
+            ? await uploadMedia({
+                file: display,
+                fingerprint,
+                adminPassword,
+                idToken,
+                trailCode: mapSlug,
+                kind: 'display',
+              }).catch(() => null)
+            : null
         const uploaded: ImportedMedia =
           existing
             ? {
                 ...existing,
                 fingerprint,
                 ...(previewUpload ? { thumbnailUrl: previewUpload.url } : {}),
+                ...(displayUpload ? { displayUrl: displayUpload.url } : {}),
               }
             : {
                 ...media,
                 fingerprint,
                 url: original.url,
                 ...(previewUpload ? { thumbnailUrl: previewUpload.url } : {}),
+                ...(displayUpload ? { displayUrl: displayUpload.url } : {}),
               }
 
         setMediaLibrary((current) =>

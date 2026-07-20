@@ -62,6 +62,7 @@ type StoredMedia = {
   name?: string
   url?: string
   thumbnailUrl?: string
+  displayUrl?: string
   fingerprint?: string
   kind?: 'image' | 'video'
 }
@@ -131,7 +132,7 @@ const readActiveTrail = async (): Promise<ActiveTrail | null> => {
 const storageTarget = (
   sourceUrl: string,
   target: ActiveTrail,
-  folder: 'media' | 'previews',
+  folder: 'media' | 'previews' | 'displays',
   media: StoredMedia,
 ): { sourceKey: string; destinationKey: string; destinationUrl: string } => {
   const sourceKey = r2KeyFromPublicUrl(sourceUrl)
@@ -141,14 +142,17 @@ const storageTarget = (
     )
   }
 
-  const existingTrailMarker = '/media/'
-  const existingPreviewMarker = '/previews/'
-  const marker = folder === 'media' ? existingTrailMarker : existingPreviewMarker
+  const marker =
+    folder === 'media'
+      ? '/media/'
+      : folder === 'previews'
+        ? '/previews/'
+        : '/displays/'
   const markerIndex = sourceKey.indexOf(marker)
   const suffix =
     markerIndex >= 0
       ? sourceKey.slice(markerIndex + marker.length)
-      : folder === 'previews'
+      : folder === 'previews' || folder === 'displays'
         ? `${media.fingerprint ?? cleanStorageName(media.id ?? 'preview')}.jpg`
         : `${media.fingerprint ?? cleanStorageName(media.id ?? 'media')}-${cleanStorageName(media.name ?? 'media')}`
   const destinationKey = `${target.prefix}/${folder}/${suffix}`
@@ -191,7 +195,18 @@ const moveProjectMedia = async (
       }
     }
 
-    return { ...media, url: original.destinationUrl, thumbnailUrl }
+    let displayUrl = media.displayUrl
+    if (displayUrl) {
+      const display = storageTarget(displayUrl, target, 'displays', media)
+      copies.push(display)
+      replacements.set(displayUrl, display.destinationUrl)
+      displayUrl = display.destinationUrl
+      if (display.sourceKey !== display.destinationKey) {
+        migratedSourceKeys.push(display.sourceKey)
+      }
+    }
+
+    return { ...media, url: original.destinationUrl, thumbnailUrl, displayUrl }
   })
 
   for (const point of project.points) {

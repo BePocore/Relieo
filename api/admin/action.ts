@@ -541,7 +541,11 @@ const rejectMediaCore = async (
     if (raw) {
       try {
         const project = JSON.parse(raw) as {
-          mediaLibrary?: Array<{ url?: string; thumbnailUrl?: string }>
+          mediaLibrary?: Array<{
+            url?: string
+            thumbnailUrl?: string
+            displayUrl?: string
+          }>
           points?: Array<{ image?: string; video?: string }>
           [key: string]: unknown
         }
@@ -556,8 +560,12 @@ const rejectMediaCore = async (
           const thumbKey = target.thumbnailUrl
             ? r2KeyFromPublicUrl(target.thumbnailUrl)
             : null
+          const displayKey = target.displayUrl
+            ? r2KeyFromPublicUrl(target.displayUrl)
+            : null
           if (originalKey) keysToDelete.add(originalKey)
           if (thumbKey) keysToDelete.add(thumbKey)
+          if (displayKey) keysToDelete.add(displayKey)
           const nextLibrary = library.filter((media) => media !== target)
           const nextPoints = (
             Array.isArray(project.points) ? project.points : []

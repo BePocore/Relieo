@@ -104,7 +104,7 @@ export const uploadMedia = async ({
   adminPassword: string
   idToken?: string
   trailCode: string
-  kind?: 'media' | 'preview' | 'trace'
+  kind?: 'media' | 'preview' | 'display' | 'trace'
   onProgress?: UploadProgress
 }): Promise<{ url: string; alreadyExists: boolean }> => {
   if (!trailCode.trim()) {
@@ -151,12 +151,14 @@ export const uploadMedia = async ({
 export const deleteUploadedMedia = async ({
   mediaUrl,
   thumbnailUrl,
+  displayUrl,
   adminPassword,
   idToken,
   trailCode,
 }: {
   mediaUrl: string
   thumbnailUrl?: string
+  displayUrl?: string
   adminPassword: string
   idToken?: string
   trailCode: string
@@ -177,6 +179,7 @@ export const deleteUploadedMedia = async ({
       type: 'relieo.delete-media',
       mediaUrl,
       thumbnailUrl,
+      displayUrl,
       trailCode,
     }),
   })

@@ -1255,6 +1255,44 @@
   max-height: 100%;
 }
 
+/* Enrobe uniquement la <img> (pas la légende dessous) : `inline-block` se
+   contracte à la taille réelle de la photo affichée, quel que soit son ratio,
+   pour que le bouton « Pleine résolution » reste ancré à SON coin. */
+.lightbox-media-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Bouton « Pleine résolution » : ancré au coin bas-droit de la photo. */
+.lightbox-fullres {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(8, 14, 11, 0.65);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.lightbox-fullres:hover {
+  background: rgba(8, 14, 11, 0.85);
+}
+
+.lightbox-fullres[aria-pressed='true'] {
+  border-color: var(--accent-border);
+}
+
 .lightbox-media {
   display: block;
   max-width: min(1400px, 100%);

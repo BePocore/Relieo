@@ -55,6 +55,14 @@ export type ImportedMedia = {
   url: string
   fingerprint?: string
   thumbnailUrl?: string
+  // Variante d'affichage (~2000 px de long côté, JPEG qualité 0.82) : servie par
+  // défaut en lightbox/diaporama/préchargement à la place de `url` (l'original
+  // brut), pour ne pas imposer 3-5 Mo à un écran qui n'affiche jamais autant de
+  // pixels. Absente sur les médias importés avant ce chantier (2026-07-20) ou
+  // pas encore rattrapés par la tâche de fond du Studio : les appelants
+  // retombent alors sur `url`. Images uniquement (vidéo non concernée : elle
+  // est déjà streamée en Range, jamais téléchargée d'un bloc).
+  displayUrl?: string
   kind: MediaKind
   size: number
   mimeType?: string

@@ -38,7 +38,7 @@ type PrepareUploadBody = {
   fileName?: string
   contentType?: string
   fingerprint?: string
-  kind?: 'media' | 'preview' | 'trace'
+  kind?: 'media' | 'preview' | 'display' | 'trace'
   size?: number
   trailCode?: string
 }
@@ -47,6 +47,7 @@ type DeleteMediaBody = {
   type: 'relieo.delete-media'
   mediaUrl?: string
   thumbnailUrl?: string
+  displayUrl?: string
   trailCode?: string
 }
 
@@ -418,6 +419,9 @@ export async function POST(request: Request) {
       const thumbnailKey = body.thumbnailUrl
         ? r2KeyFromPublicUrl(body.thumbnailUrl)
         : null
+      const displayKey = body.displayUrl
+        ? r2KeyFromPublicUrl(body.displayUrl)
+        : null
 
       // Un fichier de la carte : média OU fichier de trace (sous /traces/).
       if (
@@ -441,9 +445,19 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
+      if (
+        displayKey &&
+        !displayKey.startsWith(`${location.prefix}/displays/`)
+      ) {
+        return Response.json(
+          { message: 'Variante R2 introuvable pour cette carte.' },
+          { status: 400 },
+        )
+      }
 
       await r2DeleteObject(mediaKey)
       if (thumbnailKey) await r2DeleteObject(thumbnailKey)
+      if (displayKey) await r2DeleteObject(displayKey)
       return Response.json({ deleted: true })
     }
 
@@ -451,6 +465,7 @@ export async function POST(request: Request) {
       const allowedPrefixes = [
         `${location.prefix}/media/`,
         `${location.prefix}/previews/`,
+        `${location.prefix}/displays/`,
         `${location.prefix}/traces/`,
       ]
       const usedKeys = new Set(
@@ -463,14 +478,19 @@ export async function POST(request: Request) {
             ),
           ),
       )
-      const [mediaKeys, previewKeys] = await Promise.all(
+      const [mediaKeys, previewKeys, displayKeys] = await Promise.all(
         allowedPrefixes.map((prefix) => r2ListKeys(prefix)),
       )
       const mediaKeysToDelete = mediaKeys.filter(
         (key) => !usedKeys.has(key),
       )
       const previewKeysToDelete = previewKeys.filter((key) => !usedKeys.has(key))
-      const keysToDelete = [...mediaKeysToDelete, ...previewKeysToDelete]
+      const displayKeysToDelete = displayKeys.filter((key) => !usedKeys.has(key))
+      const keysToDelete = [
+        ...mediaKeysToDelete,
+        ...previewKeysToDelete,
+        ...displayKeysToDelete,
+      ]
 
       for (const key of keysToDelete) {
         await r2DeleteObject(key)
@@ -480,6 +500,7 @@ export async function POST(request: Request) {
         deletedCount: keysToDelete.length,
         mediaDeletedCount: mediaKeysToDelete.length,
         previewDeletedCount: previewKeysToDelete.length,
+        displayDeletedCount: displayKeysToDelete.length,
       })
     }
 
@@ -500,11 +521,16 @@ export async function POST(request: Request) {
     const folder =
       body.kind === 'preview'
         ? 'previews'
-        : body.kind === 'trace'
-          ? 'traces'
-          : 'media'
+        : body.kind === 'display'
+          ? 'displays'
+          : body.kind === 'trace'
+            ? 'traces'
+            : 'media'
     const fileName = cleanStorageName(body.fileName ?? 'media')
-    const suffix = body.kind === 'preview' ? `${fingerprint}.jpg` : `${fingerprint}-${fileName}`
+    const suffix =
+      body.kind === 'preview' || body.kind === 'display'
+        ? `${fingerprint}.jpg`
+        : `${fingerprint}-${fileName}`
     // Quota par utilisateur (selon son forfait) si on connait son uid ; sinon
     // repli global.
     const scope: StorageScope | undefined = uid

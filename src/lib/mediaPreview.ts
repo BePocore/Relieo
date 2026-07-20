@@ -1,17 +1,21 @@
 import type { MediaKind } from '../types'
 
-const canvasBlob = (canvas: HTMLCanvasElement): Promise<Blob | null> => {
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.78))
+const canvasBlob = (
+  canvas: HTMLCanvasElement,
+  quality: number,
+): Promise<Blob | null> => {
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
 }
 
-const drawPreview = (
+const drawScaled = (
   source: CanvasImageSource,
   sourceWidth: number,
   sourceHeight: number,
+  maxWidth: number,
+  maxHeight: number,
+  quality: number,
 ): Promise<Blob | null> => {
   if (!sourceWidth || !sourceHeight) return Promise.resolve(null)
-  const maxWidth = 640
-  const maxHeight = 420
   const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, 1)
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(sourceWidth * scale))
@@ -19,14 +23,49 @@ const drawPreview = (
   const context = canvas.getContext('2d')
   if (!context) return Promise.resolve(null)
   context.drawImage(source, 0, 0, canvas.width, canvas.height)
-  return canvasBlob(canvas)
+  return canvasBlob(canvas, quality)
 }
+
+const drawPreview = (
+  source: CanvasImageSource,
+  sourceWidth: number,
+  sourceHeight: number,
+): Promise<Blob | null> => drawScaled(source, sourceWidth, sourceHeight, 640, 420, 0.78)
 
 const imagePreview = async (file: File): Promise<Blob | null> => {
   try {
     const bitmap = await createImageBitmap(file)
     try {
       return await drawPreview(bitmap, bitmap.width, bitmap.height)
+    } finally {
+      bitmap.close()
+    }
+  } catch {
+    return null
+  }
+}
+
+// Variante d'affichage (~2000 px de long côté, cf. types.ts `ImportedMedia.
+// displayUrl`) : ce que la lightbox/le diaporama/le préchargement montrent par
+// défaut à la place de l'original brut (souvent 3-5 Mo pour une photo de
+// smartphone récent). 2000 px couvre large tout téléphone/tablette et la
+// plupart des écrans de bureau ; l'original reste accessible en un clic
+// (bouton « Pleine résolution » de la lightbox) pour le zoom ou le grand écran.
+const DISPLAY_MAX_SIDE = 2000
+const DISPLAY_QUALITY = 0.82
+
+const imageDisplayVariant = async (file: File): Promise<Blob | null> => {
+  try {
+    const bitmap = await createImageBitmap(file)
+    try {
+      return await drawScaled(
+        bitmap,
+        bitmap.width,
+        bitmap.height,
+        DISPLAY_MAX_SIDE,
+        DISPLAY_MAX_SIDE,
+        DISPLAY_QUALITY,
+      )
     } finally {
       bitmap.close()
     }
@@ -64,7 +103,7 @@ const captureVideoFrame = (
     // Canvas « tainted » (source cross-origin) : mesure impossible, on suppose OK.
     bright = true
   }
-  return { toBlob: () => canvasBlob(canvas), bright }
+  return { toBlob: () => canvasBlob(canvas, 0.78), bright }
 }
 
 // Poster vidéo robuste : on essaie plusieurs instants croissants (intro souvent
@@ -130,4 +169,14 @@ export const createMediaPreview = (
   kind: MediaKind,
 ): Promise<Blob | null> => {
   return kind === 'image' ? imagePreview(file) : videoPreview(file)
+}
+
+// Photos uniquement (cf. commentaire au-dessus de `imageDisplayVariant`) : une
+// vidéo est déjà servie en Range par le videur, jamais téléchargée d'un bloc,
+// donc une variante réduite n'apporterait rien.
+export const createDisplayVariant = (
+  file: File,
+  kind: MediaKind,
+): Promise<Blob | null> => {
+  return kind === 'image' ? imageDisplayVariant(file) : Promise.resolve(null)
 }

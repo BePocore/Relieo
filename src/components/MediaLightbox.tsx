@@ -6,7 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
 } from 'react'
-import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize2, Pause, Play, X } from 'lucide-react'
 import { Panorama360 } from './Panorama360'
 import type { LightboxMedia } from '../App'
 import { mediaCaption } from '../lib/format'
@@ -43,6 +43,21 @@ export function MediaLightbox({
     media && media.kind !== 'day-break'
       ? mediaCaption(media.title, media.takenAt, media.placeName)
       : null
+
+  // « Pleine résolution » : par défaut la lightbox affiche `media.src` (une
+  // variante allégée quand `fullSrc` existe, cf. App.tsx). Un clic bascule sur
+  // l'original ; réinitialisé à chaque changement de slide (le choix ne suit
+  // pas le média suivant). Ajustée PENDANT le rendu (pas dans un effet, cf.
+  // https://react.dev/learn/you-might-not-need-an-effect) : `set-state-in-effect`
+  // est une erreur dans ce repo.
+  const [fullRes, setFullRes] = useState(false)
+  const [fullResIndex, setFullResIndex] = useState(safeIndex)
+  if (fullResIndex !== safeIndex) {
+    setFullResIndex(safeIndex)
+    setFullRes(false)
+  }
+  const canFullRes = media?.kind === 'image' && Boolean(media.fullSrc)
+  const imgSrc = fullRes && media?.fullSrc ? media.fullSrc : media?.src
 
   // ── Reprise du diaporama ────────────────────────────────────────────────
   // On mémorise la position + l'heure à chaque changement de vue (couvre le
@@ -257,12 +272,33 @@ export function MediaLightbox({
             }}
           />
         ) : (
-          <img
-            className="lightbox-media"
-            src={media.src}
-            alt={media.title ?? ''}
-            decoding="async"
-          />
+          <div className="lightbox-media-wrap">
+            <img
+              className="lightbox-media"
+              src={imgSrc}
+              alt={media.title ?? ''}
+              decoding="async"
+            />
+            {canFullRes ? (
+              <button
+                type="button"
+                className="lightbox-fullres"
+                aria-pressed={fullRes}
+                title={
+                  fullRes
+                    ? 'Revenir à l’affichage allégé'
+                    : 'Voir en pleine résolution'
+                }
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setFullRes((current) => !current)
+                }}
+              >
+                <Maximize2 aria-hidden="true" size={14} />
+                {fullRes ? 'Version allégée' : 'Pleine résolution'}
+              </button>
+            ) : null}
+          </div>
         )}
         {media.kind !== 'day-break' && caption ? (
           <p className="lightbox-caption">
