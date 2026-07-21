@@ -401,12 +401,10 @@
 
 @media (max-width: 900px) {
   .maplibre-cluster-hint {
-    /* Sur téléphone, le haut est occupé des deux côtés (sélecteur de fond à
-       gauche, panneau de zoom/rotation ~116px de haut à droite) et le texte,
-       trop long pour tenir dans l'entre-deux, passait SOUS le panneau de zoom.
-       On descend la bulle juste sous ce panneau : zone médiane libre, centrée,
-       et elle disparaît de toute façon dès qu'on zoome. */
-    top: calc(max(8px, env(safe-area-inset-top)) + 188px);
+    /* Le zoom est descendu en bas (cf. refonte mobile plus bas) : le haut ne
+       porte plus que le sélecteur de fond (gauche) et la bascule relief
+       (droite), tous deux hauts de ~40px. La bulle se pose juste dessous. */
+    top: calc(max(8px, env(safe-area-inset-top)) + 124px);
     max-width: calc(100% - 16px);
   }
 }
@@ -3043,21 +3041,56 @@
     white-space: nowrap;
   }
 
-  .map-view-controls {
+  /* ── Refonte mobile 2026-07-20 : trois bandes, une seule fonction chacune ──
+     Haut   = identité + chiffres de la rando (barre du haut) et fonds de carte.
+     Milieu = la carte, libérée.
+     Bas    = tout l'interactif, sous le pouce, puis le contenu du séjour.
+     Aucun élément ne partage sa rangée avec un autre : plus de recouvrement
+     possible même si un libellé s'allonge (c'était la cause des collisions).
+
+     Rythme vertical du bas, depuis le bord (safe-area comprise) :
+       8px   rail des médias  (tuile 56+3+19 = 78 + 2x5 de piste + bordure = 90)
+       104px barre des jours  (98 + 6 de respiration), haute de ~40
+       152px actions + zoom   (144 + 8), hauts de 40
+       198px attribution MapLibre, puis la fiche du jour à 200px */
+
+  /* Bascule Relief / 2D : remonte en haut à DROITE, dans le coin libéré par le
+     zoom. Elle reste la seule commande de vue visible en haut. */
+  .terrain-badge {
     top: calc(max(8px, env(safe-area-inset-top)) + 62px);
     right: 8px;
-    grid-template-columns: repeat(2, 34px);
+    left: auto;
+  }
+
+  /* Le zoom descend sous le pouce et se réduit à + / − : sur un écran tactile,
+     la rotation et l'inclinaison se font déjà à deux doigts nativement, les
+     4 boutons correspondants n'apportaient rien et coûtaient une rangée. */
+  .map-view-controls {
+    top: auto;
+    bottom: calc(152px + env(safe-area-inset-bottom));
+    right: 8px;
+    grid-template-columns: repeat(2, 36px);
+  }
+
+  /* Les 2 derniers boutons sont toujours zoom avant / zoom arrière (les
+     précédents sont rotation et inclinaison, présents ou non selon la vue). */
+  .map-view-controls button:not(:nth-last-child(-n + 2)) {
+    display: none;
   }
 
   .map-view-controls button {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
   }
 
+  /* Actions (recentrer / diaporama / parcours) : même rangée que le zoom, mais
+     à gauche. Elles quittent le bas-droite où elles montaient dans la barre
+     des jours. */
   .map-action-stack {
-    right: 8px;
-    bottom: calc(112px + env(safe-area-inset-bottom));
-    gap: 5px;
+    left: 8px;
+    right: auto;
+    bottom: calc(152px + env(safe-area-inset-bottom));
+    gap: 6px;
   }
 
   .map-tool-button {
@@ -3096,7 +3129,8 @@
 
   .maplibregl-ctrl-bottom-right {
     right: 4px;
-    bottom: calc(88px + env(safe-area-inset-bottom));
+    /* Au-dessus de la rangée actions + zoom (cf. rythme vertical plus haut). */
+    bottom: calc(198px + env(safe-area-inset-bottom));
   }
 
   .maplibregl-ctrl-attrib {
@@ -3216,8 +3250,39 @@
     grid-template-columns: 1fr;
   }
 
+  /* Les chiffres de la rando restent VISIBLES sur téléphone (2026-07-20) : la
+     barre du haut ne portait qu'un logo et ~200px de vide, alors que distance
+     et D+ sont la première chose qu'un visiteur cherche. Auparavant masqués,
+     ils s'affichent maintenant en valeurs seules (« 12,4 km  +820 m ») : les
+     libellés sont superflus, l'unité et le signe + suffisent à les lire. */
   .stats-bar {
+    display: flex;
+    gap: 0;
+  }
+
+  /* Distance et D+ seulement : D-, altitude et points restent dans le panneau
+     Parcours, ils ne tiendraient pas à côté du nom. */
+  .stat-item:nth-child(n + 3) {
     display: none;
+  }
+
+  .stat-item {
+    min-width: 0;
+    padding: 3px 5px;
+  }
+
+  .stat-item dt {
+    display: none;
+  }
+
+  .stat-item dd {
+    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+
+  /* Le nom cède la place aux chiffres avant eux si l'écran est très étroit. */
+  .brand h1 {
+    min-width: 0;
   }
 
   .basemap-button svg {
@@ -3541,13 +3606,16 @@
   /* De bas en haut : rail de médias, badge metrics (~124px), barre de
      chips, fiche du jour. */
   .day-timeline-bar {
-    bottom: calc(132px + env(safe-area-inset-bottom));
+    /* Posée directement sur le rail des médias (qui occupe 8 -> 98px) : les
+       deux parlent du même contenu et se lisent comme un seul bloc. */
+    bottom: calc(104px + env(safe-area-inset-bottom));
     max-width: calc(100% - 16px);
   }
 
   .day-card {
     left: 8px;
-    bottom: calc(182px + env(safe-area-inset-bottom));
+    /* Au-dessus de la rangée actions + zoom, jamais dessus. */
+    bottom: calc(200px + env(safe-area-inset-bottom));
     min-width: 0;
     max-width: calc(100% - 74px);
   }
