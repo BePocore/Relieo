@@ -401,7 +401,13 @@
 
 @media (max-width: 900px) {
   .maplibre-cluster-hint {
-    top: calc(max(8px, env(safe-area-inset-top)) + 62px);
+    /* Sur téléphone, le haut est occupé des deux côtés (sélecteur de fond à
+       gauche, panneau de zoom/rotation ~116px de haut à droite) et le texte,
+       trop long pour tenir dans l'entre-deux, passait SOUS le panneau de zoom.
+       On descend la bulle juste sous ce panneau : zone médiane libre, centrée,
+       et elle disparaît de toute façon dès qu'on zoome. */
+    top: calc(max(8px, env(safe-area-inset-top)) + 188px);
+    max-width: calc(100% - 16px);
   }
 }
 
