@@ -52,11 +52,26 @@ export function MediaLightbox({
   // est une erreur dans ce repo.
   const [fullRes, setFullRes] = useState(false)
   const [fullResIndex, setFullResIndex] = useState(safeIndex)
+  // Ce que le navigateur a REELLEMENT charge (`img.currentSrc`, renseigne au
+  // onLoad). Avec un `srcset`, c'est lui qui tranche entre variante et original
+  // selon la densite de l'ecran : sur un ecran haute densite il prend deja
+  // l'original, et proposer « Pleine résolution » n'aurait aucun sens.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
   if (fullResIndex !== safeIndex) {
     setFullResIndex(safeIndex)
     setFullRes(false)
+    setLoadedSrc(null)
   }
-  const canFullRes = media?.kind === 'image' && Boolean(media.fullSrc)
+  // Variante reellement a l'ecran = source chargee differente de l'original.
+  // Tant qu'on ne sait pas (image pas encore chargee), on n'affiche rien plutot
+  // qu'un bouton qui disparaitrait juste apres.
+  const showingVariant =
+    loadedSrc !== null && Boolean(media?.fullSrc) && loadedSrc !== media?.fullSrc
+  const canFullRes =
+    media?.kind === 'image' &&
+    Boolean(media.fullSrc) &&
+    // `fullRes` garde le bouton affiche pour permettre le retour a l'allege.
+    (fullRes || showingVariant)
   const imgSrc = fullRes && media?.fullSrc ? media.fullSrc : media?.src
 
   // ── Reprise du diaporama ────────────────────────────────────────────────
@@ -286,6 +301,9 @@ export function MediaLightbox({
               sizes={fullRes ? undefined : 'min(1400px, 100vw)'}
               alt={media.title ?? ''}
               decoding="async"
+              // `currentSrc` n'est fiable qu'une fois l'image chargee : c'est
+              // la seule facon de savoir ce que le srcset a retenu.
+              onLoad={(event) => setLoadedSrc(event.currentTarget.currentSrc)}
             />
             {canFullRes ? (
               <button

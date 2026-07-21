@@ -1685,26 +1685,16 @@ function App() {
   }, [])
 
   // Clic sur un marqueur : photo/vidéo en grand, sinon ouverture de la fiche.
+  // Passe par `pointsToLightboxItems` comme le diaporama et le clic sur une
+  // pile : ce chemin montait son item à la main et servait donc l'ORIGINAL brut
+  // (3-5 Mo), sans variante allégée ni `srcset` — l'allègement du 2026-07-20
+  // sautait sur le chemin le plus courant, celui du visiteur qui clique une
+  // photo sur la carte.
   const handleMarkerClick = useCallback(
     (point: TrailPoint) => {
-      const media = resolvePointMedia(point, mediaLibrary)
-      if (media && (media.kind === 'image' || media.kind === 'video')) {
-        // Image d'un point 360 : viewer panoramique au lieu de l'image plate.
-        const kind =
-          point.type === '360' && media.kind === 'image' ? '360' : media.kind
-        const takenAt = findPointMediaItem(point, mediaLibrary)?.takenAt
-        setLightbox({
-          items: [
-            {
-              src: media.src,
-              kind,
-              title: point.title,
-              ...(takenAt ? { takenAt } : {}),
-              ...(point.placeName ? { placeName: point.placeName } : {}),
-            },
-          ],
-          index: 0,
-        })
+      const items = pointsToLightboxItems([point], mediaLibrary)
+      if (items.length > 0) {
+        setLightbox({ items, index: 0 })
         return
       }
       handleSelectPoint(point)
