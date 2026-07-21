@@ -244,7 +244,20 @@ export default {
     // donc un test sur `.json` laissait passer ces fichiers dans le scan -> 403 pour le public.
     const isTraceFile = key.includes('/traces/')
     const enforce = env.MODERATION_ENFORCE === '1'
-    if (!isTraceFile && !(await canServe(env.MEDIA_BUCKET, key, ticket.role, enforce))) {
+    // Variante d'affichage (/displays/<empreinte>.jpg, ajoutee le 2026-07-20) : elle n'est
+    // JAMAIS scannee (ce serait un cout Sightengine en double : c'est la MEME image que
+    // l'original et sa vignette). Sans traitement, fail-closed la refuserait au public (jamais
+    // dans l'ensemble « scanne ») -> image cassee dans la lightbox. Elle HERITE donc du verdict
+    // de sa vignette /previews/<empreinte>.jpg (meme empreinte, meme contenu, elle SCANNEE) :
+    // on controle avec la cle vignette, mais on sert bien l'objet /displays/. Si l'original est
+    // flagge/rejete, sa vignette l'est aussi -> la variante est refusee/masquee pareil.
+    const moderationKey = key.includes('/displays/')
+      ? key.replace('/displays/', '/previews/')
+      : key
+    if (
+      !isTraceFile &&
+      !(await canServe(env.MEDIA_BUCKET, moderationKey, ticket.role, enforce))
+    ) {
       return forbidden(request, env, 'media indisponible (moderation)')
     }
 
