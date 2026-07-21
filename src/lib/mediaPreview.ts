@@ -51,7 +51,10 @@ const imagePreview = async (file: File): Promise<Blob | null> => {
 // smartphone récent). 2000 px couvre large tout téléphone/tablette et la
 // plupart des écrans de bureau ; l'original reste accessible en un clic
 // (bouton « Pleine résolution » de la lightbox) pour le zoom ou le grand écran.
-const DISPLAY_MAX_SIDE = 2000
+// Exporté : la lightbox recalcule la largeur réelle de la variante à partir des
+// dimensions d'origine pour déclarer son `srcset`. Une seule source de vérité,
+// sinon le navigateur choisirait sur une largeur fausse.
+export const DISPLAY_MAX_SIDE = 2000
 const DISPLAY_QUALITY = 0.82
 
 const imageDisplayVariant = async (file: File): Promise<Blob | null> => {

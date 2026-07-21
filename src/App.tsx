@@ -73,7 +73,11 @@ import {
   mediaKindFromFile,
   resolvePointMedia,
 } from './lib/media'
-import { createDisplayVariant, createMediaPreview } from './lib/mediaPreview'
+import {
+  DISPLAY_MAX_SIDE,
+  createDisplayVariant,
+  createMediaPreview,
+} from './lib/mediaPreview'
 import { buildDayPlan, computeDayStats } from './lib/days'
 import {
   ALL_MEDIA_ORDER_KEY,
@@ -147,6 +151,11 @@ export type LightboxMedia = {
   // Original brut, présent seulement quand `src` est une variante allégée
   // (donc différent d'elle) : active le bouton « Pleine résolution ».
   fullSrc?: string
+  // Variante ET original déclarés avec leur largeur : le NAVIGATEUR choisit
+  // selon la taille d'affichage réelle et la densité de l'écran. Un téléphone
+  // prend la variante, un grand écran haute densité prend l'original — sans
+  // que personne n'ait à cliquer. Absent si les dimensions sont inconnues.
+  srcSet?: string
   kind: MediaKind | '360' | 'day-break'
   title?: string
   // Date de prise (EXIF, ISO) : sert de libellé contextuel à la place d'un nom
@@ -158,6 +167,30 @@ export type LightboxMedia = {
   // Durée d'affichage personnalisée en lecture auto (réglages du diaporama),
   // prioritaire sur la durée globale. Ignorée pour les vidéos.
   durationMs?: number
+}
+
+// Déclare la variante allégée ET l'original avec leur largeur, pour que le
+// navigateur choisisse lui-même selon la taille d'affichage et la densité de
+// l'écran (`srcset`). Sans ça, un écran haute densité recevait la variante de
+// 2000 px pour l'afficher sur 2800 px réels : image étirée, donc molle.
+//
+// La largeur de la variante n'est pas stockée : on la recalcule à partir des
+// dimensions d'origine et du plafond du générateur (DISPLAY_MAX_SIDE), qui
+// réduit le plus grand côté sans déformer. Rien à regénérer côté R2.
+const buildDisplaySrcSet = (media: {
+  src: string
+  displaySrc?: string
+  width?: number
+  height?: number
+}): string | undefined => {
+  const { displaySrc, src, width, height } = media
+  if (!displaySrc || !width || !height) return undefined
+  const scale = Math.min(DISPLAY_MAX_SIDE / width, DISPLAY_MAX_SIDE / height, 1)
+  const displayWidth = Math.max(1, Math.round(width * scale))
+  // L'original n'est pas plus large que la variante (petite photo) : une seule
+  // source suffit, deux candidats identiques n'apporteraient rien.
+  if (displayWidth >= width) return undefined
+  return `${displaySrc} ${displayWidth}w, ${src} ${width}w`
 }
 
 // Construit la liste plein écran (photos / vidéos / 360) à partir de points.
@@ -185,6 +218,7 @@ const pointsToLightboxItems = (
         // Bouton « Pleine résolution » seulement quand `src` est vraiment une
         // variante allégée (sinon fullSrc === src, rien à gagner à l'afficher).
         ...(media.displaySrc ? { fullSrc: media.src } : {}),
+        ...(media.displaySrc ? { srcSet: buildDisplaySrcSet(media) } : {}),
         kind,
         title: point.title,
         ...(takenAt ? { takenAt } : {}),

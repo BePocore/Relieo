@@ -276,6 +276,14 @@ export function MediaLightbox({
             <img
               className="lightbox-media"
               src={imgSrc}
+              // `srcset` laisse le navigateur choisir entre la variante allégée
+              // et l'original selon la taille d'affichage ET la densité de
+              // l'écran : téléphone -> variante, grand écran retina -> original.
+              // Écarté dès que « Pleine résolution » est demandée, sinon le
+              // navigateur pourrait rester sur la variante déjà en cache.
+              srcSet={fullRes ? undefined : media.srcSet}
+              // Correspond au CSS : .lightbox-media est plafonnée à 1400px.
+              sizes={fullRes ? undefined : 'min(1400px, 100vw)'}
               alt={media.title ?? ''}
               decoding="async"
             />
